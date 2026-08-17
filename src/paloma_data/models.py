@@ -1,10 +1,26 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from hashlib import sha256
 import json
 from typing import Any
+
+
+def _json_safe(value: Any) -> Any:
+    """Normalize database/native values into deterministic JSON-compatible primitives."""
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    return value
 
 
 @dataclass(slots=True)
@@ -29,28 +45,30 @@ class SourceRecord:
     permitted_metadata: dict[str, Any] = field(default_factory=dict)
 
     def stable_payload(self) -> dict[str, Any]:
-        return {
-            "name": self.name,
-            "address": self.address,
-            "city": self.city,
-            "region": self.region,
-            "postal_code": self.postal_code,
-            "country_code": self.country_code,
-            "latitude": float(self.latitude) if self.latitude is not None else None,
-            "longitude": float(self.longitude) if self.longitude is not None else None,
-            "phone": self.phone,
-            "website_url": self.website_url,
-            "source_status": self.source_status,
-            "source_updated_at": self.source_updated_at.isoformat() if self.source_updated_at else None,
-            "primary_type_slug": self.primary_type_slug,
-            "classification_confidence": (
-                float(self.classification_confidence)
-                if self.classification_confidence is not None
-                else None
-            ),
-            "category_evidence": self.category_evidence,
-            "permitted_metadata": self.permitted_metadata,
-        }
+        return _json_safe(
+            {
+                "name": self.name,
+                "address": self.address,
+                "city": self.city,
+                "region": self.region,
+                "postal_code": self.postal_code,
+                "country_code": self.country_code,
+                "latitude": float(self.latitude) if self.latitude is not None else None,
+                "longitude": float(self.longitude) if self.longitude is not None else None,
+                "phone": self.phone,
+                "website_url": self.website_url,
+                "source_status": self.source_status,
+                "source_updated_at": self.source_updated_at,
+                "primary_type_slug": self.primary_type_slug,
+                "classification_confidence": (
+                    float(self.classification_confidence)
+                    if self.classification_confidence is not None
+                    else None
+                ),
+                "category_evidence": self.category_evidence,
+                "permitted_metadata": self.permitted_metadata,
+            }
+        )
 
     def payload_hash(self) -> str:
         encoded = json.dumps(
