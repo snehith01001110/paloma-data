@@ -7,7 +7,7 @@ import typer
 from paloma_data.adapters import CaliforniaABCAdapter, DataSFAdapter, OvertureAdapter
 from paloma_data.config import Settings
 from paloma_data.db import Database
-from paloma_data.field_resolution import FieldResolver
+from paloma_data.field_resolution import FieldResolver, RESOLUTION_VERSION
 from paloma_data.pipeline import Pipeline
 from paloma_data.web_identity import OfficialWebEnricher
 
@@ -28,15 +28,23 @@ def _components() -> tuple[Settings, Pipeline]:
 
 @app.command()
 def bootstrap() -> None:
-    """Run each initial source once, then refresh field truth on every deployment."""
+    """Backfill missing sources and force one full rebuild when the resolver schema advances."""
     settings, pipeline = _components()
     results: dict[str, object] = {}
+
+    # A new resolver version changes the semantics of canonical fields, not just presentation.
+    # Re-read every upstream source once so stale staged records cannot survive a resolver upgrade.
+    force_rebuild = not _field_resolution_current(pipeline)
+    results["forced_rebuild"] = force_rebuild
+    results["resolution_version"] = RESOLUTION_VERSION
+
     for source in SOURCES:
-        if _successful_backfill_exists(pipeline, source):
+        if not force_rebuild and _successful_backfill_exists(pipeline, source):
             results[source] = {"skipped": "already_backfilled"}
             continue
         adapter = _adapter(source, settings)
         results[source] = pipeline.run(adapter.source, "full", adapter.backfill())
+
     results["field_resolution_before_web"] = FieldResolver(pipeline.db).refresh_and_resolve()
     results["official_web"] = OfficialWebEnricher(pipeline.db).run()
     results["field_resolution"] = FieldResolver(pipeline.db).refresh_and_resolve()
@@ -123,6 +131,30 @@ def resolve_fields() -> None:
     """Rebuild source field evidence and resolve canonical confidence without fetching sources."""
     _, pipeline = _components()
     typer.echo(json.dumps(FieldResolver(pipeline.db).refresh_and_resolve(), indent=2, sort_keys=True))
+
+
+def _field_resolution_current(pipeline: Pipeline) -> bool:
+    """True only when every ingestion-backed canonical row has the current resolver version."""
+    with pipeline.db.connection() as conn:
+        row = conn.execute(
+            """
+            select
+              count(*) filter (where exists (
+                select 1 from ingest.establishment_sources es where es.establishment_id = e.id
+              )) as ingestion_backed,
+              count(*) filter (
+                where exists (
+                  select 1 from ingest.establishment_sources es where es.establishment_id = e.id
+                )
+                and e.field_resolution_version = %s
+              ) as current_rows
+            from public.establishments e
+            """,
+            (RESOLUTION_VERSION,),
+        ).fetchone()
+    ingestion_backed = int(row["ingestion_backed"] or 0)
+    current_rows = int(row["current_rows"] or 0)
+    return ingestion_backed > 0 and ingestion_backed == current_rows
 
 
 def _successful_backfill_exists(pipeline: Pipeline, source: str) -> bool:
