@@ -4,12 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "paloma-data"
-version = "0.1.0"
+version = "0.2.0"
 description = "Accuracy-first establishment ingestion and reconciliation for Paloma"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
   "httpx>=0.28,<0.29",
+  "overturemaps>=1.0,<2",
   "psycopg[binary]>=3.2,<4",
   "rapidfuzz>=3.12,<4",
   "typer>=0.16,<1",
