@@ -67,6 +67,8 @@ Deno.serve(async (req: Request) => {
       const staged = stagedBySource.get(sourceName) ?? 0;
       const linkedRecords = number(linked?.linked_record_count);
       const reviewRecords = number(review?.pending_review_record_count);
+      const residualRecords = Math.max(0, staged - linkedRecords - reviewRecords);
+      const isRunning = run?.status === "running";
       return {
         source: sourceName,
         label: LABELS[sourceName],
@@ -75,7 +77,8 @@ Deno.serve(async (req: Request) => {
         linked_establishment_count: number(linked?.linked_establishment_count),
         pending_review_count: number(review?.pending_review_count),
         pending_review_record_count: reviewRecords,
-        waiting_count: Math.max(0, staged - linkedRecords - reviewRecords),
+        waiting_count: isRunning ? residualRecords : 0,
+        ignored_count: isRunning ? 0 : residualRecords,
         latest_run: run ? { mode: run.mode, status: run.status, fetched: number(run.fetched_count), started_at: run.started_at, finished_at: run.finished_at, error: run.error_summary || null } : null,
       };
     });
