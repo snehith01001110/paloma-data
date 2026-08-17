@@ -5,6 +5,7 @@ import csv
 from datetime import datetime
 from html.parser import HTMLParser
 from io import BytesIO, TextIOWrapper
+from itertools import chain
 import os
 import re
 from typing import Any
@@ -81,9 +82,6 @@ class CaliforniaABCAdapter:
         parts = urlsplit(self.reports_url)
         origin = f"{parts.scheme}://{parts.netloc}"
 
-        # These are the stable download targets behind ABC's Daily Data Export buttons. Prefer
-        # CSV, but retain ABC's documented 460-character fixed-width export as an official
-        # second path. This intentionally avoids scraping the bot-protected report page.
         candidates = [
             f"{origin}/wp-content/uploads/WeeklyExport_CSV.zip",
             f"{origin}/wp-content/uploads/m_tape460.zip",
@@ -101,10 +99,8 @@ class CaliforniaABCAdapter:
             except httpx.HTTPError as exc:
                 errors.append(f"{url}:{type(exc).__name__}:{exc}")
 
-        # California ABC rejects GitHub-hosted runner IPs at the official ZIP endpoints. In that
-        # environment, authenticate the current Actions job with GitHub OIDC and have our scoped
-        # Supabase Edge Function stream the exact ABC-hosted bytes. The relay cannot be called by
-        # arbitrary clients and does not substitute or transform the source dataset.
+        # ABC blocks GitHub-hosted runner IPs at the official ZIP endpoints. In Actions, use a
+        # GitHub-OIDC-authenticated Supabase relay that streams the exact official ABC bytes.
         try:
             relay_payload = self._download_via_relay(client)
             if relay_payload is not None:
@@ -112,8 +108,6 @@ class CaliforniaABCAdapter:
         except (httpx.HTTPError, RuntimeError, ValueError, TypeError, KeyError) as exc:
             errors.append(f"relay:{type(exc).__name__}:{exc}")
 
-        # Compatibility fallback: if ABC ever renames the static file, attempt to rediscover the
-        # current official link through ABC's WordPress API / report page before failing loudly.
         try:
             discovered = self._discover_export_url(client)
             response = client.get(discovered)
@@ -221,7 +215,18 @@ class CaliforniaABCAdapter:
                     archive.open(name) as raw,
                     TextIOWrapper(raw, encoding="utf-8-sig", errors="replace", newline="") as text,
                 ):
-                    reader = csv.DictReader(text)
+                    # ABC currently prefixes the CSV with an "Updated ..." timestamp line. Find
+                    # the real header rather than assuming the first physical line is the header.
+                    header_line: str | None = None
+                    for line in text:
+                        header = line.casefold()
+                        if "license type" in header and "file number" in header:
+                            header_line = line
+                            break
+                    if header_line is None:
+                        raise RuntimeError("ABC CSV did not contain the expected license header")
+
+                    reader = csv.DictReader(chain([header_line], text))
                     for row in reader:
                         record = self._to_record(row)
                         if record is not None:
