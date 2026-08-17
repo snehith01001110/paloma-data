@@ -4,7 +4,7 @@ from collections.abc import Iterator
 import csv
 from datetime import datetime
 from html.parser import HTMLParser
-from io import BytesIO, StringIO, TextIOWrapper
+from io import BytesIO, TextIOWrapper
 import re
 from typing import Any
 from urllib.parse import urljoin, urlsplit
