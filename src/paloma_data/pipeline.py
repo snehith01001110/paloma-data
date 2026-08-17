@@ -37,11 +37,12 @@ class Pipeline:
             try:
                 for record in records:
                     counters["fetched"] += 1
-                    if not self._in_scope(record):
-                        continue
-                    self._process_record(conn, record, counters)
-                    if counters["fetched"] % 500 == 0:
+                    if self._in_scope(record):
+                        self._process_record(conn, record, counters)
+                    if counters["fetched"] % 250 == 0:
+                        _checkpoint_run(conn, run_id, counters)
                         conn.commit()
+                _checkpoint_run(conn, run_id, counters)
                 conn.commit()
                 self.db.finish_run(conn, run_id, status="succeeded", counters=counters)
                 conn.commit()
@@ -186,6 +187,31 @@ class Pipeline:
                 evidence={"category": record.category_evidence},
             )
             counters["review"] += 1
+
+
+def _checkpoint_run(conn, run_id: str, counters: dict[str, int]) -> None:
+    """Persist live counters without marking the run finished."""
+    conn.execute(
+        """
+        update ingest.ingestion_runs
+        set fetched_count = %s,
+            created_count = %s,
+            updated_count = %s,
+            unchanged_count = %s,
+            review_count = %s,
+            closed_count = %s
+        where id = %s::uuid and status = 'running'
+        """,
+        (
+            counters.get("fetched", 0),
+            counters.get("created", 0),
+            counters.get("updated", 0),
+            counters.get("unchanged", 0),
+            counters.get("review", 0),
+            counters.get("closed", 0),
+            run_id,
+        ),
+    )
 
 
 def _confidence(value: object | None) -> float:
