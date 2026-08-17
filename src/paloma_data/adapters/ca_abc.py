@@ -5,6 +5,7 @@ import csv
 from datetime import datetime
 from html.parser import HTMLParser
 from io import BytesIO, TextIOWrapper
+import os
 import re
 from typing import Any
 from urllib.parse import urljoin, urlsplit
@@ -14,6 +15,11 @@ import httpx
 
 from paloma_data.models import SourceRecord
 from paloma_data.taxonomy import classify_abc
+
+
+_DEFAULT_ABC_RELAY_URL = (
+    "https://lighcnfzajgvfbdoekzt.supabase.co/functions/v1/paloma-abc-export"
+)
 
 
 class _ExportLinkParser(HTMLParser):
@@ -95,6 +101,17 @@ class CaliforniaABCAdapter:
             except httpx.HTTPError as exc:
                 errors.append(f"{url}:{type(exc).__name__}:{exc}")
 
+        # California ABC rejects GitHub-hosted runner IPs at the official ZIP endpoints. In that
+        # environment, authenticate the current Actions job with GitHub OIDC and have our scoped
+        # Supabase Edge Function stream the exact ABC-hosted bytes. The relay cannot be called by
+        # arbitrary clients and does not substitute or transform the source dataset.
+        try:
+            relay_payload = self._download_via_relay(client)
+            if relay_payload is not None:
+                return relay_payload
+        except (httpx.HTTPError, RuntimeError, ValueError, TypeError, KeyError) as exc:
+            errors.append(f"relay:{type(exc).__name__}:{exc}")
+
         # Compatibility fallback: if ABC ever renames the static file, attempt to rediscover the
         # current official link through ABC's WordPress API / report page before failing loudly.
         try:
@@ -108,6 +125,40 @@ class CaliforniaABCAdapter:
             errors.append(f"discovery:{type(exc).__name__}:{exc}")
 
         raise RuntimeError("Could not download California ABC official data export; " + " | ".join(errors))
+
+    def _download_via_relay(self, client: httpx.Client) -> bytes | None:
+        request_url = os.getenv("ACTIONS_ID_TOKEN_REQUEST_URL")
+        request_token = os.getenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
+        if not request_url or not request_token:
+            return None
+
+        separator = "&" if "?" in request_url else "?"
+        token_response = client.get(
+            f"{request_url}{separator}audience=paloma-data-supabase",
+            headers={
+                "Authorization": f"bearer {request_token}",
+                "Accept": "application/json",
+            },
+        )
+        token_response.raise_for_status()
+        oidc_token = token_response.json().get("value")
+        if not oidc_token:
+            raise RuntimeError("GitHub OIDC endpoint returned no token")
+
+        relay_url = os.getenv("PALOMA_ABC_RELAY_URL", _DEFAULT_ABC_RELAY_URL)
+        response = client.get(
+            relay_url,
+            headers={
+                "Authorization": f"Bearer {oidc_token}",
+                "Accept": "application/zip",
+            },
+        )
+        response.raise_for_status()
+        if response.headers.get("x-paloma-source") != "California-ABC":
+            raise RuntimeError("ABC relay response did not identify the official source")
+        if not response.content.startswith(b"PK"):
+            raise RuntimeError("ABC relay response was not a ZIP archive")
+        return response.content
 
     def _discover_export_url(self, client: httpx.Client) -> str:
         errors: list[str] = []
