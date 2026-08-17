@@ -33,3 +33,8 @@ pythonpath = ["src"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.ruff.lint]
+# Pin a stable correctness-focused profile instead of inheriting Ruff-version-specific
+# stylistic/preview defaults in CI. Functional behavior is gated separately by pytest.
+select = ["E4", "E7", "E9", "F"]
