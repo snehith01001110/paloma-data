@@ -79,8 +79,8 @@ jobs:
           echo "::add-mask::$SUPABASE_DB_URL"
           printf 'SUPABASE_DB_URL=%s\n' "$SUPABASE_DB_URL" >> "$GITHUB_ENV"
       - run: pip install .
-      # Deliberate no-op workflow touch: merging this change creates a real main push so
-      # bootstrap can perform the one-time forced V2 resolver rebuild.
+      # Deliberate no-op workflow touch: OIDC auth was repaired; this main push retriggers
+      # bootstrap so the one-time forced V2 resolver rebuild can actually run.
       - name: Run initial sources and refresh field truth after deployment
         if: github.event_name == 'push'
         run: paloma-data bootstrap
