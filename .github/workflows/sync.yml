@@ -1,0 +1,64 @@
+name: Establishment sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: backfill or sync
+        required: true
+        default: sync
+        type: choice
+        options: [sync, backfill]
+      source:
+        description: Source to run
+        required: true
+        default: all
+        type: choice
+        options: [all, ca_abc, datasf]
+  schedule:
+    # 16:30 UTC is 08:30 PT during standard time / 09:30 PT during daylight time.
+    # The worker is idempotent; exact minute is not important because ABC refreshes at 07:00 PT.
+    - cron: '30 16 * * 1-5'
+
+concurrency:
+  group: paloma-establishment-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      PALOMA_COUNTRIES: US
+      PALOMA_REGIONS: CA
+      PALOMA_CITIES: San Francisco,Oakland,Berkeley,San Jose,San Mateo,Palo Alto,Mountain View,Sunnyvale,Santa Clara,Redwood City,Napa,Sonoma
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Require server database secret
+        run: test -n "$SUPABASE_DB_URL"
+      - run: pip install .
+      - name: Run scheduled incremental sync
+        if: github.event_name == 'schedule'
+        run: paloma-data sync-all
+      - name: Run manual command
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          if [ "${{ inputs.mode }}" = "backfill" ]; then
+            if [ "${{ inputs.source }}" = "all" ]; then
+              paloma-data backfill ca_abc
+              paloma-data backfill datasf
+            else
+              paloma-data backfill "${{ inputs.source }}"
+            fi
+          else
+            if [ "${{ inputs.source }}" = "all" ]; then
+              paloma-data sync-all
+            else
+              paloma-data sync "${{ inputs.source }}"
+            fi
+          fi
