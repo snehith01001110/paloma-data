@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import subprocess
@@ -200,9 +200,14 @@ def _latest_update_time(value: Any) -> datetime | None:
         if not isinstance(item, dict) or not item.get("update_time"):
             continue
         try:
-            parsed.append(datetime.fromisoformat(str(item["update_time"]).replace("Z", "+00:00")))
+            timestamp = datetime.fromisoformat(str(item["update_time"]).replace("Z", "+00:00"))
         except ValueError:
             continue
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
+        else:
+            timestamp = timestamp.astimezone(timezone.utc)
+        parsed.append(timestamp)
     return max(parsed) if parsed else None
 
 
