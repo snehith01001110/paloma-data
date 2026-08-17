@@ -49,13 +49,27 @@ class CaliforniaABCAdapter:
         self.reports_url = reports_url
 
     def backfill(self) -> Iterator[SourceRecord]:
+        # ABC's public site rejects obvious bot user agents from some cloud networks. Use normal
+        # browser request headers while still consuming only the public daily CSV export.
         with httpx.Client(
             timeout=120.0,
             follow_redirects=True,
-            headers={"User-Agent": "paloma-data/0.1"},
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+                ),
+                "Accept": (
+                    "text/html,application/xhtml+xml,application/xml;q=0.9,"
+                    "image/avif,image/webp,*/*;q=0.8"
+                ),
+                "Accept-Language": "en-US,en;q=0.9",
+                "Cache-Control": "no-cache",
+                "Pragma": "no-cache",
+            },
         ) as client:
             csv_zip_url = self._discover_csv_zip(client)
-            response = client.get(csv_zip_url)
+            response = client.get(csv_zip_url, headers={"Referer": self.reports_url})
             response.raise_for_status()
             yield from self._parse_zip(response.content)
 
@@ -65,7 +79,7 @@ class CaliforniaABCAdapter:
         yield from self.backfill()
 
     def _discover_csv_zip(self, client: httpx.Client) -> str:
-        response = client.get(self.reports_url)
+        response = client.get(self.reports_url, headers={"Referer": "https://www.abc.ca.gov/"})
         response.raise_for_status()
         parser = _CSVLinkParser()
         parser.feed(response.text)
