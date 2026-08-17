@@ -185,13 +185,13 @@ class Database:
             from public.establishments
             where lower(city) = lower(%s) and trim(country_code) = %s
               and (
-                    coalesce(normalized_name, lower(name)) %% %s
-                 or coalesce(normalized_address, lower(address)) %% %s
+                    coalesce(normalized_name, lower(name)) OPERATOR(extensions.%%) %s
+                 or coalesce(normalized_address, lower(address)) OPERATOR(extensions.%%) %s
                  {geo_sql}
               )
             order by greatest(
-                similarity(coalesce(normalized_name, lower(name)), %s),
-                similarity(coalesce(normalized_address, lower(address)), %s)
+                extensions.similarity(coalesce(normalized_name, lower(name)), %s),
+                extensions.similarity(coalesce(normalized_address, lower(address)), %s)
             ) desc
             limit %s
             """,
@@ -212,17 +212,17 @@ class Database:
                    phone_e164, website_url, source_status, source_updated_at,
                    primary_type_slug, classification_confidence,
                    category_evidence, permitted_metadata,
-                   similarity(normalized_name, %s) as name_similarity,
-                   similarity(normalized_address, %s) as address_similarity
+                   extensions.similarity(normalized_name, %s) as name_similarity,
+                   extensions.similarity(normalized_address, %s) as address_similarity
             from ingest.source_records
             where source <> %s
               and lower(city) = lower(%s)
               and trim(country_code) = %s
-              and normalized_address %% %s
-              and normalized_name %% %s
+              and normalized_address OPERATOR(extensions.%%) %s
+              and normalized_name OPERATOR(extensions.%%) %s
             order by (
-                0.55 * similarity(normalized_address, %s)
-              + 0.45 * similarity(normalized_name, %s)
+                0.55 * extensions.similarity(normalized_address, %s)
+              + 0.45 * extensions.similarity(normalized_name, %s)
             ) desc
             limit 1
             """,
