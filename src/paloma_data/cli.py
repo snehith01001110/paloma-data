@@ -7,9 +7,12 @@ import typer
 from paloma_data.adapters import CaliforniaABCAdapter, DataSFAdapter, OvertureAdapter
 from paloma_data.config import Settings
 from paloma_data.db import Database
+from paloma_data.field_resolution import FieldResolver
 from paloma_data.pipeline import Pipeline
+from paloma_data.web_identity import OfficialWebEnricher
 
 app = typer.Typer(no_args_is_help=True, help="Paloma establishment ingestion")
+SOURCES = ("ca_abc", "datasf", "overture")
 
 
 def _components() -> tuple[Settings, Pipeline]:
@@ -25,56 +28,101 @@ def _components() -> tuple[Settings, Pipeline]:
 
 @app.command()
 def bootstrap() -> None:
-    """Run each initial source backfill once; safe on every main-branch deployment."""
+    """Run each initial source once, then refresh field truth on every deployment."""
     settings, pipeline = _components()
     results: dict[str, object] = {}
-    for source in ("ca_abc", "datasf", "overture"):
+    for source in SOURCES:
         if _successful_backfill_exists(pipeline, source):
             results[source] = {"skipped": "already_backfilled"}
             continue
         adapter = _adapter(source, settings)
         results[source] = pipeline.run(adapter.source, "full", adapter.backfill())
+    results["field_resolution_before_web"] = FieldResolver(pipeline.db).refresh_and_resolve()
+    results["official_web"] = OfficialWebEnricher(pipeline.db).run()
+    results["field_resolution"] = FieldResolver(pipeline.db).refresh_and_resolve()
     typer.echo(json.dumps(results, indent=2, sort_keys=True))
 
 
 @app.command()
 def backfill(source: str = typer.Argument(..., help="ca_abc, datasf, or overture")) -> None:
-    """Run the initial source backfill. Safe to rerun; writes are idempotent."""
+    """Run one source backfill, then recompute field-level provenance/confidence."""
     settings, pipeline = _components()
     adapter = _adapter(source, settings)
-    counters = pipeline.run(adapter.source, "full", adapter.backfill())
-    typer.echo(json.dumps(counters, indent=2, sort_keys=True))
+    result = {
+        source: pipeline.run(adapter.source, "full", adapter.backfill()),
+        "field_resolution": FieldResolver(pipeline.db).refresh_and_resolve(),
+    }
+    typer.echo(json.dumps(result, indent=2, sort_keys=True))
+
+
+@app.command("rebuild-catalog")
+def rebuild_catalog() -> None:
+    """Re-read all primary sources, verify first-party web identities, and resolve canonical fields."""
+    settings, pipeline = _components()
+    results: dict[str, object] = {}
+    for source in SOURCES:
+        adapter = _adapter(source, settings)
+        results[source] = pipeline.run(adapter.source, "full", adapter.backfill())
+    results["field_resolution_before_web"] = FieldResolver(pipeline.db).refresh_and_resolve()
+    results["official_web"] = OfficialWebEnricher(pipeline.db).run()
+    results["field_resolution"] = FieldResolver(pipeline.db).refresh_and_resolve()
+    typer.echo(json.dumps(results, indent=2, sort_keys=True))
 
 
 @app.command()
 def sync(source: str = typer.Argument(..., help="ca_abc, datasf, or overture")) -> None:
-    """Run the ongoing incremental/reconciliation path."""
+    """Run one incremental source and recompute canonical field confidence."""
     settings, pipeline = _components()
     adapter = _adapter(source, settings)
-    counters = pipeline.run(adapter.source, "incremental", adapter.incremental())
-    typer.echo(json.dumps(counters, indent=2, sort_keys=True))
+    result = {
+        source: pipeline.run(adapter.source, "incremental", adapter.incremental()),
+        "field_resolution": FieldResolver(pipeline.db).refresh_and_resolve(),
+    }
+    typer.echo(json.dumps(result, indent=2, sort_keys=True))
 
 
 @app.command("sync-government")
 def sync_government() -> None:
-    """Run the high-frequency government-source reconciliation jobs."""
+    """Run high-frequency government reconciliation, retaining names as legal evidence."""
     settings, pipeline = _components()
-    results = {}
+    results: dict[str, object] = {}
     for source in ("ca_abc", "datasf"):
         adapter = _adapter(source, settings)
         results[source] = pipeline.run(adapter.source, "incremental", adapter.incremental())
+    results["field_resolution"] = FieldResolver(pipeline.db).refresh_and_resolve()
     typer.echo(json.dumps(results, indent=2, sort_keys=True))
 
 
 @app.command("sync-all")
 def sync_all() -> None:
-    """Run every currently production-enabled source."""
+    """Run all sources, first-party identity verification, and field resolution."""
     settings, pipeline = _components()
-    results = {}
-    for source in ("ca_abc", "datasf", "overture"):
+    results: dict[str, object] = {}
+    for source in SOURCES:
         adapter = _adapter(source, settings)
         results[source] = pipeline.run(adapter.source, "incremental", adapter.incremental())
+    results["field_resolution_before_web"] = FieldResolver(pipeline.db).refresh_and_resolve()
+    results["official_web"] = OfficialWebEnricher(pipeline.db).run()
+    results["field_resolution"] = FieldResolver(pipeline.db).refresh_and_resolve()
     typer.echo(json.dumps(results, indent=2, sort_keys=True))
+
+
+@app.command("enrich-web")
+def enrich_web() -> None:
+    """Refresh verified first-party public-facing names and resolve the catalog."""
+    _, pipeline = _components()
+    result = {
+        "official_web": OfficialWebEnricher(pipeline.db).run(),
+        "field_resolution": FieldResolver(pipeline.db).refresh_and_resolve(),
+    }
+    typer.echo(json.dumps(result, indent=2, sort_keys=True))
+
+
+@app.command("resolve-fields")
+def resolve_fields() -> None:
+    """Rebuild source field evidence and resolve canonical confidence without fetching sources."""
+    _, pipeline = _components()
+    typer.echo(json.dumps(FieldResolver(pipeline.db).refresh_and_resolve(), indent=2, sort_keys=True))
 
 
 def _successful_backfill_exists(pipeline: Pipeline, source: str) -> bool:
