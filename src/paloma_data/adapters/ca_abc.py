@@ -4,11 +4,11 @@ from collections.abc import Iterator
 import csv
 from datetime import datetime
 from html.parser import HTMLParser
-from io import BytesIO, TextIOWrapper
+from io import BytesIO, StringIO, TextIOWrapper
 import re
-from urllib.parse import urljoin
-from zipfile import ZipFile
 from typing import Any
+from urllib.parse import urljoin, urlsplit
+from zipfile import ZipFile
 
 import httpx
 
@@ -16,10 +16,11 @@ from paloma_data.models import SourceRecord
 from paloma_data.taxonomy import classify_abc
 
 
-class _CSVLinkParser(HTMLParser):
+class _ExportLinkParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
-        self.href: str | None = None
+        self.csv_href: str | None = None
+        self.fixed_href: str | None = None
         self._current_href: str | None = None
         self._text: list[str] = []
 
@@ -33,13 +34,17 @@ class _CSVLinkParser(HTMLParser):
             self._text.append(data)
 
     def handle_endtag(self, tag: str) -> None:
-        if tag.lower() == "a" and self._current_href:
-            text = " ".join(self._text).strip().casefold()
-            href = self._current_href
-            if "download data as csv" in text or ("csv" in text and href.lower().endswith(".zip")):
-                self.href = href
-            self._current_href = None
-            self._text = []
+        if tag.lower() != "a" or not self._current_href:
+            return
+        text = " ".join(self._text).strip().casefold()
+        href = self._current_href
+        href_lower = href.casefold()
+        if "download data as csv" in text or ("csv" in href_lower and ".zip" in href_lower):
+            self.csv_href = href
+        elif "download fixed-width data" in text or "m_tape460" in href_lower:
+            self.fixed_href = href
+        self._current_href = None
+        self._text = []
 
 
 class CaliforniaABCAdapter:
@@ -49,73 +54,145 @@ class CaliforniaABCAdapter:
         self.reports_url = reports_url
 
     def backfill(self) -> Iterator[SourceRecord]:
-        # ABC's public site rejects obvious bot user agents from some cloud networks. Use normal
-        # browser request headers while still consuming only the public daily CSV export.
         with httpx.Client(
             timeout=120.0,
             follow_redirects=True,
             headers={
-                "User-Agent": (
-                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                    "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-                ),
-                "Accept": (
-                    "text/html,application/xhtml+xml,application/xml;q=0.9,"
-                    "image/avif,image/webp,*/*;q=0.8"
-                ),
+                "User-Agent": "paloma-data/0.2 (+https://github.com/snehith01001110/paloma-data)",
+                "Accept": "application/json,text/html,application/zip,*/*;q=0.8",
                 "Accept-Language": "en-US,en;q=0.9",
-                "Cache-Control": "no-cache",
-                "Pragma": "no-cache",
             },
         ) as client:
-            csv_zip_url = self._discover_csv_zip(client)
-            response = client.get(csv_zip_url, headers={"Referer": self.reports_url})
+            export_url = self._discover_export_url(client)
+            response = client.get(export_url)
             response.raise_for_status()
             yield from self._parse_zip(response.content)
 
     def incremental(self, cursor: str | None = None) -> Iterator[SourceRecord]:
-        # ABC publishes a fresh raw export every business day. Stable source IDs + payload hashes
-        # make this an incremental reconciliation even though the transport is a snapshot.
+        # ABC refreshes the export each business day. Stable IDs + payload hashes make the
+        # snapshot transport an idempotent incremental reconciliation at record level.
         yield from self.backfill()
 
-    def _discover_csv_zip(self, client: httpx.Client) -> str:
-        response = client.get(self.reports_url, headers={"Referer": "https://www.abc.ca.gov/"})
-        response.raise_for_status()
-        parser = _CSVLinkParser()
-        parser.feed(response.text)
-        if not parser.href:
-            # Fallback: ABC occasionally changes link text; choose a same-page ZIP href containing csv.
-            candidates = re.findall(
-                r'href=["\']([^"\']+\.zip(?:\?[^"\']*)?)["\']', response.text, re.I
+    def _discover_export_url(self, client: httpx.Client) -> str:
+        errors: list[str] = []
+
+        # ABC runs WordPress. The REST representation contains the same official export links as
+        # the human-facing page but avoids depending on HTML-page bot protection in cloud runners.
+        parts = urlsplit(self.reports_url)
+        api_url = f"{parts.scheme}://{parts.netloc}/wp-json/wp/v2/pages"
+        try:
+            response = client.get(
+                api_url,
+                params={"slug": "licensing-reports", "_fields": "content"},
             )
-            csv_candidates = [href for href in candidates if "csv" in href.casefold()]
-            if not csv_candidates:
-                raise RuntimeError("Could not discover California ABC CSV data export URL")
-            parser.href = csv_candidates[0]
-        return urljoin(self.reports_url, parser.href)
+            response.raise_for_status()
+            pages = response.json()
+            if pages:
+                rendered = pages[0].get("content", {}).get("rendered", "")
+                found = self._export_href_from_html(rendered)
+                if found:
+                    return urljoin(self.reports_url, found)
+            errors.append("wp-json:no_export_link")
+        except (httpx.HTTPError, ValueError, TypeError, KeyError) as exc:
+            errors.append(f"wp-json:{type(exc).__name__}:{exc}")
+
+        # Keep the public report page as a compatibility fallback if ABC changes WordPress APIs.
+        try:
+            response = client.get(self.reports_url)
+            response.raise_for_status()
+            found = self._export_href_from_html(response.text)
+            if found:
+                return urljoin(self.reports_url, found)
+            errors.append("reports-page:no_export_link")
+        except httpx.HTTPError as exc:
+            errors.append(f"reports-page:{type(exc).__name__}:{exc}")
+
+        raise RuntimeError("Could not discover California ABC official data export; " + " | ".join(errors))
+
+    def _export_href_from_html(self, html: str) -> str | None:
+        parser = _ExportLinkParser()
+        parser.feed(html)
+        if parser.csv_href:
+            return parser.csv_href
+        if parser.fixed_href:
+            return parser.fixed_href
+
+        # Resilient fallback for minor label changes in ABC's markup.
+        zip_hrefs = re.findall(r'href=["\']([^"\']+\.zip(?:\?[^"\']*)?)["\']', html, re.I)
+        csv_hrefs = [href for href in zip_hrefs if "csv" in href.casefold()]
+        if csv_hrefs:
+            return csv_hrefs[0]
+        fixed_hrefs = [href for href in zip_hrefs if "m_tape460" in href.casefold()]
+        return fixed_hrefs[0] if fixed_hrefs else None
 
     def _parse_zip(self, payload: bytes) -> Iterator[SourceRecord]:
         with ZipFile(BytesIO(payload)) as archive:
             csv_names = [name for name in archive.namelist() if name.lower().endswith(".csv")]
-            if not csv_names:
-                raise RuntimeError("ABC ZIP contained no CSV file")
-            # Prefer the largest CSV if the archive contains support/reference files.
-            name = max(csv_names, key=lambda n: archive.getinfo(n).file_size)
-            with (
-                archive.open(name) as raw,
-                TextIOWrapper(raw, encoding="utf-8-sig", errors="replace", newline="") as text,
-            ):
-                reader = csv.DictReader(text)
-                for row in reader:
-                    record = self._to_record(row)
-                    if record is not None:
-                        yield record
+            if csv_names:
+                name = max(csv_names, key=lambda n: archive.getinfo(n).file_size)
+                with (
+                    archive.open(name) as raw,
+                    TextIOWrapper(raw, encoding="utf-8-sig", errors="replace", newline="") as text,
+                ):
+                    reader = csv.DictReader(text)
+                    for row in reader:
+                        record = self._to_record(row)
+                        if record is not None:
+                            yield record
+                return
+
+            # ABC documents a second official export as 460-character fixed-width records.
+            candidates = [name for name in archive.namelist() if not name.endswith("/")]
+            if not candidates:
+                raise RuntimeError("ABC ZIP contained no data file")
+            name = max(candidates, key=lambda n: archive.getinfo(n).file_size)
+            with archive.open(name) as raw:
+                text = raw.read().decode("latin-1", errors="replace")
+            for row in self._fixed_width_rows(text):
+                record = self._to_record(row)
+                if record is not None:
+                    yield record
+
+    def _fixed_width_rows(self, text: str) -> Iterator[dict[str, str]]:
+        fields = (
+            ("License Type", 0, 2),
+            ("File Number", 2, 10),
+            ("License or Application", 10, 13),
+            ("Type Status", 13, 21),
+            ("Type Original Issue Dates", 21, 32),
+            ("Expiration Dates", 32, 43),
+            ("Fee Codes", 43, 51),
+            ("Duplicate Counts", 51, 54),
+            ("Master Indicator", 54, 55),
+            ("Term in Number of Months", 55, 57),
+            ("Geo Code", 57, 61),
+            ("District/Office Code", 61, 63),
+            ("Primary Name", 63, 113),
+            ("Premise Street Address 1", 113, 163),
+            ("Premise Street Address 2", 163, 213),
+            ("Premise City", 213, 238),
+            ("Premise State", 238, 240),
+            ("Premise Zip", 240, 250),
+            ("DBA Name", 250, 300),
+            ("Mail Street Address 1", 300, 350),
+            ("Mail Street Address 2", 350, 400),
+            ("Mail City", 400, 425),
+            ("Mail State", 425, 427),
+            ("Mail Zip", 427, 437),
+            ("Premise County", 437, 453),
+            ("Premise Census Tract Number", 453, 460),
+        )
+        # ABC's file may be newline-delimited or block-oriented. Remove line endings and consume
+        # exact 460-character records so either representation parses identically.
+        compact = text.replace("\r", "").replace("\n", "")
+        for start in range(0, len(compact) - 459, 460):
+            line = compact[start : start + 460]
+            if not line.strip():
+                continue
+            yield {label: line[a:b].strip() for label, a, b in fields}
 
     def _to_record(self, row: dict[str, Any]) -> SourceRecord | None:
         normalized = {_header(k): v for k, v in row.items() if k is not None}
-
-        # ABC's raw export follows its published 460-character record layout. The CSV header
-        # names have changed slightly over time, so support both raw-layout and report aliases.
         license_number = _pick(
             normalized,
             "file_number",
