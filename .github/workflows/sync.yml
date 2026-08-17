@@ -20,10 +20,12 @@ on:
         required: true
         default: all
         type: choice
-        options: [all, ca_abc, datasf, overture]
+        options: [all, ca_abc, datasf, overture, web]
   schedule:
     # Government sources refresh frequently.
     - cron: '30 16 * * 1-5'
+    # Re-verify first-party public names weekly so acquisitions/rebrands do not wait for Overture.
+    - cron: '15 12 * * 0'
     # Overture publishes monthly. Run late in the month; the official client resolves latest STAC.
     - cron: '0 11 25 * *'
 
@@ -77,24 +79,29 @@ jobs:
           echo "::add-mask::$SUPABASE_DB_URL"
           printf 'SUPABASE_DB_URL=%s\n' "$SUPABASE_DB_URL" >> "$GITHUB_ENV"
       - run: pip install .
-      - name: Run one-time initial backfill after deployment
+      - name: Run initial sources and refresh field truth after deployment
         if: github.event_name == 'push'
         run: paloma-data bootstrap
       - name: Run weekday government reconciliation
         if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 1-5'
         run: paloma-data sync-government
-      - name: Run monthly Overture reconciliation
+      - name: Re-verify current first-party names
+        if: github.event_name == 'schedule' && github.event.schedule == '15 12 * * 0'
+        run: paloma-data enrich-web
+      - name: Run monthly Overture reconciliation and public-name refresh
         if: github.event_name == 'schedule' && github.event.schedule == '0 11 25 * *'
-        run: paloma-data sync overture
+        run: |
+          paloma-data sync overture
+          paloma-data enrich-web
       - name: Run manual command
         if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
-          if [ "${{ inputs.mode }}" = "backfill" ]; then
+          if [ "${{ inputs.source }}" = "web" ]; then
+            paloma-data enrich-web
+          elif [ "${{ inputs.mode }}" = "backfill" ]; then
             if [ "${{ inputs.source }}" = "all" ]; then
-              paloma-data backfill ca_abc
-              paloma-data backfill datasf
-              paloma-data backfill overture
+              paloma-data rebuild-catalog
             else
               paloma-data backfill "${{ inputs.source }}"
             fi
