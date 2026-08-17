@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "paloma-data"
+version = "0.1.0"
+description = "Accuracy-first establishment ingestion and reconciliation for Paloma"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "httpx>=0.28,<0.29",
+  "psycopg[binary]>=3.2,<4",
+  "rapidfuzz>=3.12,<4",
+  "typer>=0.16,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3,<9",
+  "ruff>=0.12,<1",
+]
+
+[project.scripts]
+paloma-data = "paloma_data.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/paloma_data"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
