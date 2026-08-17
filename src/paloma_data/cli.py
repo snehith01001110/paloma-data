@@ -24,6 +24,20 @@ def _components() -> tuple[Settings, Pipeline]:
 
 
 @app.command()
+def bootstrap() -> None:
+    """Run each initial source backfill once; safe on every main-branch deployment."""
+    settings, pipeline = _components()
+    results: dict[str, object] = {}
+    for source in ("ca_abc", "datasf", "overture"):
+        if _successful_backfill_exists(pipeline, source):
+            results[source] = {"skipped": "already_backfilled"}
+            continue
+        adapter = _adapter(source, settings)
+        results[source] = pipeline.run(adapter.source, "full", adapter.backfill())
+    typer.echo(json.dumps(results, indent=2, sort_keys=True))
+
+
+@app.command()
 def backfill(source: str = typer.Argument(..., help="ca_abc, datasf, or overture")) -> None:
     """Run the initial source backfill. Safe to rerun; writes are idempotent."""
     settings, pipeline = _components()
@@ -61,6 +75,24 @@ def sync_all() -> None:
         adapter = _adapter(source, settings)
         results[source] = pipeline.run(adapter.source, "incremental", adapter.incremental())
     typer.echo(json.dumps(results, indent=2, sort_keys=True))
+
+
+def _successful_backfill_exists(pipeline: Pipeline, source: str) -> bool:
+    with pipeline.db.connection() as conn:
+        row = conn.execute(
+            """
+            select exists (
+              select 1
+              from ingest.ingestion_runs
+              where source = %s
+                and mode = 'full'
+                and status = 'succeeded'
+                and fetched_count > 0
+            ) as complete
+            """,
+            (source,),
+        ).fetchone()
+    return bool(row["complete"])
 
 
 def _adapter(source: str, settings: Settings):
