@@ -161,7 +161,7 @@ class Pipeline:
                 return
 
         # A single exceptionally strong source may create only a tightly classified open record.
-        quality = record.classification_confidence or 0.0
+        quality = _confidence(record.classification_confidence)
         if _safe_to_create(record, quality):
             establishment_id = self.db.create_establishment(conn, record, quality)
             self.db.upsert_source_link(
@@ -176,16 +176,23 @@ class Pipeline:
 
         # Do not flood review with every weak discovery row. Meaningful Paloma evidence waits here
         # for a second source or operator; irrelevant rows remain staged only.
-        if (record.classification_confidence or 0.0) >= 0.78:
+        if _confidence(record.classification_confidence) >= 0.78:
             self.db.enqueue_review(
                 conn,
                 record,
                 reason="needs_type_or_location_corroboration",
-                confidence=record.classification_confidence,
+                confidence=_confidence(record.classification_confidence),
                 candidate_id=None,
                 evidence={"category": record.category_evidence},
             )
             counters["review"] += 1
+
+
+def _confidence(value: object | None) -> float:
+    """Normalize DB numeric/Decimal values and adapter floats to one arithmetic type."""
+    if value is None:
+        return 0.0
+    return float(value)
 
 
 def _safe_to_create(record: SourceRecord, quality: float) -> bool:
@@ -216,8 +223,8 @@ def _combine_for_creation(a: SourceRecord, b: SourceRecord) -> SourceRecord | No
         located,
         primary_type_slug=typed.primary_type_slug,
         classification_confidence=max(
-            a.classification_confidence or 0.0,
-            b.classification_confidence or 0.0,
+            _confidence(a.classification_confidence),
+            _confidence(b.classification_confidence),
         ),
         phone=located.phone or typed.phone,
         website_url=located.website_url or typed.website_url,
@@ -232,9 +239,10 @@ def _combine_for_creation(a: SourceRecord, b: SourceRecord) -> SourceRecord | No
 
 def _combined_quality(a: SourceRecord, b: SourceRecord, identity_score: float) -> float:
     typed_confidence = max(
-        a.classification_confidence or 0.0, b.classification_confidence or 0.0
+        _confidence(a.classification_confidence),
+        _confidence(b.classification_confidence),
     )
-    combined = 0.65 * typed_confidence + 0.35 * identity_score
+    combined = 0.65 * typed_confidence + 0.35 * float(identity_score)
     if a.primary_type_slug and a.primary_type_slug == b.primary_type_slug:
         combined += 0.03
     return min(0.99, combined)
