@@ -99,16 +99,58 @@ class CaliforniaABCAdapter:
 
     def _to_record(self, row: dict[str, Any]) -> SourceRecord | None:
         normalized = {_header(k): v for k, v in row.items() if k is not None}
-        license_number = _pick(normalized, "license_number", "licensenumber", "license_no", "lic_no")
-        license_type = _pick(normalized, "license_type", "licensetype", "type")
-        name = _pick(normalized, "dba_name", "business_name", "premises_name", "dba")
-        address = _pick(
-            normalized, "premises_address", "address", "prem_addr_1", "premisesaddress"
+
+        # ABC's raw export follows its published 460-character record layout. The CSV header
+        # names have changed slightly over time, so support both raw-layout and report aliases.
+        license_number = _pick(
+            normalized,
+            "file_number",
+            "license_number",
+            "licensenumber",
+            "license_no",
+            "lic_no",
         )
-        city = _pick(normalized, "premises_city", "city", "prem_city")
-        region = _pick(normalized, "premises_state", "state", "prem_state") or "CA"
-        postal = _pick(normalized, "premises_zip", "zip", "zipcode", "prem_zip")
-        status_raw = _pick(normalized, "status", "license_status", "lic_status") or ""
+        license_type = _pick(normalized, "license_type", "licensetype", "type")
+        license_or_application = _pick(
+            normalized, "license_or_application", "license_application", "lic_or_app"
+        )
+        status_raw = _pick(
+            normalized,
+            "type_status",
+            "status",
+            "license_status",
+            "lic_status",
+        ) or ""
+
+        name = _pick(
+            normalized,
+            "dba_name",
+            "business_name",
+            "premises_name",
+            "dba",
+            "primary_name",
+        )
+        street_1 = _pick(
+            normalized,
+            "premise_street_address_1",
+            "premises_street_address_1",
+            "premises_address",
+            "address",
+            "prem_addr_1",
+            "premisesaddress",
+        )
+        street_2 = _pick(
+            normalized,
+            "premise_street_address_2",
+            "premises_street_address_2",
+            "prem_addr_2",
+        )
+        address = _join_address(street_1, street_2)
+        city = _pick(normalized, "premise_city", "premises_city", "city", "prem_city")
+        region = _pick(
+            normalized, "premise_state", "premises_state", "state", "prem_state"
+        ) or "CA"
+        postal = _pick(normalized, "premise_zip", "premises_zip", "zip", "zipcode", "prem_zip")
 
         if not license_number or not license_type or not name or not address or not city:
             return None
@@ -117,28 +159,46 @@ class CaliforniaABCAdapter:
         if not classification.eligible:
             return None
 
-        status = _canonical_status(status_raw)
+        status = _canonical_status(status_raw, license_or_application)
         source_id = f"{license_number}:{license_type}"
         permitted = {
-            "license_number": license_number,
+            "file_number": license_number,
             "license_type": license_type,
-            "license_status": status_raw,
-            "primary_owner": _pick(normalized, "primary_owner", "owner_name", "owner"),
-            "district_code": _pick(normalized, "district_code", "district"),
+            "license_or_application": license_or_application,
+            "type_status": status_raw,
+            "primary_name": _pick(
+                normalized, "primary_name", "primary_owner", "owner_name", "owner"
+            ),
+            "district_code": _pick(
+                normalized, "district_office_code", "district_code", "district"
+            ),
             "geo_code": _pick(normalized, "geo_code", "geocode"),
             "expiration_date": _pick(
-                normalized, "expiration_date", "expir_date", "expiration"
+                normalized,
+                "expiration_dates",
+                "expiration_date",
+                "expir_date",
+                "expiration",
             ),
+            "premise_county": _pick(normalized, "premise_county", "premises_county"),
         }
         updated_at = _parse_date(
-            _pick(normalized, "status_date", "effective_date", "original_issue_date", "issue_date")
+            _pick(
+                normalized,
+                "type_original_issue_dates",
+                "type_original_issue_date",
+                "original_issue_date",
+                "issue_date",
+                "status_date",
+                "effective_date",
+            )
         )
 
         return SourceRecord(
             source=self.source,
             source_record_id=source_id,
             name=name.strip(),
-            address=address.strip(),
+            address=address,
             city=city.strip(),
             region=region.strip(),
             postal_code=postal.strip() if postal else None,
@@ -164,11 +224,17 @@ def _pick(row: dict[str, Any], *keys: str) -> str | None:
     return None
 
 
-def _canonical_status(value: str) -> str:
+def _join_address(street_1: str | None, street_2: str | None) -> str | None:
+    parts = [part.strip() for part in (street_1, street_2) if part and part.strip()]
+    return " ".join(parts) if parts else None
+
+
+def _canonical_status(value: str, license_or_application: str | None = None) -> str:
     text = value.casefold()
+    record_kind = (license_or_application or "").casefold()
     if any(token in text for token in ("cancel", "revok", "surrender", "closed", "inactive")):
         return "closed"
-    if "pending" in text:
+    if "pend" in text or "app" in record_kind:
         return "pending"
     return "open"
 
@@ -176,9 +242,10 @@ def _canonical_status(value: str) -> str:
 def _parse_date(value: str | None) -> datetime | None:
     if not value:
         return None
-    for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%m/%d/%y"):
+    candidate = value.strip()
+    for fmt in ("%d-%b-%Y", "%d-%b-%y", "%m/%d/%Y", "%Y-%m-%d", "%m/%d/%y"):
         try:
-            return datetime.strptime(value[:10], fmt)
+            return datetime.strptime(candidate[:11], fmt)
         except ValueError:
             continue
     return None
