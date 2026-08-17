@@ -53,3 +53,57 @@ def test_different_venue_is_distinct():
     score, _ = score_match(record, candidate())
     assert score < 0.8
     assert decide_match(record, [candidate()]).action == "distinct"
+
+
+def test_rebrand_with_same_phone_and_location_auto_matches():
+    old = candidate(
+        name="Faultline Brewing Company",
+        normalized_name="faultline brewing company",
+        address="1235 Oakmead Pkwy",
+        normalized_address="1235 oakmead pkwy",
+        city="Sunnyvale",
+        postal_code="94085",
+        latitude=37.38749,
+        longitude=-121.99263,
+        phone_e164="+14087362739",
+    )
+    record = SourceRecord(
+        source="overture",
+        source_record_id="new-brand-id",
+        name="Laughing Monk Brewing",
+        address="1235 Oakmead Pkwy",
+        city="Sunnyvale",
+        region="CA",
+        postal_code="94085",
+        latitude=37.38749,
+        longitude=-121.99263,
+        phone="+14087362739",
+    )
+    decision = decide_match(record, [old])
+    assert decision.action == "auto_match"
+    assert decision.reason == "exact_phone_location"
+
+
+def test_same_location_name_conflict_is_review_not_new_entity():
+    old = candidate(
+        name="Old Brand Brewing",
+        normalized_name="old brand brewing",
+        address="1235 Oakmead Pkwy",
+        normalized_address="1235 oakmead pkwy",
+        city="Sunnyvale",
+        latitude=37.38749,
+        longitude=-121.99263,
+    )
+    record = SourceRecord(
+        source="overture",
+        source_record_id="new-brand-id",
+        name="Completely New Operator Name",
+        address="1235 Oakmead Pkwy",
+        city="Sunnyvale",
+        region="CA",
+        latitude=37.38749,
+        longitude=-121.99263,
+    )
+    decision = decide_match(record, [old])
+    assert decision.action == "review"
+    assert decision.reason == "same_location_name_conflict"
