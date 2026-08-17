@@ -1,6 +1,8 @@
 name: Establishment sync
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       mode:
@@ -21,6 +23,10 @@ on:
     # Overture publishes monthly. Run late in the month; the official client resolves latest STAC.
     - cron: '0 11 25 * *'
 
+permissions:
+  contents: read
+  id-token: write
+
 concurrency:
   group: paloma-establishment-sync
   cancel-in-progress: false
@@ -28,8 +34,8 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 180
     env:
-      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
       PALOMA_COUNTRIES: US
       PALOMA_REGIONS: CA
       PALOMA_CITIES: San Francisco,Oakland,Berkeley,San Jose,San Mateo,Palo Alto,Mountain View,Sunnyvale,Santa Clara,Redwood City,Napa,Sonoma
@@ -40,9 +46,36 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-      - name: Require server database secret
-        run: test -n "$SUPABASE_DB_URL"
+      - name: Exchange GitHub OIDC for scoped database credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          OIDC_RESPONSE="$(
+            curl --fail --silent --show-error \
+              -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=paloma-data-supabase"
+          )"
+          OIDC_TOKEN="$(
+            python -c 'import json,sys; print(json.load(sys.stdin)["value"])' \
+              <<<"$OIDC_RESPONSE"
+          )"
+          DB_RESPONSE="$(
+            curl --fail --silent --show-error -X POST \
+              -H "Authorization: Bearer $OIDC_TOKEN" \
+              -H "Content-Type: application/json" \
+              "https://lighcnfzajgvfbdoekzt.supabase.co/functions/v1/paloma-data-credentials"
+          )"
+          SUPABASE_DB_URL="$(
+            python -c 'import json,sys; print(json.load(sys.stdin)["database_url"])' \
+              <<<"$DB_RESPONSE"
+          )"
+          test -n "$SUPABASE_DB_URL"
+          echo "::add-mask::$SUPABASE_DB_URL"
+          printf 'SUPABASE_DB_URL=%s\n' "$SUPABASE_DB_URL" >> "$GITHUB_ENV"
       - run: pip install .
+      - name: Run one-time initial backfill after deployment
+        if: github.event_name == 'push'
+        run: paloma-data bootstrap
       - name: Run weekday government reconciliation
         if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 1-5'
         run: paloma-data sync-government
