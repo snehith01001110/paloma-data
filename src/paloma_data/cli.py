@@ -13,6 +13,7 @@ from paloma_data.web_identity import OfficialWebEnricher
 
 app = typer.Typer(no_args_is_help=True, help="Paloma establishment ingestion")
 SOURCES = ("ca_abc", "datasf", "overture")
+# Keep bootstrap version-aware so resolver upgrades force exactly one fresh catalog rebuild.
 
 
 def _components() -> tuple[Settings, Pipeline]:
