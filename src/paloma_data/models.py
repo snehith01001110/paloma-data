@@ -36,14 +36,18 @@ class SourceRecord:
             "region": self.region,
             "postal_code": self.postal_code,
             "country_code": self.country_code,
-            "latitude": self.latitude,
-            "longitude": self.longitude,
+            "latitude": float(self.latitude) if self.latitude is not None else None,
+            "longitude": float(self.longitude) if self.longitude is not None else None,
             "phone": self.phone,
             "website_url": self.website_url,
             "source_status": self.source_status,
             "source_updated_at": self.source_updated_at.isoformat() if self.source_updated_at else None,
             "primary_type_slug": self.primary_type_slug,
-            "classification_confidence": self.classification_confidence,
+            "classification_confidence": (
+                float(self.classification_confidence)
+                if self.classification_confidence is not None
+                else None
+            ),
             "category_evidence": self.category_evidence,
             "permitted_metadata": self.permitted_metadata,
         }
