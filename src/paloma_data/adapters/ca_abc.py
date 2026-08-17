@@ -8,7 +8,7 @@ from io import BytesIO, TextIOWrapper
 import re
 from typing import Any
 from urllib.parse import urljoin, urlsplit
-from zipfile import ZipFile
+from zipfile import BadZipFile, ZipFile
 
 import httpx
 
@@ -59,25 +59,58 @@ class CaliforniaABCAdapter:
             follow_redirects=True,
             headers={
                 "User-Agent": "paloma-data/0.2 (+https://github.com/snehith01001110/paloma-data)",
-                "Accept": "application/json,text/html,application/zip,*/*;q=0.8",
+                "Accept": "application/zip,application/octet-stream,*/*;q=0.8",
                 "Accept-Language": "en-US,en;q=0.9",
             },
         ) as client:
-            export_url = self._discover_export_url(client)
-            response = client.get(export_url)
-            response.raise_for_status()
-            yield from self._parse_zip(response.content)
+            payload = self._download_export(client)
+            yield from self._parse_zip(payload)
 
     def incremental(self, cursor: str | None = None) -> Iterator[SourceRecord]:
         # ABC refreshes the export each business day. Stable IDs + payload hashes make the
         # snapshot transport an idempotent incremental reconciliation at record level.
         yield from self.backfill()
 
+    def _download_export(self, client: httpx.Client) -> bytes:
+        parts = urlsplit(self.reports_url)
+        origin = f"{parts.scheme}://{parts.netloc}"
+
+        # These are the stable download targets behind ABC's Daily Data Export buttons. Prefer
+        # CSV, but retain ABC's documented 460-character fixed-width export as an official
+        # second path. This intentionally avoids scraping the bot-protected report page.
+        candidates = [
+            f"{origin}/wp-content/uploads/WeeklyExport_CSV.zip",
+            f"{origin}/wp-content/uploads/m_tape460.zip",
+        ]
+
+        errors: list[str] = []
+        for url in candidates:
+            try:
+                response = client.get(url)
+                response.raise_for_status()
+                if not response.content.startswith(b"PK"):
+                    errors.append(f"{url}:not_zip")
+                    continue
+                return response.content
+            except httpx.HTTPError as exc:
+                errors.append(f"{url}:{type(exc).__name__}:{exc}")
+
+        # Compatibility fallback: if ABC ever renames the static file, attempt to rediscover the
+        # current official link through ABC's WordPress API / report page before failing loudly.
+        try:
+            discovered = self._discover_export_url(client)
+            response = client.get(discovered)
+            response.raise_for_status()
+            if not response.content.startswith(b"PK"):
+                raise RuntimeError(f"ABC export was not a ZIP file: {discovered}")
+            return response.content
+        except (httpx.HTTPError, RuntimeError) as exc:
+            errors.append(f"discovery:{type(exc).__name__}:{exc}")
+
+        raise RuntimeError("Could not download California ABC official data export; " + " | ".join(errors))
+
     def _discover_export_url(self, client: httpx.Client) -> str:
         errors: list[str] = []
-
-        # ABC runs WordPress. The REST representation contains the same official export links as
-        # the human-facing page but avoids depending on HTML-page bot protection in cloud runners.
         parts = urlsplit(self.reports_url)
         api_url = f"{parts.scheme}://{parts.netloc}/wp-json/wp/v2/pages"
         try:
@@ -96,7 +129,6 @@ class CaliforniaABCAdapter:
         except (httpx.HTTPError, ValueError, TypeError, KeyError) as exc:
             errors.append(f"wp-json:{type(exc).__name__}:{exc}")
 
-        # Keep the public report page as a compatibility fallback if ABC changes WordPress APIs.
         try:
             response = client.get(self.reports_url)
             response.raise_for_status()
@@ -117,7 +149,6 @@ class CaliforniaABCAdapter:
         if parser.fixed_href:
             return parser.fixed_href
 
-        # Resilient fallback for minor label changes in ABC's markup.
         zip_hrefs = re.findall(r'href=["\']([^"\']+\.zip(?:\?[^"\']*)?)["\']', html, re.I)
         csv_hrefs = [href for href in zip_hrefs if "csv" in href.casefold()]
         if csv_hrefs:
@@ -126,7 +157,12 @@ class CaliforniaABCAdapter:
         return fixed_hrefs[0] if fixed_hrefs else None
 
     def _parse_zip(self, payload: bytes) -> Iterator[SourceRecord]:
-        with ZipFile(BytesIO(payload)) as archive:
+        try:
+            archive = ZipFile(BytesIO(payload))
+        except BadZipFile as exc:
+            raise RuntimeError("ABC export payload was not a valid ZIP archive") from exc
+
+        with archive:
             csv_names = [name for name in archive.namelist() if name.lower().endswith(".csv")]
             if csv_names:
                 name = max(csv_names, key=lambda n: archive.getinfo(n).file_size)
@@ -141,7 +177,6 @@ class CaliforniaABCAdapter:
                             yield record
                 return
 
-            # ABC documents a second official export as 460-character fixed-width records.
             candidates = [name for name in archive.namelist() if not name.endswith("/")]
             if not candidates:
                 raise RuntimeError("ABC ZIP contained no data file")
@@ -182,8 +217,6 @@ class CaliforniaABCAdapter:
             ("Premise County", 437, 453),
             ("Premise Census Tract Number", 453, 460),
         )
-        # ABC's file may be newline-delimited or block-oriented. Remove line endings and consume
-        # exact 460-character records so either representation parses identically.
         compact = text.replace("\r", "").replace("\n", "")
         for start in range(0, len(compact) - 459, 460):
             line = compact[start : start + 460]
