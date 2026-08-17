@@ -44,7 +44,6 @@ Deno.serve(async (req: Request) => {
       String(payload.repository_owner_id) !== EXPECTED_OWNER_ID ||
       payload.ref !== EXPECTED_REF ||
       payload.workflow_ref !== EXPECTED_WORKFLOW_REF ||
-      payload.repository_visibility !== "private" ||
       payload.runner_environment !== "github-hosted" ||
       !ALLOWED_EVENTS.has(String(payload.event_name))
     ) {
