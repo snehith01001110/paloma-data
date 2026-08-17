@@ -64,8 +64,26 @@ def decide_match(record: SourceRecord, candidates: list[CanonicalCandidate]) -> 
     if features["address"] == 1.0 and features["name"] >= 0.96:
         return MatchDecision("auto_match", max(best_score, 0.97), best.id, "exact_address_strong_name")
 
-    if features["phone"] == 1.0 and features["address"] >= 0.90 and features["name"] >= 0.85:
-        return MatchDecision("auto_match", max(best_score, 0.96), best.id, "exact_phone_strong_location")
+    # Exact phone + strong physical location is an identity signal even after a business rebrand.
+    # Requiring the new public name to resemble the former name would create duplicates precisely
+    # when a venue changes operators or branding.
+    if features["phone"] == 1.0 and (features["address"] >= 0.90 or features["geo"] >= 0.85):
+        return MatchDecision("auto_match", max(best_score, 0.98), best.id, "exact_phone_location")
+
+    if features["website"] == 1.0 and features["address"] >= 0.95:
+        return MatchDecision("auto_match", max(best_score, 0.96), best.id, "exact_website_location")
+
+    # A strong same-location signal plus a divergent name is more likely a rename/operator change
+    # than an unrelated new establishment. Never call it distinct automatically; route it to review
+    # unless phone/website already proved identity above.
+    same_location = features["address"] >= 0.98 and (features["geo"] >= 0.80 or features["name"] >= 0.55)
+    if same_location and features["name"] < 0.75:
+        return MatchDecision(
+            "review",
+            max(best_score, 0.84),
+            best.id,
+            "same_location_name_conflict",
+        )
 
     if best_score >= 0.92 and (best_score - second_score) >= 0.05:
         return MatchDecision("auto_match", best_score, best.id, "weighted_score")
