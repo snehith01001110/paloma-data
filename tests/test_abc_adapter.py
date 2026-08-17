@@ -1,3 +1,6 @@
+from io import BytesIO
+from zipfile import ZipFile
+
 from paloma_data.adapters.ca_abc import CaliforniaABCAdapter
 
 
@@ -52,3 +55,27 @@ def test_pending_application_is_not_open():
     assert record is not None
     assert record.source_status == "pending"
     assert record.primary_type_slug == "wine_bar"
+
+
+def test_csv_export_skips_updated_preamble_before_header():
+    csv_text = "\n".join(
+        [
+            "Updated 08/17/2026 07:00 AM",
+            (
+                "License Type,File Number,License or Application,Type Status,"
+                "Primary Name,Premise Street Address 1,Premise City,Premise State,"
+                "Premise Zip,DBA Name"
+            ),
+            "23,12345678,LIC,ACTIVE,EXAMPLE BREWING LLC,123 MARKET ST,"
+            "SAN FRANCISCO,CA,94105,EXAMPLE BREWING",
+        ]
+    )
+    buffer = BytesIO()
+    with ZipFile(buffer, "w") as archive:
+        archive.writestr("WeeklyExport.csv", csv_text)
+
+    records = list(CaliforniaABCAdapter()._parse_zip(buffer.getvalue()))
+
+    assert len(records) == 1
+    assert records[0].source_record_id == "12345678:23"
+    assert records[0].primary_type_slug == "brewery"
