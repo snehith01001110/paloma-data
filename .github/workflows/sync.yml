@@ -3,6 +3,10 @@ name: Establishment sync
 on:
   push:
     branches: [main]
+    paths:
+      - 'src/**'
+      - 'pyproject.toml'
+      - '.github/workflows/sync.yml'
   workflow_dispatch:
     inputs:
       mode:
