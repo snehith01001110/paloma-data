@@ -9,6 +9,7 @@ class Settings:
     database_url: str
     datasf_dataset_id: str
     abc_reports_url: str
+    overture_bbox: str
     allowed_countries: frozenset[str]
     allowed_regions: frozenset[str]
     allowed_cities: frozenset[str]
@@ -23,6 +24,9 @@ class Settings:
             datasf_dataset_id=os.getenv("DATASF_DATASET_ID", "g8m3-pdis"),
             abc_reports_url=os.getenv(
                 "ABC_REPORTS_URL", "https://www.abc.ca.gov/licensing/licensing-reports/"
+            ),
+            overture_bbox=os.getenv(
+                "PALOMA_OVERTURE_BBOX", "-123.2,36.8,-121.1,38.9"
             ),
             allowed_countries=_csv_set(os.getenv("PALOMA_COUNTRIES", "US")),
             allowed_regions=_csv_set(os.getenv("PALOMA_REGIONS", "CA")),
