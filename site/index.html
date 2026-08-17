@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Paloma Data Progress</title>
+  <meta name="description" content="Live Paloma establishment ingestion progress." />
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f6f3;
+      --panel: #ffffff;
+      --text: #161616;
+      --muted: #72726e;
+      --line: #e4e4df;
+      --ok: #28764d;
+      --warn: #9b6a15;
+      --bad: #a33b32;
+      --run: #365ca8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { width: min(1120px, calc(100% - 28px)); margin: 0 auto; padding: 44px 0 72px; }
+    header { display: flex; justify-content: space-between; gap: 24px; align-items: flex-end; margin-bottom: 28px; }
+    h1 { margin: 0; font-size: clamp(26px, 5vw, 40px); letter-spacing: -0.04em; }
+    .subtitle { margin: 7px 0 0; color: var(--muted); }
+    .live { display: flex; align-items: center; gap: 8px; white-space: nowrap; color: var(--muted); font-size: 12px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 4px rgba(40,118,77,.1); }
+    .error-banner { display: none; margin-bottom: 18px; padding: 12px 14px; background: #fff1ef; border: 1px solid #f0c7c2; border-radius: 10px; color: var(--bad); }
+    .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 22px; }
+    .metric, .source, .runs { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; }
+    .metric { padding: 16px; }
+    .metric .value { font-size: 28px; line-height: 1; font-weight: 650; letter-spacing: -0.04em; }
+    .metric .label { margin-top: 8px; color: var(--muted); font-size: 12px; }
+    .sources { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 22px; }
+    .source { padding: 17px; min-width: 0; }
+    .source-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; margin-bottom: 16px; }
+    .source h2 { font-size: 16px; margin: 0; }
+    .pill { font-size: 11px; padding: 4px 8px; border-radius: 999px; background: #eee; text-transform: capitalize; }
+    .pill.succeeded { color: var(--ok); background: #eaf5ef; }
+    .pill.running { color: var(--run); background: #edf2fc; }
+    .pill.failed { color: var(--bad); background: #fff0ee; }
+    .mode { color: var(--muted); font-size: 11px; margin-top: 3px; text-transform: capitalize; }
+    .stage-title { color: var(--muted); text-transform: uppercase; letter-spacing: .08em; font-size: 10px; margin: 15px 0 8px; }
+    .stages, .run-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .stage { padding: 10px; border: 1px solid var(--line); border-radius: 10px; min-width: 0; }
+    .stage strong { display: block; font-size: 18px; letter-spacing: -0.03em; }
+    .stage span { color: var(--muted); font-size: 11px; }
+    .source-error { margin-top: 12px; padding: 9px 10px; border-radius: 8px; background: #fff4f2; color: var(--bad); font-size: 11px; word-break: break-word; }
+    .runs { overflow: hidden; }
+    .runs h2 { font-size: 15px; margin: 0; padding: 15px 16px; border-bottom: 1px solid var(--line); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--line); font-size: 12px; }
+    th { color: var(--muted); font-weight: 500; background: #fafaf8; }
+    tr:last-child td { border-bottom: 0; }
+    .status-text.succeeded { color: var(--ok); }
+    .status-text.failed { color: var(--bad); }
+    .status-text.running { color: var(--run); }
+    .footer { display: flex; justify-content: space-between; gap: 16px; margin-top: 14px; color: var(--muted); font-size: 11px; }
+    @media (max-width: 820px) {
+      header { align-items: flex-start; flex-direction: column; }
+      .summary { grid-template-columns: repeat(2, 1fr); }
+      .sources { grid-template-columns: 1fr; }
+      .runs { overflow-x: auto; }
+      table { min-width: 650px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Establishment ingestion</h1>
+        <p class="subtitle">Backfill and incremental progress across Paloma's establishment sources.</p>
+      </div>
+      <div class="live"><span class="dot"></span><span id="updated">Loading…</span></div>
+    </header>
+
+    <div id="error" class="error-banner"></div>
+
+    <section class="summary" aria-label="Overall ingestion summary">
+      <div class="metric"><div class="value" id="total">—</div><div class="label">Canonical establishments</div></div>
+      <div class="metric"><div class="value" id="backed">—</div><div class="label">Ingestion-backed</div></div>
+      <div class="metric"><div class="value" id="multi">—</div><div class="label">Multi-source verified</div></div>
+      <div class="metric"><div class="value" id="reviews">—</div><div class="label">Pending review</div></div>
+    </section>
+
+    <section id="sources" class="sources" aria-label="Sources"></section>
+
+    <section class="runs">
+      <h2>Recent runs</h2>
+      <table>
+        <thead>
+          <tr><th>Source</th><th>Mode</th><th>Status</th><th>Fetched</th><th>Created</th><th>Updated</th><th>Review</th><th>Started</th></tr>
+        </thead>
+        <tbody id="runRows"><tr><td colspan="8">Loading…</td></tr></tbody>
+      </table>
+    </section>
+
+    <div class="footer">
+      <span>Refreshes every 15 seconds</span>
+      <span>Paloma data pipeline</span>
+    </div>
+  </main>
+
+  <script>
+    const ENDPOINT = 'https://lighcnfzajgvfbdoekzt.supabase.co/functions/v1/paloma-data-progress';
+    const nf = new Intl.NumberFormat();
+    const fmt = value => nf.format(Number(value || 0));
+    const date = value => value ? new Date(value).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+    const esc = value => String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+
+    function renderSource(source) {
+      const run = source.latest_run;
+      const status = run?.status || 'not started';
+      return `
+        <article class="source">
+          <div class="source-head">
+            <div><h2>${esc(source.label)}</h2><div class="mode">${esc(run?.mode || 'no run yet')}</div></div>
+            <span class="pill ${esc(status)}">${esc(status)}</span>
+          </div>
+          <div class="stage-title">Current run</div>
+          <div class="run-grid">
+            <div class="stage"><strong>${fmt(run?.fetched)}</strong><span>Fetched</span></div>
+            <div class="stage"><strong>${fmt(run?.created)}</strong><span>Created</span></div>
+            <div class="stage"><strong>${fmt(run?.updated)}</strong><span>Updated / linked</span></div>
+            <div class="stage"><strong>${fmt(run?.review)}</strong><span>Sent to review</span></div>
+          </div>
+          <div class="stage-title">Pipeline totals</div>
+          <div class="stages">
+            <div class="stage"><strong>${fmt(source.staged_count)}</strong><span>Staged source rows</span></div>
+            <div class="stage"><strong>${fmt(source.linked_count)}</strong><span>Canonical links</span></div>
+            <div class="stage"><strong>${fmt(source.pending_review_count)}</strong><span>Pending review</span></div>
+            <div class="stage"><strong>${run?.finished_at ? 'Done' : run ? 'Active' : '—'}</strong><span>Latest run</span></div>
+          </div>
+          ${run?.error ? `<div class="source-error">${esc(run.error)}</div>` : ''}
+        </article>`;
+    }
+
+    function render(data) {
+      document.getElementById('total').textContent = fmt(data.overall.total_establishments);
+      document.getElementById('backed').textContent = fmt(data.overall.ingestion_backed);
+      document.getElementById('multi').textContent = fmt(data.overall.multi_source);
+      document.getElementById('reviews').textContent = fmt(data.overall.pending_reviews);
+      document.getElementById('sources').innerHTML = data.sources.map(renderSource).join('');
+      document.getElementById('runRows').innerHTML = data.recent_runs.map(run => `
+        <tr>
+          <td>${esc(run.label)}</td>
+          <td>${esc(run.mode)}</td>
+          <td class="status-text ${esc(run.status)}">${esc(run.status)}</td>
+          <td>${fmt(run.fetched)}</td>
+          <td>${fmt(run.created)}</td>
+          <td>${fmt(run.updated)}</td>
+          <td>${fmt(run.review)}</td>
+          <td>${date(run.started_at)}</td>
+        </tr>`).join('') || '<tr><td colspan="8">No runs yet.</td></tr>';
+      document.getElementById('updated').textContent = `Updated ${new Date(data.generated_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}`;
+      document.getElementById('error').style.display = 'none';
+    }
+
+    async function refresh() {
+      try {
+        const response = await fetch(ENDPOINT, { cache: 'no-store' });
+        if (!response.ok) throw new Error(`Progress endpoint returned ${response.status}`);
+        render(await response.json());
+      } catch (error) {
+        const banner = document.getElementById('error');
+        banner.textContent = `Could not load live progress: ${error.message}`;
+        banner.style.display = 'block';
+        document.getElementById('updated').textContent = 'Disconnected';
+      }
+    }
+
+    refresh();
+    setInterval(refresh, 15000);
+  </script>
+</body>
+</html>
