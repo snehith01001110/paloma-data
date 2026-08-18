@@ -541,6 +541,7 @@ class CatalogRepository:
         city: str | None = None,
         limit: int = 100,
         states: tuple[str, ...] | None = None,
+        decision_version: str | None = None,
     ) -> list[str]:
         rows = conn.execute(
             """
@@ -548,10 +549,19 @@ class CatalogRepository:
             from ingest.catalog_candidates
             where (%s::text is null or lower(city) = lower(%s::text))
               and (%s::text[] is null or candidate_state = any(%s::text[]))
+              and (%s::text is null or decision_version = %s::text)
             order by updated_at, id
             limit %s
             """,
-            (city, city, list(states) if states else None, list(states) if states else None, limit),
+            (
+                city,
+                city,
+                list(states) if states else None,
+                list(states) if states else None,
+                decision_version,
+                decision_version,
+                limit,
+            ),
         ).fetchall()
         return [str(row["id"]) for row in rows]
 
@@ -682,10 +692,11 @@ class CatalogRepository:
             from ingest.catalog_candidates
             where id = %s::uuid
               and candidate_state = 'verified'
+              and decision_version = %s
               and verification_expires_at > now()
             for update
             """,
-            (candidate_id,),
+            (candidate_id, CATALOG_DECISION_VERSION),
         ).fetchone()
         if not candidate:
             return False

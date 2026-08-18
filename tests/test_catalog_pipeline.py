@@ -1,0 +1,85 @@
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
+
+from paloma_data.catalog import CATALOG_DECISION_VERSION, CatalogDecision
+from paloma_data.catalog_pipeline import CatalogPipeline
+
+
+NOW = datetime(2026, 8, 18, tzinfo=timezone.utc)
+
+
+class _Connection:
+    def __init__(self):
+        self.commits = 0
+
+    def commit(self):
+        self.commits += 1
+
+
+class _Database:
+    def __init__(self):
+        self.conn = _Connection()
+
+    @contextmanager
+    def connection(self):
+        yield self.conn
+
+
+class _PublicationRepository:
+    def __init__(self):
+        self.materialized = []
+        self.requested_version = None
+
+    def withdraw_expired(self, _):
+        return 0
+
+    def candidate_ids(self, _, **kwargs):
+        self.requested_version = kwargs.get("decision_version")
+        return ["candidate-1"]
+
+    def materialize(self, _, candidate_id):
+        self.materialized.append(candidate_id)
+        return True
+
+
+def _decision(state: str) -> CatalogDecision:
+    return CatalogDecision(
+        state=state,
+        reason=f"test:{CATALOG_DECISION_VERSION}",
+        reasons=("test",),
+        identity_confidence=0.99,
+        verification_tier="open_evidence" if state == "verified" else "unverified",
+        verified_at=NOW if state == "verified" else None,
+        expires_at=NOW + timedelta(days=45) if state == "verified" else None,
+    )
+
+
+def test_publish_rechecks_current_decision_and_skips_a_new_failure():
+    pipeline = CatalogPipeline(_Database())
+    repository = _PublicationRepository()
+    pipeline.repo = repository
+    pipeline._evaluate_candidate = lambda *_: _decision("needs_verification")
+
+    result = pipeline.publish(limit=10)
+
+    assert repository.requested_version == CATALOG_DECISION_VERSION
+    assert repository.materialized == []
+    assert result == {
+        "considered": 1,
+        "published": 0,
+        "skipped": 1,
+        "expired_withdrawn": 0,
+    }
+
+
+def test_publish_materializes_only_after_current_decision_passes():
+    pipeline = CatalogPipeline(_Database())
+    repository = _PublicationRepository()
+    pipeline.repo = repository
+    pipeline._evaluate_candidate = lambda *_: _decision("verified")
+
+    result = pipeline.publish(limit=10)
+
+    assert repository.requested_version == CATALOG_DECISION_VERSION
+    assert repository.materialized == ["candidate-1"]
+    assert result["published"] == 1

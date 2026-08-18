@@ -6,6 +6,7 @@ from typing import Any
 
 from paloma_data.adapters.foursquare_api import FoursquarePlacesAPI
 from paloma_data.catalog import (
+    CATALOG_DECISION_VERSION,
     CatalogDecision,
     IdentityDecision,
     LinkedSource,
@@ -233,20 +234,7 @@ class CatalogPipeline:
         with self.db.connection() as conn:
             ids = self.repo.candidate_ids(conn, city=city, limit=limit)
             for index, candidate_id in enumerate(ids, start=1):
-                anchor = self.repo.fsq_anchor(conn, candidate_id)
-                if anchor is not None:
-                    self._correlate(conn, candidate_id, anchor)
-                    links = self._validated_links(conn, candidate_id, anchor)
-                else:
-                    links = self.repo.linked_sources(conn, candidate_id)
-                decision = decide_candidate(
-                    links,
-                    self.repo.verifications(conn, candidate_id),
-                    mode="production",
-                )
-                self.repo.save_evaluation(
-                    conn, candidate_id, decision, mode="production"
-                )
+                decision = self._evaluate_candidate(conn, candidate_id)
                 counters[decision.state] += 1
                 if index % 100 == 0:
                     conn.commit()
@@ -261,10 +249,14 @@ class CatalogPipeline:
                 conn,
                 limit=limit,
                 states=("verified",),
+                decision_version=CATALOG_DECISION_VERSION,
             )
             for candidate_id in ids:
                 counters["considered"] += 1
-                if self.repo.materialize(conn, candidate_id):
+                # Never trust a stored state at the write boundary. Source facts can change
+                # after evaluation, and rule changes deliberately invalidate old versions.
+                decision = self._evaluate_candidate(conn, candidate_id)
+                if decision.state == "verified" and self.repo.materialize(conn, candidate_id):
                     counters["published"] += 1
                 else:
                     counters["skipped"] += 1
@@ -274,13 +266,24 @@ class CatalogPipeline:
     def cutover(self, *, minimum_verified: int = 1) -> dict[str, int]:
         with self.db.connection() as conn:
             conn.execute("select pg_advisory_xact_lock(hashtext('paloma_catalog_cutover'))")
+            # Recheck every row that could enter the replacement set before counting or deleting
+            # anything. A stale historical `verified` state is not a publication authorization.
+            recheck_ids = self.repo.candidate_ids(
+                conn,
+                limit=50_000,
+                states=("verified", "published"),
+            )
+            for candidate_id in recheck_ids:
+                self._evaluate_candidate(conn, candidate_id)
             row = conn.execute(
                 """
                 select count(*) as count
                 from ingest.catalog_candidates
                 where candidate_state in ('verified', 'published')
+                  and decision_version = %s
                   and verification_expires_at > now()
-                """
+                """,
+                (CATALOG_DECISION_VERSION,),
             ).fetchone()
             verified = int(row["count"] or 0)
             if verified < minimum_verified:
@@ -293,6 +296,7 @@ class CatalogPipeline:
                 conn,
                 limit=max(verified, minimum_verified),
                 states=("verified",),
+                decision_version=CATALOG_DECISION_VERSION,
             )
             published = sum(self.repo.materialize(conn, candidate_id) for candidate_id in ids)
             if published < minimum_verified:
@@ -308,6 +312,23 @@ class CatalogPipeline:
             "skipped": len(ids) - published,
             "expired_withdrawn": 0,
         }
+
+    def _evaluate_candidate(
+        self, conn, candidate_id: str
+    ) -> CatalogDecision:
+        anchor = self.repo.fsq_anchor(conn, candidate_id)
+        if anchor is not None:
+            self._correlate(conn, candidate_id, anchor)
+            links = self._validated_links(conn, candidate_id, anchor)
+        else:
+            links = self.repo.linked_sources(conn, candidate_id)
+        decision = decide_candidate(
+            links,
+            self.repo.verifications(conn, candidate_id),
+            mode="production",
+        )
+        self.repo.save_evaluation(conn, candidate_id, decision, mode="production")
+        return decision
 
     def _candidate_for_anchor(
         self, conn, anchor: SourceRecord
