@@ -460,7 +460,8 @@ def catalog_status() -> None:
         ).fetchone()
         exact_address_conflicts = conn.execute(
             """
-            select c.id::text as candidate_id, c.name as candidate_name,
+            select r.id as review_id, c.id::text as candidate_id,
+                   c.name as candidate_name,
                    r.source, sr.name as conflicting_name, c.address,
                    r.reason, r.score::float
             from ingest.catalog_candidates c
@@ -573,6 +574,30 @@ def catalog_status() -> None:
             indent=2,
             sort_keys=True,
             default=str,
+        )
+    )
+
+
+@app.command("catalog-review-resolve")
+def catalog_review_resolve(
+    review_id: int = typer.Option(..., min=1),
+    resolution: str = typer.Option(
+        ...,
+        help="same_place or not_same_or_stale",
+    ),
+    confirm: str = typer.Option("", help="Must be exactly RESOLVE_MATCH_REVIEW"),
+) -> None:
+    """Resolve one exact-premise conflict; never publish the resulting candidate."""
+    if confirm != "RESOLVE_MATCH_REVIEW":
+        raise typer.BadParameter("Pass --confirm RESOLVE_MATCH_REVIEW")
+    if resolution not in {"same_place", "not_same_or_stale"}:
+        raise typer.BadParameter("resolution must be same_place or not_same_or_stale")
+    _, _, _, catalog = _components()
+    typer.echo(
+        json.dumps(
+            catalog.resolve_match_review(review_id, resolution=resolution),
+            indent=2,
+            sort_keys=True,
         )
     )
 

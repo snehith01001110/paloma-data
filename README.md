@@ -196,6 +196,9 @@ paloma-data catalog-trial --city "San Francisco" --limit 20
 paloma-data catalog-verify --limit 250
 paloma-data catalog-reevaluate
 paloma-data catalog-audit --city "San Francisco" --limit 500
+# Human-reviewed exception; both resolutions preserve the evidence and trigger reevaluation.
+paloma-data catalog-review-resolve --review-id 123 --resolution not_same_or_stale \
+  --confirm RESOLVE_MATCH_REVIEW
 paloma-data catalog-publish --confirm PUBLISH_VERIFIED
 paloma-data catalog-sweep
 paloma-data catalog-status

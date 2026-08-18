@@ -51,6 +51,33 @@ class _ReviewRepository:
         return self.blocking
 
 
+class _ResolutionConnection(_Connection):
+    def __init__(self):
+        super().__init__()
+        self.executed = []
+
+    def execute(self, query, params):
+        self.executed.append((query, params))
+
+
+class _ResolutionDatabase(_Database):
+    def __init__(self):
+        self.conn = _ResolutionConnection()
+
+
+class _ResolutionRepository:
+    def __init__(self):
+        self.resolutions = []
+
+    def pending_match_review_candidate_id(self, _, review_id):
+        assert review_id == 123
+        return "candidate-1"
+
+    def resolve_match_review(self, _, review_id, *, resolution):
+        self.resolutions.append((review_id, resolution))
+        return "candidate-1"
+
+
 def _decision(state: str) -> CatalogDecision:
     return CatalogDecision(
         state=state,
@@ -135,3 +162,25 @@ def test_nonblocking_match_review_does_not_override_hard_gate_decision(monkeypat
     )
 
     assert decision.state == "verified"
+
+
+def test_resolving_review_refreshes_evidence_then_rechecks_candidate():
+    database = _ResolutionDatabase()
+    pipeline = CatalogPipeline(database)
+    repository = _ResolutionRepository()
+    pipeline.repo = repository
+    evaluations = []
+
+    def evaluate(_, candidate_id):
+        evaluations.append(candidate_id)
+        return _decision("verified")
+
+    pipeline._evaluate_candidate = evaluate
+
+    result = pipeline.resolve_match_review(123, resolution="not_same_or_stale")
+
+    assert evaluations == ["candidate-1", "candidate-1"]
+    assert repository.resolutions == [(123, "not_same_or_stale")]
+    assert database.conn.commits == 1
+    assert result["candidate_state"] == "verified"
+    assert result["publication_mutated"] is False

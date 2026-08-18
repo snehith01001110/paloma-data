@@ -18,6 +18,7 @@ from paloma_data.catalog import (
 from paloma_data.catalog_repository import CatalogRepository
 from paloma_data.db import Database
 from paloma_data.models import SourceRecord
+from paloma_data.normalizers import normalize_address, normalize_name
 from paloma_data.taxonomy import BAR_TYPES
 
 
@@ -426,15 +427,15 @@ class CatalogPipeline:
                     )
 
         for record, decision in reviews:
-            self.repo.enqueue_match_review(
+            enqueued = self.repo.enqueue_match_review(
                 conn,
                 candidate_id,
                 record,
                 reason=decision.reason,
                 score=decision.score,
-                evidence={"features": decision.features},
+                evidence=_review_evidence(anchor, record, decision),
             )
-            review_count += 1
+            review_count += int(enqueued)
         return linked_count, review_count
 
     def _validated_links(
@@ -482,10 +483,43 @@ class CatalogPipeline:
                 record,
                 reason=f"link_no_longer_valid:{identity.reason}",
                 score=identity.score,
-                evidence={"features": identity.features},
+                evidence=_review_evidence(anchor, record, identity),
             )
             self.repo.unlink_source(conn, candidate_id, record)
         return validated
+
+    def resolve_match_review(
+        self,
+        review_id: int,
+        *,
+        resolution: str,
+    ) -> dict[str, Any]:
+        """Resolve one human-reviewed conflict and immediately recompute its candidate."""
+        with self.db.connection() as conn:
+            candidate_id = self.repo.pending_match_review_candidate_id(conn, review_id)
+            conn.execute(
+                "select pg_advisory_xact_lock(hashtext('paloma_candidate:' || %s))",
+                (candidate_id,),
+            )
+            # Refresh the prompt's evidence before resolving it. This upgrades legacy prompts
+            # and means a later source/anchor change produces a different fingerprint and safely
+            # reopens review.
+            self._evaluate_candidate(conn, candidate_id)
+            candidate_id = self.repo.resolve_match_review(
+                conn,
+                review_id,
+                resolution=resolution,
+            )
+            decision = self._evaluate_candidate(conn, candidate_id)
+            conn.commit()
+        return {
+            "review_id": review_id,
+            "resolution": resolution,
+            "candidate_id": candidate_id,
+            "candidate_state": decision.state,
+            "decision_reason": decision.reason,
+            "publication_mutated": False,
+        }
 
 
 def _types_compatible(left: str | None, right: str | None) -> bool:
@@ -519,6 +553,35 @@ def _not_found_verification(
         verified_at=now,
         expires_at=now + timedelta(days=lease_days),
     )
+
+
+def _review_evidence(
+    anchor: SourceRecord,
+    record: SourceRecord,
+    decision: IdentityDecision,
+) -> dict[str, Any]:
+    """Persist the exact identity facts a human reviewed so unchanged prompts stay resolved."""
+
+    def snapshot(item: SourceRecord) -> dict[str, Any]:
+        return {
+            "source": item.source,
+            "source_record_id": item.source_record_id,
+            "name": normalize_name(item.name),
+            "address": normalize_address(item.address),
+            "primary_type_slug": item.primary_type_slug,
+            "latitude": item.latitude,
+            "longitude": item.longitude,
+            "source_status": item.source_status,
+            "source_updated_at": (
+                item.source_updated_at.isoformat() if item.source_updated_at else None
+            ),
+        }
+
+    return {
+        "features": decision.features,
+        "anchor": snapshot(anchor),
+        "record": snapshot(record),
+    }
 
 
 def _field_coverage(decision: CatalogDecision) -> dict[str, bool]:

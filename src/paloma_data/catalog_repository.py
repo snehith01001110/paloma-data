@@ -380,8 +380,31 @@ class CatalogRepository:
         reason: str,
         score: float,
         evidence: dict[str, Any],
-    ) -> None:
-        conn.execute(
+    ) -> bool:
+        encoded_evidence = json.dumps(evidence, sort_keys=True)
+        resolved = conn.execute(
+            """
+            select 1
+            from ingest.candidate_match_reviews
+            where candidate_id = %s::uuid
+              and source = %s
+              and source_record_id = %s
+              and reason = %s
+              and state in ('accepted', 'rejected')
+              and evidence = %s::jsonb
+            limit 1
+            """,
+            (
+                candidate_id,
+                record.source,
+                record.source_record_id,
+                reason,
+                encoded_evidence,
+            ),
+        ).fetchone()
+        if resolved is not None:
+            return False
+        row = conn.execute(
             """
             insert into ingest.candidate_match_reviews (
               candidate_id, source, source_record_id, reason, score, evidence
@@ -389,6 +412,7 @@ class CatalogRepository:
             on conflict (candidate_id, source, source_record_id, reason)
               where state = 'pending'
             do update set score = excluded.score, evidence = excluded.evidence
+            returning id
             """,
             (
                 candidate_id,
@@ -396,9 +420,55 @@ class CatalogRepository:
                 record.source_record_id,
                 reason,
                 score,
-                json.dumps(evidence, sort_keys=True),
+                encoded_evidence,
             ),
-        )
+        ).fetchone()
+        return row is not None
+
+    def resolve_match_review(
+        self,
+        conn: psycopg.Connection,
+        review_id: int,
+        *,
+        resolution: str,
+    ) -> str:
+        states = {
+            "same_place": "accepted",
+            "not_same_or_stale": "rejected",
+        }
+        state = states.get(resolution)
+        if state is None:
+            raise ValueError("resolution must be same_place or not_same_or_stale")
+        row = conn.execute(
+            """
+            update ingest.candidate_match_reviews
+            set state = %s, resolved_at = now()
+            where id = %s and state = 'pending'
+            returning candidate_id::text
+            """,
+            (state, review_id),
+        ).fetchone()
+        if row is None:
+            raise ValueError("review does not exist or is no longer pending")
+        return str(row["candidate_id"])
+
+    def pending_match_review_candidate_id(
+        self,
+        conn: psycopg.Connection,
+        review_id: int,
+    ) -> str:
+        row = conn.execute(
+            """
+            select candidate_id::text
+            from ingest.candidate_match_reviews
+            where id = %s and state = 'pending'
+            for update
+            """,
+            (review_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError("review does not exist or is no longer pending")
+        return str(row["candidate_id"])
 
     def has_blocking_match_review(
         self,
