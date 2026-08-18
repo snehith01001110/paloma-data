@@ -94,6 +94,15 @@ responses in memory and persists only an attribute-coverage/decision audit with 
 values. Production persistence is disabled unless `FSQ_SERVER_STORAGE_LICENSED=true`, which is
 reserved for a written agreement that expressly grants server retention and display rights.
 
+For consumer detail screens, `venue-live-details` implements the no-contract production path. It
+accepts only an authenticated user's public establishment UUID, resolves a high-confidence FSQ ID
+server-side, and calls Place Details only when a durable optional field is missing. Before returning
+anything, it rechecks the immutable ID, provider veracity, closure flags, name, category, and a
+100-meter coordinate guard. Responses use `Cache-Control: no-store`; neither Postgres nor logs
+receive provider values, and the iOS client keeps them only in the open view's memory. Per-user and
+global aggregate counters bound spend without recording which places were requested. Rich values
+must be accompanied by the required Foursquare venue link and visual credit in the client.
+
 The durable no-contract path is still useful: direct-public bars can pass using complementary
 Apache-2.0 FSQ OS and California ABC evidence, and FSQ OS phone/website fields may be stored. Rich
 optional fields stay null unless an open, manual, or specifically licensed source supports them.
@@ -124,12 +133,12 @@ Optional fields remain `NULL` when trustworthy evidence is unavailable:
 
 | Field | Preferred source | Fallback | Never do |
 |---|---|---|---|
-| phone | specifically licensed provider | two independent durable sources/manual | trust one POI observation as field-current |
-| website | specifically licensed provider | two independent durable sources/manual | accept one POI/aggregator profile as official |
+| phone | transient Place Details display | two independent durable sources/manual | persist a self-service API response |
+| website | transient Place Details display | two independent durable sources/manual | persist a self-service API response |
 | neighborhood | reviewed civic polygon | reviewed division polygon | free-text guess from address |
-| hours | contracted FSQ | manual owner attestation | fabricate a schedule |
-| price | contracted FSQ/manual | none | infer from type or neighborhood |
-| setting | objective provider attributes | manual | infer subjective vibe |
+| hours | transient Place Details display | contracted FSQ/manual owner attestation | cache or fabricate a schedule |
+| price | transient Place Details display | contracted FSQ/manual | infer from type or neighborhood |
+| setting | transient objective provider attributes | contracted FSQ/manual | infer subjective vibe |
 | cover image | licensed/owner-supplied asset | none | reuse a URL without display rights |
 
 Completeness and truth are separate. A correct row with null price is publishable; a guessed price
@@ -212,6 +221,7 @@ See `.env.example`. Required server-side values are:
 - `SUPABASE_DB_URL` or `DATABASE_URL`;
 - FSQ Places Portal Iceberg connection values for FSQ OS discovery;
 - optional `FSQ_PLACES_API_KEY` for a bounded, non-caching trial;
+- `FSQ_PLACES_API_KEY` as a Supabase Edge Function secret for transient consumer detail lookups;
 - `FSQ_SERVER_STORAGE_LICENSED=true` only under written server-retention/display rights;
 - `PALOMA_CATALOG_AUTO_PUBLISH=true` only after the initial cutover is approved;
 - `SF_NEIGHBORHOODS_URL` defaults to DataSF's public-domain SF Find GeoJSON feed.

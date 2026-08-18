@@ -56,6 +56,13 @@ the current Usage Guidelines permit PAYG/sandbox retention of place IDs only, wi
 other attributes. The code defaults to ephemeral trial use and requires a specific written
 server-retention grant before the production storage switch can be enabled.
 
+Self-service Place Details can still be used as a transient display overlay. Paloma's endpoint may
+look up only an already-published, conservatively linked FSQ ID, revalidate identity and provider
+quality on every call, return `no-store`, and discard the response after the current detail view.
+This improves optional-field coverage without allowing licensed data to determine catalog
+membership or become database ground truth. It also requires Foursquare's venue link and visual
+credit whenever rich fields are shown.
+
 The current Places API response fields include phone, website, hours, price, attributes, and
 veracity rating, but not neighborhood. Neighborhood is therefore a separate civic-boundary fact,
 not a value inferred from the provider or postal address.
