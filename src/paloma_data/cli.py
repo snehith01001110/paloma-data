@@ -433,7 +433,13 @@ def catalog_status() -> None:
                     r.reason like '%%same_location_name_conflict'
                     or r.reason like '%%probable_identity_needs_review'
                   )
-              ) as verified_candidates_with_exact_address_conflict
+              ) as verified_candidates_with_exact_address_conflict,
+              (
+                select count(*)
+                from ingest.catalog_candidates blocked
+                where blocked.decision_version = %s
+                  and blocked.decision_reason = %s
+              ) as candidates_blocked_by_exact_address_conflict
             from ingest.catalog_candidates c
             left join ingest.candidate_match_reviews r on r.candidate_id = c.id
             left join ingest.source_records sr
@@ -442,7 +448,15 @@ def catalog_status() -> None:
               and c.decision_version = %s
               and c.verification_expires_at > now()
             """,
-            (sorted(POTENTIAL_SOURCE_EXCLUDED_FLAGS), CATALOG_DECISION_VERSION),
+            (
+                sorted(POTENTIAL_SOURCE_EXCLUDED_FLAGS),
+                CATALOG_DECISION_VERSION,
+                (
+                    "unresolved_exact_address_identity_conflict:"
+                    f"{CATALOG_DECISION_VERSION}"
+                ),
+                CATALOG_DECISION_VERSION,
+            ),
         ).fetchone()
         exact_address_conflicts = conn.execute(
             """
@@ -453,9 +467,14 @@ def catalog_status() -> None:
             join ingest.candidate_match_reviews r on r.candidate_id = c.id
             join ingest.source_records sr
               on sr.source = r.source and sr.source_record_id = r.source_record_id
-            where c.candidate_state in ('verified', 'published')
-              and c.decision_version = %s
-              and c.verification_expires_at > now()
+            where c.decision_version = %s
+              and (
+                (
+                  c.candidate_state in ('verified', 'published')
+                  and c.verification_expires_at > now()
+                )
+                or c.decision_reason = %s
+              )
               and r.state = 'pending'
               and sr.retired_at is null
               and sr.source_status = 'open'
@@ -468,7 +487,14 @@ def catalog_status() -> None:
             order by c.name, r.score desc, r.source
             limit 50
             """,
-            (CATALOG_DECISION_VERSION, sorted(POTENTIAL_SOURCE_EXCLUDED_FLAGS)),
+            (
+                CATALOG_DECISION_VERSION,
+                (
+                    "unresolved_exact_address_identity_conflict:"
+                    f"{CATALOG_DECISION_VERSION}"
+                ),
+                sorted(POTENTIAL_SOURCE_EXCLUDED_FLAGS),
+            ),
         ).fetchall()
         invariant_risk = conn.execute(
             """
