@@ -8,7 +8,7 @@ on:
         required: true
         default: status
         type: choice
-        options: [status, stage, neighborhoods, discover, trial, verify, publish, cutover]
+        options: [status, stage, neighborhoods, discover, trial, verify, reevaluate, publish, cutover]
       source:
         description: Source for stage
         required: false
@@ -160,6 +160,9 @@ jobs:
               ;;
             verify)
               paloma-data catalog-verify --city "$CITY" --limit "$LIMIT"
+              ;;
+            reevaluate)
+              paloma-data catalog-reevaluate --city "$CITY" --limit "$LIMIT"
               ;;
             publish)
               test "$CONFIRMATION" = "PUBLISH_VERIFIED"
