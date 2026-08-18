@@ -60,10 +60,9 @@ class SourceStager:
                 conn.commit()
                 for record in records:
                     counters["fetched"] += 1
-                    if not self._in_scope(record):
-                        continue
-                    outcome = self.db.stage_source_record(conn, record, run_id)
-                    counters[outcome] += 1
+                    if self._in_scope(record):
+                        outcome = self.db.stage_source_record(conn, record, run_id)
+                        counters[outcome] += 1
                     if counters["fetched"] % 500 == 0:
                         _checkpoint(conn, run_id, counters)
                         conn.commit()
