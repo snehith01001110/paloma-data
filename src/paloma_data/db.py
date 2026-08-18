@@ -522,6 +522,17 @@ class Database:
                 json.dumps(evidence, sort_keys=True),
             ),
         )
+        # Re-deciding a record replaces the question being asked about it rather than adding a
+        # second one. The unique index is per reason, so without this a record that changes from
+        # one blocker to another sits in the queue twice and is counted twice.
+        conn.execute(
+            """
+            update ingest.establishment_review_queue
+            set state = 'superseded', resolved_at = now()
+            where source = %s and source_record_id = %s and state = 'pending' and reason <> %s
+            """,
+            (record.source, record.source_record_id, reason),
+        )
 
     def reconcile_closure(self, conn: psycopg.Connection, establishment_id: str) -> bool:
         row = conn.execute(

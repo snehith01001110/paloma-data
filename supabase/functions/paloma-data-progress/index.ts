@@ -51,7 +51,7 @@ Deno.serve(async (req: Request) => {
   const sql = postgres(databaseUrl, { max: 1, idle_timeout: 5, connect_timeout: 5, prepare: false });
 
   try {
-    const [latestRuns, stagedRows, linkedRows, reviewRows, overallRows, reviewBreakdownRows, nameSourceRows, nameConflictRows] = await Promise.all([
+    const [latestRuns, stagedRows, linkedRows, reviewRows, overallRows, reviewBreakdownRows, matchMethodRows, placementRows, nameSourceRows, nameConflictRows] = await Promise.all([
       sql`select distinct on (source) source, mode, status, fetched_count, created_count, updated_count, unchanged_count, review_count, closed_count, started_at, finished_at, left(coalesce(error_summary, ''), 280) as error_summary from ingest.ingestion_runs where source in ('ca_abc', 'datasf', 'overture') order by source, started_at desc`,
       sql`select source, count(*)::bigint as staged_count from ingest.source_records where source in ('ca_abc', 'datasf', 'overture') group by source`,
       sql`select source, count(*)::bigint as linked_record_count, count(distinct establishment_id)::bigint as linked_establishment_count from ingest.establishment_sources where source in ('ca_abc', 'datasf', 'overture') group by source`,
@@ -88,6 +88,8 @@ Deno.serve(async (req: Request) => {
         left join provenance p on p.establishment_id = e.id
       `,
       sql`select reason, source, count(*)::bigint as pending_count from ingest.establishment_review_queue where state = 'pending' and source in ('ca_abc', 'datasf', 'overture') group by reason, source order by pending_count desc`,
+      sql`select match_method, count(*)::bigint as records, count(distinct establishment_id)::bigint as venues from ingest.establishment_sources group by match_method order by records desc`,
+      sql`select source, count(*) filter (where latitude is not null)::bigint as placed_count, count(*) filter (where geocode_source is not null)::bigint as geocoded_count from ingest.source_records where source in ('ca_abc', 'datasf', 'overture') group by source`,
       sql`
         select coalesce(display_name_source, 'unresolved') as source, count(*)::bigint as count
         from public.establishments e
@@ -114,11 +116,13 @@ Deno.serve(async (req: Request) => {
     const stagedBySource = new Map(stagedRows.map((row) => [String(row.source), number(row.staged_count)]));
     const linkedBySource = new Map(linkedRows.map((row) => [String(row.source), row]));
     const reviewBySource = new Map(reviewRows.map((row) => [String(row.source), row]));
+    const placementBySource = new Map(placementRows.map((row) => [String(row.source), row]));
 
     const sources = SOURCES.map((sourceName) => {
       const run = latestBySource.get(sourceName);
       const linked = linkedBySource.get(sourceName);
       const review = reviewBySource.get(sourceName);
+      const placement = placementBySource.get(sourceName);
       const staged = stagedBySource.get(sourceName) ?? 0;
       const linkedRecords = number(linked?.linked_record_count);
       const reviewRecords = number(review?.pending_review_record_count);
@@ -128,6 +132,8 @@ Deno.serve(async (req: Request) => {
         source: sourceName,
         label: LABELS[sourceName],
         staged_count: staged,
+        placed_count: number(placement?.placed_count),
+        geocoded_count: number(placement?.geocoded_count),
         linked_record_count: linkedRecords,
         linked_establishment_count: number(linked?.linked_establishment_count),
         pending_review_count: number(review?.pending_review_count),
@@ -177,6 +183,11 @@ Deno.serve(async (req: Request) => {
         official_web_names: number(overall.official_web_names),
         display_name_conflicts: number(nameConflictRows[0]?.establishments_with_name_conflicts),
       },
+      match_methods: matchMethodRows.map((row) => ({
+        method: String(row.match_method ?? "unknown"),
+        records: number(row.records),
+        venues: number(row.venues),
+      })),
       display_name_sources: nameSourceRows.map((row) => ({
         source: String(row.source),
         label: LABELS[String(row.source)] ?? String(row.source),

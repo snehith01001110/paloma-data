@@ -26,7 +26,8 @@
     .flow-band{margin:4px 0 10px;color:var(--faint);font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase}.flow-stage+.flow-band{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}.flow-sub{color:var(--muted);font-size:10.5px}.flow-sub b{color:var(--text);font-weight:600}
     .flow-merge{display:flex;align-items:flex-start;gap:10px;margin:12px 0 4px;padding:11px 13px;background:var(--run-soft);border:1px solid #d5e0f4;border-radius:10px;color:var(--run);font-size:11.5px}.flow-merge>span{font-size:15px;line-height:1.2}.flow-merge b{font-weight:700}.flow-merge div span{display:block;margin-top:3px;color:#5a76a8;font-size:10.5px}
     .flow-unit{font-size:10.5px;font-weight:500;color:var(--muted);margin-left:5px}
-    .flow-drop{display:flex;align-items:center;gap:8px;margin:9px 0 9px 3px;padding-left:15px;border-left:2px solid #e8dcc2;color:var(--warn);font-size:11px}.flow-drop.merge{border-left-color:#d9d9d2;color:var(--muted)}.flow-drop b{font-weight:650}
+    .flow-drop{display:flex;align-items:center;gap:8px;margin:9px 0 9px 3px;padding-left:15px;border-left:2px solid #e8dcc2;color:var(--warn);font-size:11px}.flow-drop.merge{border-left-color:#d9d9d2;color:var(--muted)}.flow-drop b{font-weight:650}.drop-detail{display:block;margin-top:2px;color:var(--faint);font-size:10px;font-weight:400}
+    .flow-merge.geo{background:#eef4ee;border-color:#cfe0d3;color:var(--ok)}.flow-merge.geo div span{color:#54785f}
     .funnel-row{padding:14px 16px;border-bottom:1px solid var(--line)}.funnel-row:last-child{border-bottom:0}.funnel-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:8px}.funnel-name{font-weight:650}.funnel-fetched{color:var(--muted);font-size:11px}.stack{display:flex;height:15px;border-radius:6px;overflow:hidden;background:var(--drop)}.stack i{display:block;height:100%;transition:width .5s}.seg-linked{background:var(--ok)}.seg-review{background:var(--warn)}.seg-held{background:#c9c9c1}.funnel-foot{display:flex;gap:13px;flex-wrap:wrap;margin-top:7px;color:var(--muted);font-size:10.5px}.funnel-foot b{color:var(--text);font-weight:600}
 
     .q-row{padding:13px 16px;border-bottom:1px solid var(--line)}.q-row:last-of-type{border-bottom:0}.q-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}.q-t{font-weight:650;font-size:12.5px}.q-n{font-size:16px;font-weight:650;letter-spacing:-.03em}.q-track{height:8px;border-radius:999px;background:var(--drop);overflow:hidden;margin:7px 0 6px}.q-track i{display:block;height:100%;border-radius:999px;background:var(--warn)}.q-sub{color:var(--muted);font-size:10.5px}.q-foot{padding:11px 16px;background:#fafaf7;border-radius:0 0 14px 14px;color:var(--muted);font-size:10.5px}
@@ -151,17 +152,26 @@
   }
 
   const SRC_COLOR={ca_abc:'#4267ad',overture:'#2f7752',datasf:'#9a681f'};
+  // Two methods introduce a venue; every other method attaches a record to one that existed.
+  const CREATES=new Set(['high_confidence_new','cross_source_corroboration']);
   function renderFunnel(o){
     const by=f=>sources.map(x=>({src:x.source,label:x.label,n:num(f(x))})).filter(r=>r.n>0).sort((a,b)=>b.n-a.n);
     const sum=rs=>rs.reduce((a,r)=>a+r.n,0);
     const read=by(x=>x.latest_run?.fetched),kept=by(x=>x.staged_count),linked=by(x=>x.linked_record_count);
     const readN=sum(read),keptN=sum(kept),linkedN=sum(linked);
     const reviewN=sum(by(x=>x.pending_review_record_count)),heldN=Math.max(0,keptN-linkedN-reviewN);
+    const geocodedN=sum(by(x=>x.geocoded_count));
     const live=num(o.ingestion_backed),healthy=num(o.field_healthy),dupes=Math.max(0,linkedN-live);
+    const methods=lastData?.match_methods||[];
+    const createdN=methods.filter(m=>CREATES.has(m.method)).reduce((a,m)=>a+num(m.records),0);
+    const joinedN=methods.filter(m=>!CREATES.has(m.method)).reduce((a,m)=>a+num(m.records),0);
     const per=(a,b)=>b?`${(a/b*100).toFixed(a/b*100<10?1:0)}%`:'';
-    // Each bar is drawn against the stage above it, so every step keeps a readable size.
     const split=rs=>rs.map(r=>`<b>${fmt(r.n)}</b> ${esc(r.label)}`).join(' &middot; ');
-    const drop=(n,why)=>n>0?`<div class="flow-drop"><span>&darr;</span><span><b>${fmt(n)}</b> ${esc(why)}</span></div>`:'';
+    const drop=(n,why,detail)=>n>0?`<div class="flow-drop"><span>&darr;</span><span><b>${fmt(n)}</b> ${esc(why)}${detail?`<span class="drop-detail">${detail}</span>`:''}</span></div>`:'';
+    // Reasons are listed under the total rather than as separate steps, so the arithmetic of the
+    // funnel stays exact even while a record can still carry more than one open question.
+    const reasons=breakdown.slice().sort((a,b)=>b.count-a.count)
+      .map(r=>`${esc((REVIEW_INFO[r.reason]||{t:human(r.reason)}).t.toLowerCase())} ${fmt(r.count)}`).join(' &middot; ');
     function stage(name,n,unit,rs,prev,color){
       const w=prev?Math.max(1.5,n/prev*100):100;
       const bars=rs?rs.map(r=>`<i style="width:${(r.n/n*100).toFixed(2)}%;background:${SRC_COLOR[r.src]||'#8a8a83'}" title="${esc(r.label)} ${fmt(r.n)}"></i>`).join('')
@@ -170,16 +180,22 @@
       return `<div class="flow-stage"><div class="flow-head"><span class="flow-name">${esc(name)}</span><span class="flow-n">${fmt(n)}<span class="flow-unit">${esc(unit)}</span></span></div>
         <div class="flow-bar" role="img" aria-label="${fmt(n)} ${esc(unit)}" style="width:${w.toFixed(2)}%">${bars}</div><div class="flow-sub">${sub}</div></div>`;
     }
+    const band=(icon,title,detail,cls)=>`<div class="flow-merge ${cls||''}"><span>${icon}</span><div><b>${title}</b><span>${detail}</span></div></div>`;
     document.getElementById('flowLegend').innerHTML=sources.map(x=>`<span><i style="background:${SRC_COLOR[x.source]||'#8a8a83'}"></i>${esc(x.label)}</span>`).join('');
     document.getElementById('funnel').innerHTML=[
       `<div class="flow-band">Source records</div>`,
       stage('From sources',readN,'records',read,0),
       drop(readN-keptN,'outside the Bay Area'),
       stage('In the Bay Area',keptN,'records',kept,readN),
-      drop(reviewN,'need a human'),
-      drop(heldN,'undecided'),
-      stage('Matched to a venue',linkedN,'records',linked,keptN),
-      `<div class="flow-merge"><span>&#8681;</span><div><b>Deduped here</b> &middot; ${fmt(linkedN)} records become ${fmt(live)} venues<span>${fmt(dupes)} were a venue already counted, seen again by another source &middot; ${(linkedN/(live||1)).toFixed(1)} sources per venue</span></div></div>`,
+      geocodedN?band('&#9678;','Geocoded here &middot; '+fmt(geocodedN)+' records placed on a map',
+        'Their source published a street address but no coordinates, and a venue that cannot be placed cannot be created','geo'):'',
+      drop(reviewN,'need a human',reasons),
+      drop(heldN,'left staged, no decision'),
+      stage('Linked to a venue',linkedN,'records',linked,keptN),
+      createdN||joinedN?band('&#8681;','Deduped here &middot; '+fmt(linkedN)+' records become '+fmt(live)+' venues',
+        `<b>${fmt(createdN)}</b> introduced a new venue &middot; <b>${fmt(joinedN)}</b> joined one that already existed &middot; ${fmt(dupes)} were a venue already counted`)
+       :band('&#8681;','Deduped here &middot; '+fmt(linkedN)+' records become '+fmt(live)+' venues',
+        `${fmt(dupes)} were a venue already counted, seen again by another source`),
       `<div class="flow-band">Venues</div>`,
       stage('Live in Paloma',live,'venues',null,0,'#171716'),
       drop(Math.max(0,live-healthy),'name or type unconfirmed'),
