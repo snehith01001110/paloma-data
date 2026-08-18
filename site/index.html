@@ -21,7 +21,9 @@
     .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.metric{padding:14px 16px;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:14px}.metric strong{display:block;font-size:24px;letter-spacing:-.04em;line-height:1}.metric span{display:block;margin-top:7px;font-weight:600;font-size:11.5px}.metric small{display:block;color:var(--muted);font-size:10px;margin-top:3px}.metric.warn strong{color:var(--warn)}button.metric{transition:transform .15s,border-color .15s;width:100%}button.metric:hover{transform:translateY(-1px);border-color:#bebeb7}
 
     /* funnel */
-    .legend{display:flex;gap:14px;flex-wrap:wrap;padding:13px 16px;border-bottom:1px solid var(--line);color:var(--muted);font-size:10.5px}.legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:-1px}.key-linked{background:var(--ok)}.key-review{background:var(--warn)}.key-held{background:#c9c9c1}.key-drop{background:var(--drop)}
+    .legend{display:flex;gap:14px;flex-wrap:wrap;padding:13px 16px;border-bottom:1px solid var(--line);color:var(--muted);font-size:10.5px}.legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:-1px;background:#8a8a83}.key-linked{background:var(--ok)}.key-review{background:var(--warn)}.key-held{background:#c9c9c1}.key-drop{background:var(--drop)}
+    .flow{padding:16px 18px 20px}.flow-stage{padding:2px 0}.flow-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}.flow-name{font-weight:650;font-size:13px}.flow-n{font-size:19px;font-weight:650;letter-spacing:-.03em}.flow-bar{display:flex;height:17px;border-radius:5px;overflow:hidden;background:#f2f2ee;margin:7px 0 5px}.flow-bar i{display:block;height:100%;min-width:2px;transition:width .5s}.flow-sub{color:var(--muted);font-size:10.5px}.flow-sub b{color:var(--text);font-weight:600}
+    .flow-drop{display:flex;align-items:center;gap:8px;margin:9px 0 9px 3px;padding-left:15px;border-left:2px solid #e8dcc2;color:var(--warn);font-size:11px}.flow-drop.merge{border-left-color:#d9d9d2;color:var(--muted)}.flow-drop b{font-weight:650}
     .funnel-row{padding:14px 16px;border-bottom:1px solid var(--line)}.funnel-row:last-child{border-bottom:0}.funnel-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:8px}.funnel-name{font-weight:650}.funnel-fetched{color:var(--muted);font-size:11px}.stack{display:flex;height:15px;border-radius:6px;overflow:hidden;background:var(--drop)}.stack i{display:block;height:100%;transition:width .5s}.seg-linked{background:var(--ok)}.seg-review{background:var(--warn)}.seg-held{background:#c9c9c1}.funnel-foot{display:flex;gap:13px;flex-wrap:wrap;margin-top:7px;color:var(--muted);font-size:10.5px}.funnel-foot b{color:var(--text);font-weight:600}
 
     /* stages */
@@ -65,15 +67,10 @@
     <button class="metric warn" id="reviewMetric" type="button"><strong id="reviewCount">—</strong><span>Source records a human must judge</span><small>Never auto-added to the catalog</small></button>
   </section>
 
-  <div class="section-head"><h2>Where source records end up</h2><p>Sources publish far more than Paloma keeps</p></div>
+  <div class="section-head"><h2>From source records to venues</h2><p>What survives each stage, and what leaves</p></div>
   <section class="panel">
-    <div class="legend">
-      <span><i class="key-linked"></i>Linked to a venue</span>
-      <span><i class="key-review"></i>Waiting for a human</span>
-      <span><i class="key-held"></i>Kept, no decision yet</span>
-      <span><i class="key-drop"></i>Dropped — outside the Bay Area filter</span>
-    </div>
-    <div id="funnel"></div>
+    <div class="legend" id="flowLegend"></div>
+    <div class="flow" id="funnel"></div>
   </section>
 
   <div class="section-head">
@@ -145,20 +142,34 @@
     else{note.className='hero-note';note.textContent='No ingestion-backed venues yet.';}
   }
 
-  function renderFunnel(){
-    const scale=Math.max(1,...sources.map(s=>Math.max(num(s.latest_run?.fetched),num(s.staged_count))));
-    document.getElementById('funnel').innerHTML=sources.map(s=>{
-      const staged=num(s.staged_count),linked=num(s.linked_record_count),review=num(s.pending_review_record_count);
-      const held=Math.max(0,staged-linked-review),base=Math.max(staged,num(s.latest_run?.fetched)),dropped=Math.max(0,base-staged);
-      const w=v=>`${(v/scale*100).toFixed(2)}%`;
-      const foot=[`<b>${fmt(base)}</b> read`,`<b>${fmt(staged)}</b> kept`,`<b>${fmt(linked)}</b> linked to ${fmt(num(s.linked_establishment_count))} venues`,`<b>${fmt(review)}</b> waiting`];
-      if(dropped)foot.push(`<b>${fmt(dropped)}</b> outside the filter`);
-      return `<div class="funnel-row"><div class="funnel-head"><span class="funnel-name">${esc(s.label)}</span><span class="funnel-fetched">${fmt(base)} records read from source</span></div>
-        <div class="stack" style="width:${(base/scale*100).toFixed(2)}%;min-width:6%">
-          <i class="seg-linked" style="width:${w(linked)}" title="Linked ${fmt(linked)}"></i><i class="seg-review" style="width:${w(review)}" title="Waiting ${fmt(review)}"></i><i class="seg-held" style="width:${w(held)}" title="Kept, undecided ${fmt(held)}"></i>
-        </div>
-        <div class="funnel-foot">${foot.map(t=>`<span>${t}</span>`).join('')}</div></div>`;
-    }).join('');
+  const SRC_COLOR={ca_abc:'#4267ad',overture:'#2f7752',datasf:'#9a681f'};
+  function renderFunnel(o){
+    const by=f=>sources.map(x=>({src:x.source,label:x.label,n:num(f(x))})).filter(r=>r.n>0).sort((a,b)=>b.n-a.n);
+    const sum=rs=>rs.reduce((a,r)=>a+r.n,0);
+    const read=by(x=>x.latest_run?.fetched),kept=by(x=>x.staged_count),linked=by(x=>x.linked_record_count);
+    const readN=sum(read),keptN=sum(kept),linkedN=sum(linked);
+    const reviewN=sum(by(x=>x.pending_review_record_count)),heldN=Math.max(0,keptN-linkedN-reviewN);
+    const live=num(o.ingestion_backed),healthy=num(o.field_healthy);
+    const scale=Math.max(1,readN);
+    const share=n=>readN?`${n/readN*100<0.1&&n>0?'<0.1':(n/readN*100).toFixed(n/readN*100<10?1:0)}% of everything read`:'';
+    const bar=rs=>`<div class="flow-bar">${rs.map(r=>`<i style="width:${(r.n/scale*100).toFixed(3)}%;background:${SRC_COLOR[r.src]||'#8a8a83'}" title="${esc(r.label)} ${fmt(r.n)}"></i>`).join('')}</div>`;
+    const solid=(n,c)=>`<div class="flow-bar"><i style="width:${(n/scale*100).toFixed(3)}%;background:${c}"></i></div>`;
+    const split=rs=>rs.map(r=>`<b>${fmt(r.n)}</b> ${esc(r.label)}`).join(' · ');
+    const drop=(n,why,cls)=>n>0?`<div class="flow-drop ${cls||''}"><span>&darr;</span><span><b>${fmt(n)}</b> ${esc(why)}</span></div>`:'';
+    const stage=(name,n,barHtml,sub)=>`<div class="flow-stage"><div class="flow-head"><span class="flow-name">${esc(name)}</span><span class="flow-n">${fmt(n)}</span></div>${barHtml}<div class="flow-sub">${sub}</div></div>`;
+    document.getElementById('flowLegend').innerHTML=sources.map(x=>`<span><i style="background:${SRC_COLOR[x.source]||'#8a8a83'}"></i>${esc(x.label)}</span>`).join('');
+    document.getElementById('funnel').innerHTML=[
+      stage('Published by the sources',readN,bar(read),split(read)),
+      drop(readN-keptN,'dropped — outside the Bay Area filter'),
+      stage('Kept in the Bay Area',keptN,bar(kept),`${split(kept)} &middot; ${share(keptN)}`),
+      drop(reviewN,'sent to the review queue — needs a human decision'),
+      drop(heldN,'staged, no decision yet'),
+      stage('Matched to a venue',linkedN,bar(linked),`${split(linked)} &middot; ${share(linkedN)}`),
+      drop(Math.max(0,linkedN-live),'records merged — the same venue seen by more than one source','merge'),
+      stage('Live venues in Paloma',live,solid(live,'#171716'),`${fmt(num(o.multi_source))} confirmed by 2+ sources &middot; ${share(live)}`),
+      drop(Math.max(0,live-healthy),'missing a confirmed name or type — still shown, just not fully verified'),
+      stage('Pass all three checks',healthy,solid(healthy,'#2f7752'),share(healthy)),
+    ].join('');
   }
 
   const RUN_COPY={
@@ -203,7 +214,7 @@
     document.getElementById('verifyCount').textContent=compactFmt(Math.max(0,live-healthy));
     document.getElementById('reviewCount').textContent=compactFmt(num(o.pending_reviews));
     document.getElementById('updated').textContent=`Updated ${new Date(data.generated_at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}`;
-    renderGates(o);renderFunnel();renderStages(o);renderCeiling(data);
+    renderGates(o);renderFunnel(o);renderStages(o);renderCeiling(data);
     const failed=sources.find(s=>s.latest_run?.status==='failed'),running=sources.find(s=>s.latest_run?.status==='running'),dot=document.getElementById('runDot');dot.className='dot';
     if(failed){dot.classList.add('failed');document.getElementById('runTitle').textContent=`${failed.label} failed`;document.getElementById('runDetail').textContent=failed.latest_run?.error||'Latest run failed'}
     else if(running){dot.classList.add('running');document.getElementById('runTitle').textContent=`Reading ${running.label}`;document.getElementById('runDetail').textContent=`${fmt(running.latest_run?.fetched||0)} records read so far in this ${running.latest_run?.mode==='full'?'full rebuild':'sync'}`}
