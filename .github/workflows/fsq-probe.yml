@@ -23,16 +23,23 @@ jobs:
       - name: Install bounded catalog client
         run: pip install "pyiceberg>=0.9,<1" "pyarrow>=18,<21"
 
-      - name: Validate catalog and sample ten Bay Area places
+      - name: Validate catalog and sample twenty current Paloma candidates
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           import json
           import os
+          import re
+          from datetime import date, datetime, timedelta
 
           from pyiceberg.catalog import load_catalog
-          from pyiceberg.expressions import And, GreaterThanOrEqual, LessThanOrEqual
+          from pyiceberg.expressions import (
+              And,
+              EqualTo,
+              GreaterThanOrEqual,
+              LessThanOrEqual,
+          )
 
 
           required_config = (
@@ -71,6 +78,11 @@ jobs:
                   "date_refreshed",
                   "date_closed",
                   "fsq_category_labels",
+                  "fsq_category_ids",
+                  "unresolved_flags",
+                  "postcode",
+                  "tel",
+                  "website",
               )
               if name in available
           ]
@@ -88,25 +100,120 @@ jobs:
           if missing_fields:
               raise SystemExit("FSQ schema is missing: " + ", ".join(missing_fields))
 
-          # Same conservative Bay Area envelope used by Paloma. The limit prevents a
-          # credential test from becoming an accidental bulk download or database write.
+          # Push geography into Iceberg, then apply the same consumer-category, freshness,
+          # closure, address, and quality gates used by Paloma. This remains read-only.
           row_filter = And(
               And(
-                  GreaterThanOrEqual("longitude", -123.2),
-                  LessThanOrEqual("longitude", -121.1),
+                  And(
+                      GreaterThanOrEqual("longitude", -123.2),
+                      LessThanOrEqual("longitude", -121.1),
+                  ),
+                  And(
+                      GreaterThanOrEqual("latitude", 36.8),
+                      LessThanOrEqual("latitude", 38.9),
+                  ),
               ),
-              And(
-                  GreaterThanOrEqual("latitude", 36.8),
-                  LessThanOrEqual("latitude", 38.9),
-              ),
+              EqualTo("locality", "San Francisco"),
           )
-          rows = table.scan(
+          scan = table.scan(
               row_filter=row_filter,
               selected_fields=selected,
-              limit=10,
-          ).to_arrow().to_pylist()
+          )
+
+          exact_category_tokens = {
+              "bar",
+              "beer_bar",
+              "beer_garden",
+              "brew_pub",
+              "brewery",
+              "brewpub",
+              "cocktail_bar",
+              "distillery",
+              "dive_bar",
+              "drinking_place",
+              "drinking_places",
+              "gastropub",
+              "hotel_bar",
+              "irish_pub",
+              "lounge",
+              "night_club",
+              "nightclub",
+              "pub",
+              "rooftop_bar",
+              "sports_bar",
+              "speakeasy",
+              "tap_room",
+              "taproom",
+              "tasting_room",
+              "tiki_bar",
+              "wine_bar",
+              "winery",
+          }
+          hard_negative_flags = {
+              "closed",
+              "delete",
+              "doesntexist",
+              "doesnt_exist",
+              "doesnotexist",
+              "does_not_exist",
+              "duplicate",
+              "inappropriate",
+              "privatevenue",
+              "private_venue",
+          }
+          freshness_cutoff = date.today() - timedelta(days=365)
+
+          def string_list(value):
+              if value is None:
+                  return []
+              if isinstance(value, (list, tuple, set)):
+                  return [str(item).strip() for item in value if str(item).strip()]
+              text = str(value).strip()
+              return [text] if text else []
+
+          def tokens(values):
+              result = set()
+              for value in string_list(values):
+                  for part in re.split(r"\s*(?:>|/|›)\s*", value):
+                      token = re.sub(r"[^a-z0-9]+", "_", part.casefold()).strip("_")
+                      if token:
+                          result.add(token)
+              return result
+
+          def as_date(value):
+              if isinstance(value, datetime):
+                  return value.date()
+              if isinstance(value, date):
+                  return value
+              if not value:
+                  return None
+              return date.fromisoformat(str(value)[:10])
+
+          rows = []
+          rows_considered = 0
+          for batch in scan.to_arrow_batch_reader():
+              for row in batch.to_pylist():
+                  rows_considered += 1
+                  flags = tokens(row.get("unresolved_flags"))
+                  category_tokens = tokens(row.get("fsq_category_labels"))
+                  refreshed = as_date(row.get("date_refreshed"))
+                  if not row.get("name") or not row.get("address"):
+                      continue
+                  if row.get("date_closed") is not None:
+                      continue
+                  if refreshed is None or refreshed < freshness_cutoff:
+                      continue
+                  if flags & hard_negative_flags:
+                      continue
+                  if not category_tokens & exact_category_tokens:
+                      continue
+                  rows.append(row)
+                  if len(rows) == 20:
+                      break
+              if len(rows) == 20:
+                  break
           if not rows:
-              raise SystemExit("Catalog connected, but the bounded Bay Area query returned zero rows")
+              raise SystemExit("Catalog connected, but the guarded San Francisco query returned zero rows")
 
           print(
               json.dumps(
@@ -115,6 +222,15 @@ jobs:
                       "table": os.environ["FSQ_PLACES_TABLE"],
                       "schema_field_count": len(available),
                       "sample_count": len(rows),
+                      "source_rows_considered": rows_considered,
+                      "gates": [
+                          "locality=San Francisco",
+                          "current within 365 days",
+                          "not closed",
+                          "consumer drinking category",
+                          "name and street address present",
+                          "no unresolved private/closed/duplicate/delete flag",
+                      ],
                       "sample": rows,
                       "database_writes": False,
                       "publication_mutated": False,
