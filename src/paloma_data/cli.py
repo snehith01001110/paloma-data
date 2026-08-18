@@ -666,6 +666,23 @@ def catalog_audit(
                 from ingest.candidate_match_reviews r
                 where r.candidate_id = c.id and r.state = 'pending'
               ) as pending_review_items,
+              coalesce((
+                select jsonb_agg(
+                  jsonb_build_object(
+                    'review_id', r.id,
+                    'source', r.source,
+                    'name', sr.name,
+                    'address', sr.address,
+                    'reason', r.reason,
+                    'score', r.score::float,
+                    'distance_m', r.evidence#>'{features,distance_m}'
+                  ) order by r.score desc, r.source, r.id
+                )
+                from ingest.candidate_match_reviews r
+                join ingest.source_records sr
+                  on sr.source = r.source and sr.source_record_id = r.source_record_id
+                where r.candidate_id = c.id and r.state = 'pending'
+              ), '[]'::jsonb) as pending_reviews,
               (
                 select count(*)
                 from ingest.candidate_match_reviews r
