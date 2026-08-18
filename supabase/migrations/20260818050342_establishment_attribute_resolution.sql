@@ -83,6 +83,16 @@ grant delete on ingest.establishment_field_evidence to paloma_ingest;
 grant select on public.settings to paloma_ingest;
 grant select, insert, update, delete on public.establishment_settings to paloma_ingest;
 
+drop policy if exists paloma_ingest_read_settings on public.settings;
+create policy paloma_ingest_read_settings
+  on public.settings for select to paloma_ingest using (true);
+
+drop policy if exists paloma_ingest_manage_establishment_settings
+  on public.establishment_settings;
+create policy paloma_ingest_manage_establishment_settings
+  on public.establishment_settings for all to paloma_ingest
+  using (true) with check (true);
+
 comment on column public.establishments.price_level is
   'Resolved 1-4 price claim. Null means Paloma has no trustworthy current claim.';
 comment on column public.establishments.hours is
