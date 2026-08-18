@@ -140,7 +140,7 @@ Deno.serve(async (request: Request) => {
             where p.establishment_id is not null and e.publication_state = 'suppressed'
           )::bigint as suppressed,
           count(*) filter (
-            where p.establishment_id is not null and e.field_resolution_version = 'v3'
+            where p.establishment_id is not null and e.field_resolution_version = 'v4'
           )::bigint as resolver_current,
           count(*) filter (
             where p.establishment_id is not null and p.source_count >= 2
