@@ -53,6 +53,9 @@ from Foursquare is never counted as independent Foursquare corroboration.
 Manufacturer premises remain fail-closed. A Type 02, 23, or 74 license is not tasting-room proof.
 A consumer POI classified as a brewery, winery, distillery, tasting room, or taproom must also
 have current hours from the high-veracity provider check or a manual public-access attestation.
+An FSQ winery+wine-bar combination becomes a `tasting_room` candidate; brewery+bar and
+brewery+restaurant combinations become `taproom` and `brewpub` candidates. These mappings improve
+license compatibility but never bypass the access gate.
 
 ## ABC semantics
 

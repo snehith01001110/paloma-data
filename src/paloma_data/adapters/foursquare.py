@@ -80,12 +80,14 @@ _HARD_CONFLICTING_CONSUMER_IDENTITIES = frozenset(
         "performing_arts_venue",
         "residential_building",
         "residential_building_or_home",
-        "restaurant",
         "social_club",
         "tech_startup",
         "theater",
     }
 )
+
+_RESTAURANT_IDENTITIES = frozenset({"restaurant"})
+_PRODUCER_ACCESS_TYPES = frozenset({"brewpub", "taproom", "tasting_room"})
 
 # Retail/manufacturer combinations can represent legitimate tasting rooms and therefore remain
 # private manufacturer candidates subject to the hours/manual-access gate.  Retail mixed with a
@@ -295,6 +297,10 @@ def _consumer_identity_is_supported(
         return False
     if _has_conflicting_category(
         category_tokens, _HARD_CONFLICTING_CONSUMER_IDENTITIES
+    ):
+        return False
+    if primary_type_slug not in _PRODUCER_ACCESS_TYPES and _has_conflicting_category(
+        category_tokens, _RESTAURANT_IDENTITIES
     ):
         return False
     if primary_type_slug in BAR_TYPES and _has_conflicting_category(

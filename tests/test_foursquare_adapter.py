@@ -283,3 +283,29 @@ def test_fsq_social_club_with_secondary_bar_category_is_not_a_candidate():
     assert record is not None
     assert record.consumer_facing is False
     assert "consumer_identity_conflict" in record.quality_flags
+
+
+def test_fsq_brewery_restaurant_becomes_access_gated_brewpub_candidate():
+    record = _adapter()._to_record(
+        {
+            "fsq_place_id": "brewpub",
+            "name": "Southern Pacific Brewing",
+            "latitude": 37.76,
+            "longitude": -122.41,
+            "address": "620 Treat Ave",
+            "locality": "San Francisco",
+            "region": "CA",
+            "country": "US",
+            "date_refreshed": "2026-08-10T00:00:00Z",
+            "fsq_category_labels": [
+                "Dining and Drinking > Brewery",
+                "Dining and Drinking > Restaurant > American Restaurant",
+            ],
+            "unresolved_flags": [],
+        }
+    )
+
+    assert record is not None
+    assert record.primary_type_slug == "brewpub"
+    assert record.consumer_facing is True
+    assert record.public_access == "walk_in"

@@ -133,12 +133,57 @@ def classify_overture(
     existence_confidence: float | None,
 ) -> Classification:
     normalized_tokens = {token.casefold().strip() for token in category_tokens if token}
+    existence = existence_confidence if existence_confidence is not None else 0.90
+
+    # A producer category plus a consumer drinking category is materially different from a bare
+    # manufacturer POI.  Preserve that access-specific candidate type so ABC Type 02/23/74 can
+    # be matched correctly, while the catalog gate still requires current hours or a manual
+    # public-access attestation before publication.
+    if "winery" in normalized_tokens and "wine_bar" in normalized_tokens:
+        return Classification(
+            "tasting_room",
+            min(0.94, max(0.0, existence)),
+            True,
+            "overture_taxonomy:winery+wine_bar",
+        )
+    if "distillery" in normalized_tokens and normalized_tokens & {
+        "bar",
+        "cocktail_bar",
+        "lounge",
+        "tasting_room",
+    }:
+        return Classification(
+            "tasting_room",
+            min(0.94, max(0.0, existence)),
+            True,
+            "overture_taxonomy:distillery+bar",
+        )
+    if "brewery" in normalized_tokens and normalized_tokens & {
+        "bar",
+        "beer_bar",
+        "pub",
+        "taproom",
+        "tap_room",
+    }:
+        return Classification(
+            "taproom",
+            min(0.94, max(0.0, existence)),
+            True,
+            "overture_taxonomy:brewery+bar",
+        )
+    if "brewery" in normalized_tokens and "restaurant" in normalized_tokens:
+        return Classification(
+            "brewpub",
+            min(0.94, max(0.0, existence)),
+            True,
+            "overture_taxonomy:brewery+restaurant",
+        )
+
     for token, slug in _OVERTURE_EXACT_TYPES.items():
         if token in normalized_tokens:
             # Overture is a strong corroboration source, but v1 deliberately caps it below the
             # single-source auto-create threshold. A regulator/local source can push the combined
             # evidence over the creation threshold without letting one POI row define truth alone.
-            existence = existence_confidence if existence_confidence is not None else 0.90
             return Classification(slug, min(0.94, max(0.0, existence)), True, f"overture_taxonomy:{token}")
 
     if normalized_tokens & _OVERTURE_GENERIC_BAR:
