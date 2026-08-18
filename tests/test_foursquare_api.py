@@ -111,6 +111,40 @@ def test_places_api_canonicalizes_regular_hours_and_retries_throttling():
     }
 
 
+def test_places_api_reports_sanitized_provider_error_after_retries():
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(
+            429,
+            headers={"Retry-After": "0"},
+            json={"error": {"message": "Billing must be enabled"}},
+            request=request,
+        )
+
+    client = httpx.Client(
+        base_url="https://places-api.foursquare.com",
+        transport=httpx.MockTransport(handler),
+    )
+    adapter = FoursquarePlacesAPI(
+        "secret-key-that-must-not-leak",
+        client=client,
+        sleeper=lambda _: None,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="Foursquare Places API returned HTTP 429: Billing must be enabled",
+    ) as error:
+        adapter.details("fsq-2")
+
+    assert calls == 3
+    assert "secret-key-that-must-not-leak" not in str(error.value)
+    assert "fsq-2" not in str(error.value)
+
+
 def test_places_api_rejects_a_success_response_without_identity_fields():
     client = httpx.Client(
         base_url="https://places-api.foursquare.com",

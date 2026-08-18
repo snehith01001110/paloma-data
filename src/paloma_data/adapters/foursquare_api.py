@@ -100,7 +100,7 @@ class FoursquarePlacesAPI:
         )
         if response.status_code == 404:
             return None
-        response.raise_for_status()
+        _raise_for_status(response)
         record = self._to_record(_unwrap_place(response.json()))
         if record is None:
             raise ValueError(
@@ -128,7 +128,7 @@ class FoursquarePlacesAPI:
                 "tel_format": "E164",
             },
         )
-        response.raise_for_status()
+        _raise_for_status(response)
         payload = response.json()
         rows = payload.get("results") if isinstance(payload, dict) else None
         if not isinstance(rows, list):
@@ -274,6 +274,33 @@ class FoursquarePlacesAPI:
                 "date_closed": closed_at.isoformat() if closed_at else None,
             },
         )
+
+
+def _raise_for_status(response: httpx.Response) -> None:
+    """Raise a useful error without logging request URLs, keys, or place content."""
+    if response.is_success:
+        return
+    message: str | None = None
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = None
+    if isinstance(payload, dict):
+        error = payload.get("error")
+        if isinstance(error, dict):
+            message = _text(error.get("message") or error.get("detail"))
+        elif isinstance(error, str):
+            message = _text(error)
+        message = message or _text(payload.get("message") or payload.get("detail"))
+        errors = payload.get("errors")
+        if not message and isinstance(errors, list) and errors:
+            first = errors[0]
+            if isinstance(first, dict):
+                message = _text(first.get("message") or first.get("detail"))
+            elif isinstance(first, str):
+                message = _text(first)
+    suffix = f": {message}" if message else ""
+    raise RuntimeError(f"Foursquare Places API returned HTTP {response.status_code}{suffix}")
 
 
 def _unwrap_place(payload: Any) -> dict[str, Any]:
