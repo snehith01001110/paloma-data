@@ -499,6 +499,35 @@ def catalog_status() -> None:
         ).fetchall()
         invariant_risk = conn.execute(
             """
+            with current_verified as (
+              select c.*,
+                     sr.normalized_name as anchor_normalized_name,
+                     sr.normalized_address as anchor_normalized_address,
+                     sr.primary_type_slug as anchor_primary_type_slug,
+                     sr.latitude as anchor_latitude,
+                     sr.longitude as anchor_longitude
+              from ingest.catalog_candidates c
+              left join ingest.source_records sr
+                on sr.source = c.anchor_source
+               and sr.source_record_id = c.anchor_source_record_id
+              where c.candidate_state in ('verified', 'published')
+                and c.decision_version = %s
+                and c.verification_expires_at > now()
+            ), probable_duplicates as (
+              select a.id as left_id, b.id as right_id
+              from current_verified a
+              join current_verified b
+                on a.id < b.id
+               and lower(a.city) = lower(b.city)
+               and a.country_code = b.country_code
+              where (
+                a.normalized_address = b.normalized_address
+                and extensions.similarity(a.normalized_name, b.normalized_name) >= 0.75
+              ) or (
+                ST_DWithin(a.location, b.location, 20)
+                and extensions.similarity(a.normalized_name, b.normalized_name) >= 0.92
+              )
+            )
             select
               count(*) filter (
                 where candidate_state in ('verified', 'published')
@@ -516,10 +545,72 @@ def catalog_status() -> None:
                   and resolved_snapshot->>'primary_type_slug'
                     in ('brewery', 'winery', 'distillery')
                   and verification_tier is distinct from 'manual'
-              ) as automated_generic_manufacturers
+              ) as automated_generic_manufacturers,
+              (select count(*) from probable_duplicates) as probable_duplicate_pairs,
+              (
+                select count(*)
+                from current_verified current
+                where current.anchor_normalized_name is null
+                   or current.normalized_name is distinct from current.anchor_normalized_name
+                   or current.normalized_address
+                        is distinct from current.anchor_normalized_address
+                   or current.primary_type_slug
+                        is distinct from current.anchor_primary_type_slug
+                   or current.anchor_latitude is null
+                   or current.anchor_longitude is null
+                   or ST_Distance(
+                        current.location,
+                        ST_SetSRID(
+                          ST_MakePoint(
+                            current.anchor_longitude,
+                            current.anchor_latitude
+                          ),
+                          4326
+                        )::geography
+                      ) > 1
+              ) as candidate_anchor_drift,
+              (
+                select count(*)
+                from current_verified current
+                where (
+                  nullif(trim(current.resolved_snapshot->>'phone_e164'), '') is not null
+                  and nullif(
+                    trim(current.resolved_snapshot#>>'{field_sources,phone}'), ''
+                  ) is null
+                ) or (
+                  nullif(trim(current.resolved_snapshot->>'website_url'), '') is not null
+                  and nullif(
+                    trim(current.resolved_snapshot#>>'{field_sources,website}'), ''
+                  ) is null
+                ) or (
+                  current.resolved_snapshot->'hours' is not null
+                  and current.resolved_snapshot->'hours' <> 'null'::jsonb
+                  and nullif(
+                    trim(current.resolved_snapshot#>>'{field_sources,hours}'), ''
+                  ) is null
+                ) or (
+                  current.resolved_snapshot->'price_level' is not null
+                  and current.resolved_snapshot->'price_level' <> 'null'::jsonb
+                  and nullif(
+                    trim(current.resolved_snapshot#>>'{field_sources,price}'), ''
+                  ) is null
+                ) or (
+                  nullif(trim(current.resolved_snapshot->>'neighborhood'), '') is not null
+                  and nullif(
+                    trim(current.resolved_snapshot#>>'{field_sources,neighborhood}'), ''
+                  ) is null
+                ) or (
+                  current.resolved_snapshot->'setting_slugs' is not null
+                  and current.resolved_snapshot->'setting_slugs' <> 'null'::jsonb
+                  and current.resolved_snapshot->'setting_slugs' <> '[]'::jsonb
+                  and nullif(
+                    trim(current.resolved_snapshot#>>'{field_sources,settings}'), ''
+                  ) is null
+                )
+              ) as optional_fields_missing_provenance
             from ingest.catalog_candidates
             """,
-            (CATALOG_DECISION_VERSION,),
+            (CATALOG_DECISION_VERSION, CATALOG_DECISION_VERSION),
         ).fetchone()
         publication = conn.execute(
             """
@@ -619,6 +710,11 @@ def catalog_audit(
               c.address,
               c.city,
               c.resolved_snapshot->>'neighborhood' as neighborhood,
+              consumer.source_record_id as consumer_source_record_id,
+              consumer.source_updated_at as consumer_refreshed_at,
+              consumer.classification_confidence::float
+                as consumer_classification_confidence,
+              consumer.quality_flags as consumer_quality_flags,
               c.identity_confidence::float as identity_confidence,
               c.verification_tier,
               c.verified_at,
@@ -700,6 +796,9 @@ def catalog_audit(
                   )
               ) as blocking_exact_address_conflicts
             from ingest.catalog_candidates c
+            join ingest.source_records consumer
+              on consumer.source = c.anchor_source
+             and consumer.source_record_id = c.anchor_source_record_id
             where (%s::text is null or lower(c.city) = lower(%s::text))
               and c.candidate_state in ('verified', 'published')
               and c.decision_version = %s
