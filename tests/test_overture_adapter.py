@@ -1,5 +1,8 @@
 from datetime import timezone
 
+from pathlib import Path
+
+from paloma_data.adapters import overture
 from paloma_data.adapters.overture import OvertureAdapter
 from paloma_data.taxonomy import classify_overture
 
@@ -131,3 +134,55 @@ def test_generic_manufacturer_is_not_public_access_evidence():
 def test_overture_bbox_validation():
     adapter = OvertureAdapter("-123.2,36.8,-121.1,38.9")
     assert adapter.bbox == "-123.2,36.8,-121.1,38.9"
+
+
+def test_overture_release_discovery_uses_public_bucket_prefixes():
+    document = """\
+    <ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+      <CommonPrefixes><Prefix>release/2026-07-22.0/</Prefix></CommonPrefixes>
+      <CommonPrefixes><Prefix>release/2026-08-19.1/</Prefix></CommonPrefixes>
+      <CommonPrefixes><Prefix>release/not-a-release/</Prefix></CommonPrefixes>
+    </ListBucketResult>
+    """
+
+    assert overture._latest_release_from_index(document) == "2026-08-19.1"
+
+
+def test_overture_download_bypasses_stac_with_explicit_release(monkeypatch, tmp_path):
+    calls = {}
+
+    class Reader:
+        schema = object()
+
+    class Writer:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return None
+
+    def fake_reader(type_, **kwargs):
+        calls["reader"] = (type_, kwargs)
+        return Reader()
+
+    def fake_writer(format_, path, schema):
+        calls["writer"] = (format_, path, schema)
+        return Writer()
+
+    monkeypatch.setattr(overture, "record_batch_reader", fake_reader)
+    monkeypatch.setattr(overture, "get_writer", fake_writer)
+    monkeypatch.setattr(overture, "copy", lambda reader, writer: calls.update(copied=True))
+
+    output = tmp_path / "places.geojsonseq"
+    overture._download_release(output, "-123.2,36.8,-121.1,38.9", "2026-07-22.0")
+
+    assert calls["reader"] == (
+        "place",
+        {
+            "bbox": [-123.2, 36.8, -121.1, 38.9],
+            "release": "2026-07-22.0",
+            "stac": False,
+        },
+    )
+    assert calls["writer"] == ("geojsonseq", str(Path(output)), Reader.schema)
+    assert calls["copied"] is True

@@ -1,15 +1,27 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import json
 from pathlib import Path
-import subprocess
+import re
 from tempfile import TemporaryDirectory
 from typing import Any
+from xml.etree import ElementTree
+
+import httpx
+from overturemaps.core import record_batch_reader
+from overturemaps.writers import copy, get_writer
 
 from paloma_data.models import SourceRecord
 from paloma_data.taxonomy import classify_overture, is_consumer_facing_type
+
+
+_RELEASE_INDEX_URL = (
+    "https://overturemaps-us-west-2.s3.us-west-2.amazonaws.com/"
+    "?list-type=2&delimiter=%2F&prefix=release%2F"
+)
+_RELEASE_PREFIX = re.compile(r"release/(\d{4}-\d{2}-\d{2})\.(\d+)/")
 
 
 class OvertureAdapter:
@@ -19,23 +31,13 @@ class OvertureAdapter:
         self.bbox = _validate_bbox(bbox)
 
     def backfill(self) -> Iterator[SourceRecord]:
-        # The official Overture CLI discovers the latest release through STAC and transfers only
-        # the requested bbox. GeoJSON Sequence lets us stream the result without loading it all.
+        # Discover releases from Overture's public bucket rather than its optional STAC index.
+        # The latter has had breaking URL transitions. The official client still streams and
+        # filters the requested bbox directly from the same Overture release bucket.
         with TemporaryDirectory(prefix="paloma-overture-") as directory:
             output = Path(directory) / "places.geojsonseq"
-            subprocess.run(
-                [
-                    "overturemaps",
-                    "download",
-                    f"--bbox={self.bbox}",
-                    "-f",
-                    "geojsonseq",
-                    "--type=place",
-                    "-o",
-                    str(output),
-                ],
-                check=True,
-            )
+            release = _latest_release()
+            _download_release(output, self.bbox, release)
             with output.open("r", encoding="utf-8") as handle:
                 for line in handle:
                     payload = line.lstrip("\x1e").strip()
@@ -144,6 +146,45 @@ def _validate_bbox(value: str) -> str:
     if not (-180 <= west < east <= 180 and -90 <= south < north <= 90):
         raise ValueError("Invalid PALOMA_OVERTURE_BBOX bounds")
     return ",".join(str(number) for number in numbers)
+
+
+def _latest_release() -> str:
+    with httpx.Client(
+        timeout=httpx.Timeout(30.0, connect=10.0),
+        headers={"User-Agent": "paloma-data/0.2"},
+    ) as client:
+        response = client.get(_RELEASE_INDEX_URL)
+        response.raise_for_status()
+    return _latest_release_from_index(response.text)
+
+
+def _latest_release_from_index(document: str) -> str:
+    root = ElementTree.fromstring(document)
+    releases: list[tuple[date, int, str]] = []
+    for element in root.iter():
+        if element.tag.rsplit("}", 1)[-1] != "Prefix" or not element.text:
+            continue
+        match = _RELEASE_PREFIX.fullmatch(element.text)
+        if match is None:
+            continue
+        release = f"{match.group(1)}.{match.group(2)}"
+        releases.append((date.fromisoformat(match.group(1)), int(match.group(2)), release))
+    if not releases:
+        raise RuntimeError("Overture's public release bucket did not list an available release")
+    return max(releases)[2]
+
+
+def _download_release(output: Path, bbox: str, release: str) -> None:
+    reader = record_batch_reader(
+        "place",
+        bbox=[float(value) for value in bbox.split(",")],
+        release=release,
+        stac=False,
+    )
+    if reader is None:
+        raise RuntimeError(f"Overture returned no reader for release {release}")
+    with get_writer("geojsonseq", str(output), schema=reader.schema) as writer:
+        copy(reader, writer)
 
 
 def _category_tokens(basic: Any, taxonomy: Any, categories: Any) -> set[str]:
