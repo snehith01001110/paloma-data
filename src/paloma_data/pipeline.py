@@ -6,6 +6,7 @@ from dataclasses import replace
 from paloma_data.db import Database
 from paloma_data.matching import decide_match
 from paloma_data.models import SourceRecord
+from paloma_data.taxonomy import ACCESS_SPECIFIC_TYPES, BAR_TYPES
 
 
 class Pipeline:
@@ -199,7 +200,8 @@ class Pipeline:
                 counters["created"] += 1
                 return
 
-        # A single exceptionally strong source may create only a tightly classified open record.
+        # A consumer POI may establish a hidden canonical candidate so later legal evidence can
+        # link to a stable Paloma ID. Publication is a separate, stricter decision.
         quality = _confidence(record.classification_confidence)
         if _safe_to_create(record, quality):
             establishment_id = self.db.create_establishment(conn, record, quality)
@@ -260,12 +262,24 @@ def _confidence(value: object | None) -> float:
 
 
 def _safe_to_create(record: SourceRecord, quality: float) -> bool:
+    hard_negative = {
+        "closed",
+        "delete",
+        "doesnt_exist",
+        "does_not_exist",
+        "duplicate",
+        "privatevenue",
+        "private_venue",
+    }
     return bool(
         record.source_status == "open"
         and record.latitude is not None
         and record.longitude is not None
-        and record.primary_type_slug
-        and quality >= 0.95
+        and record.primary_type_slug in ACCESS_SPECIFIC_TYPES
+        and record.consumer_facing
+        and record.public_access == "walk_in"
+        and not hard_negative.intersection(record.quality_flags)
+        and quality >= 0.85
     )
 
 
@@ -275,30 +289,65 @@ def _combine_for_creation(a: SourceRecord, b: SourceRecord) -> SourceRecord | No
         b.source_status,
     }:
         return None
-    if a.primary_type_slug and b.primary_type_slug and a.primary_type_slug != b.primary_type_slug:
+    chosen_type = _compatible_public_type(a, b)
+    if chosen_type is None:
         return None
 
-    typed = a if a.primary_type_slug else b
-    located = a if a.latitude is not None and a.longitude is not None else b
-    if not typed.primary_type_slug or located.latitude is None or located.longitude is None:
+    consumer = a if a.consumer_facing else b if b.consumer_facing else None
+    located = (
+        consumer
+        if consumer and consumer.latitude is not None and consumer.longitude is not None
+        else a
+        if a.latitude is not None and a.longitude is not None
+        else b
+    )
+    if consumer is None or located.latitude is None or located.longitude is None:
         return None
 
     return replace(
-        located,
-        primary_type_slug=typed.primary_type_slug,
+        consumer,
+        latitude=located.latitude,
+        longitude=located.longitude,
+        primary_type_slug=chosen_type,
         classification_confidence=max(
             _confidence(a.classification_confidence),
             _confidence(b.classification_confidence),
         ),
-        phone=located.phone or typed.phone,
-        website_url=located.website_url or typed.website_url,
-        source_status="open" if "open" in {a.source_status, b.source_status} else located.source_status,
+        phone=consumer.phone or located.phone,
+        website_url=consumer.website_url or located.website_url,
+        source_status="open" if "open" in {a.source_status, b.source_status} else consumer.source_status,
         category_evidence={
             "corroborated_sources": [a.source, b.source],
-            "typed_by": typed.source,
-            "typed_evidence": typed.category_evidence,
+            "typed_by": consumer.source,
+            "typed_evidence": consumer.category_evidence,
         },
     )
+
+
+def _compatible_public_type(a: SourceRecord, b: SourceRecord) -> str | None:
+    left = a.primary_type_slug
+    right = b.primary_type_slug
+    if left == right:
+        return left
+    if not left:
+        return right
+    if not right:
+        return left
+
+    if left in BAR_TYPES and right in BAR_TYPES:
+        if a.consumer_facing and left != "bar":
+            return left
+        if b.consumer_facing and right != "bar":
+            return right
+        return "bar"
+
+    compatible = {
+        frozenset({"winery", "tasting_room"}): "tasting_room",
+        frozenset({"distillery", "tasting_room"}): "tasting_room",
+        frozenset({"brewery", "taproom"}): "taproom",
+        frozenset({"brewery", "brewpub"}): "brewpub",
+    }
+    return compatible.get(frozenset({left, right}))
 
 
 def _combined_quality(a: SourceRecord, b: SourceRecord, identity_score: float) -> float:

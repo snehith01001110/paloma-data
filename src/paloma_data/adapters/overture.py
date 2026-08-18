@@ -9,7 +9,7 @@ from tempfile import TemporaryDirectory
 from typing import Any
 
 from paloma_data.models import SourceRecord
-from paloma_data.taxonomy import classify_overture
+from paloma_data.taxonomy import classify_overture, is_consumer_facing_type
 
 
 class OvertureAdapter:
@@ -112,6 +112,13 @@ class OvertureAdapter:
             source_updated_at=_latest_update_time(sources),
             primary_type_slug=classification.primary_type_slug,
             classification_confidence=classification.confidence,
+            source_family="consumer_poi",
+            consumer_facing=is_consumer_facing_type(classification.primary_type_slug),
+            public_access=(
+                "walk_in"
+                if is_consumer_facing_type(classification.primary_type_slug)
+                else "unknown"
+            ),
             category_evidence={
                 "reason": classification.reason,
                 "basic_category": properties.get("basic_category"),

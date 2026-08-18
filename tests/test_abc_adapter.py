@@ -34,6 +34,8 @@ def test_raw_export_layout_maps_to_source_record():
     assert record.source_status == "open"
     assert record.primary_type_slug == "brewery"
     assert record.classification_confidence == 0.99
+    assert record.consumer_facing is False
+    assert record.public_access == "unknown"
 
 
 def test_pending_application_is_not_open():
@@ -54,7 +56,9 @@ def test_pending_application_is_not_open():
 
     assert record is not None
     assert record.source_status == "pending"
-    assert record.primary_type_slug == "wine_bar"
+    assert record.primary_type_slug == "bar"
+    assert record.consumer_facing is False
+    assert record.public_access == "walk_in"
 
 
 def test_csv_export_skips_updated_preamble_before_header():

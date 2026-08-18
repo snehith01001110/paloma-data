@@ -7,6 +7,7 @@ def test_government_names_are_legal_not_display_names():
     assert SOURCE_POLICIES["ca_abc"].name_kind == "legal"
     assert SOURCE_POLICIES["datasf"].name_kind == "legal"
     assert SOURCE_POLICIES["overture"].name_kind == "display"
+    assert SOURCE_POLICIES["fsq"].name_kind == "display"
 
 
 def test_verified_first_party_name_outranks_aggregator_name():

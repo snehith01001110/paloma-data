@@ -17,6 +17,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+fsq = [
+  "pyiceberg[pyarrow]>=0.11,<0.12",
+]
 dev = [
   "pytest>=8.3,<9",
   "ruff>=0.12,<1",

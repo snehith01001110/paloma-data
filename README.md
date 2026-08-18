@@ -13,7 +13,7 @@ The pipeline is conservative by design:
 - authoritative/open data before paid per-place APIs;
 - fewer high-confidence establishments over broad noisy coverage;
 - exact source ID -> deterministic signals -> weighted fuzzy/geospatial match -> review;
-- automatic creation only when coordinates and a high-confidence Paloma primary type are available;
+- consumer POIs may create hidden canonical candidates; publication is a separate hard gate;
 - never delete a canonical establishment because a source disappears;
 - permanent closure requires corroboration from at least two linked sources and no linked source reporting open;
 - raw/persisted source fields are limited to data whose source terms permit durable storage;
@@ -21,11 +21,25 @@ The pipeline is conservative by design:
 
 A venue can be confidently identified while its current public-facing name is uncertain. That is not a 0.99-quality venue. `data_quality_score` is therefore the weakest critical resolved field across identity, display name, and primary type.
 
+Publication is intentionally not another weighted score. An ingestion-backed venue is visible only
+when all of these facts are present: resolved identity, a reliable consumer-facing name, an explicit
+Paloma venue type, walk-in access evidence, current operating evidence, a compatible active ABC
+license, and no hard-negative flag. Missing any fact keeps the row as a candidate.
+
 ## Sources
 
 ### California ABC
 
-The statewide alcohol-license export is the authoritative California license backbone. It is strongest for license identity/status, address, and manufacturer license type. ABC business/licensee names are stored as **legal-name evidence** and do not automatically become the consumer-facing display name.
+The statewide alcohol-license export is the authoritative California license backbone. It is strongest for license identity/status, address, and licensed privileges. ABC business/licensee names are stored as **legal-name evidence** and do not automatically become the consumer-facing display name.
+
+ABC never proves that a current walk-in venue exists by itself:
+
+- Types 40/42/48/61 are generic public-bar license evidence. A current consumer POI supplies the
+  display name and subtype.
+- Types 02/23/74 describe manufacturers. A generic winery/brewery/distillery POI is still not
+  tasting-room evidence; the consumer source must explicitly identify a tasting room, taproom, or
+  brewpub.
+- Type 75 can validate an explicit consumer brewpub, but cannot create or publish one alone.
 
 GitHub-hosted runners may be rejected by ABC. The worker therefore uses the Supabase OIDC relay only to retrieve the exact official ABC-hosted export; ABC remains the source of truth.
 
@@ -39,9 +53,21 @@ San Francisco business registrations provide stable local IDs, address/location 
 
 Overture provides open consumer-place evidence for names, coordinates, phone, website, and category. It is useful for corroboration and discovery, but a single Overture display name is intentionally below Paloma's strong-name threshold.
 
-### Verified first-party web
+### Foursquare Open Source Places
 
-For linked canonical establishments with candidate websites, Paloma verifies the page against address/phone/location signals before trusting it. Structured LocalBusiness/Brewery/etc. data from a verified first-party page is the highest-authority display-name evidence.
+FSQ OS Places is the preferred bulk consumer-place feed. The adapter reads a column- and
+geography-bounded Iceberg scan using Places Portal credentials; it does not issue one request per
+venue. Stable `fsq_place_id` values and Paloma payload hashes make each monthly release
+idempotent. `unresolved_flags`, including private, duplicate, delete, and does-not-exist signals,
+feed the publication hard gate.
+
+Configure `FSQ_CATALOG_URI`, `FSQ_CATALOG_TOKEN`, and `FSQ_PLACES_TABLE` from the connection
+snippet in the FSQ Places Portal. Set `FSQ_CATALOG_WAREHOUSE` only when the snippet includes it,
+then install `paloma-data[fsq]`.
+
+### Optional first-party web inspection
+
+For exceptional review work, Paloma can verify a linked candidate website against address/phone/location signals. This is not a primary identity source and is not run by scheduled ingestion.
 
 This source is called `official_web` in field provenance. It is an enrichment source, not an establishment identity provider.
 
@@ -67,7 +93,7 @@ The canonical establishment exposes:
 - `field_resolution_version`
 - `data_quality_score`
 
-Current resolver version: `v2`.
+Current resolver version: `v3`.
 
 A changed display name may replace the canonical name automatically only when first-party verification is strong, or multiple independent public-facing sources strongly agree. A lone aggregator can surface a conflict but cannot silently rename a venue.
 
@@ -84,25 +110,28 @@ The permanent Paloma UUID survives a validated rename.
 ## Backfill vs incremental
 
 ```bash
-# Explicit full rebuild of all primary sources + first-party name verification
+# Explicit full rebuild of configured bulk sources
 paloma-data rebuild-catalog
 
 # One source full backfill
 paloma-data backfill ca_abc
 paloma-data backfill datasf
 paloma-data backfill overture
+paloma-data backfill fsq
 
 # Routine reconciliation
 paloma-data sync ca_abc
 paloma-data sync datasf
 paloma-data sync overture
+paloma-data sync fsq
 paloma-data sync-all
 
-# Re-check current public-facing names only
+# Optional operator-only website inspection
 paloma-data enrich-web
 
 # Recompute field evidence/resolution without source network fetches
 paloma-data resolve-fields
+paloma-data resolve-publication
 
 # Place records whose source published an address but no coordinates
 paloma-data geocode
@@ -111,11 +140,11 @@ paloma-data geocode ca_abc
 
 Linking a staged record also supersedes any pending review for it, because linking is the answer to whatever question put it in the queue.
 
-`bootstrap` is migration-aware. Normal deployments skip already-complete initial backfills, but if ingestion-backed rows do not have the current resolver version it forces one complete three-source rebuild before resolving fields. Once all rows are current, normal skip behavior resumes.
+`bootstrap` is migration-aware. Normal deployments skip already-complete initial backfills, but if ingestion-backed rows do not have the current resolver version it forces one complete configured-source rebuild before resolving fields. Once all rows are current, normal skip behavior resumes.
 
 ## Geocoding
 
-`_safe_to_create` requires coordinates, so a source that publishes none cannot introduce an establishment however authoritative it is. California ABC is exactly that case: its licence type is the strongest classification signal Paloma has, yet without a latitude every unmatched licence becomes a review item instead of a venue.
+`_safe_to_create` requires a geocoded, open, walk-in consumer observation with an explicit venue type. Geocoding an ABC address can improve matching, but it can never turn a license into a consumer establishment.
 
 Unplaced records are geocoded with the **US Census Bureau batch geocoder**, which is public, US-address specific, free, and needs no account or API key, so it adds no credential to manage and no per-call cost.
 
@@ -158,8 +187,9 @@ Never place database credentials in the iOS app or commit them. The `ingest` sch
 `.github/workflows/sync.yml`:
 
 - runs government reconciliation on weekdays;
-- re-verifies first-party public names weekly;
-- runs Overture reconciliation monthly;
+- runs Overture and configured FSQ OS reconciliation monthly;
+- recomputes field resolution and publication after every source run;
+- never crawls venue websites on a schedule;
 - supports manual source/full rebuilds;
 - forces one full rebuild automatically when the field resolver version advances.
 

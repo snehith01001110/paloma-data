@@ -10,6 +10,10 @@ class Settings:
     datasf_dataset_id: str
     abc_reports_url: str
     overture_bbox: str
+    fsq_catalog_uri: str | None
+    fsq_catalog_token: str | None
+    fsq_places_table: str | None
+    fsq_catalog_warehouse: str | None
     allowed_countries: frozenset[str]
     allowed_regions: frozenset[str]
     allowed_cities: frozenset[str]
@@ -28,6 +32,10 @@ class Settings:
             overture_bbox=os.getenv(
                 "PALOMA_OVERTURE_BBOX", "-123.2,36.8,-121.1,38.9"
             ),
+            fsq_catalog_uri=os.getenv("FSQ_CATALOG_URI"),
+            fsq_catalog_token=os.getenv("FSQ_CATALOG_TOKEN"),
+            fsq_places_table=os.getenv("FSQ_PLACES_TABLE"),
+            fsq_catalog_warehouse=os.getenv("FSQ_CATALOG_WAREHOUSE"),
             allowed_countries=_csv_set(os.getenv("PALOMA_COUNTRIES", "US")),
             allowed_regions=_csv_set(os.getenv("PALOMA_REGIONS", "CA")),
             allowed_cities=_csv_set(os.getenv("PALOMA_CITIES", "San Francisco")),

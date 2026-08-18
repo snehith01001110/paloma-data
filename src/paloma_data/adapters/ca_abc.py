@@ -387,6 +387,13 @@ class CaliforniaABCAdapter:
             source_updated_at=updated_at,
             primary_type_slug=classification.primary_type_slug,
             classification_confidence=classification.confidence,
+            source_family="government_regulator",
+            consumer_facing=False,
+            public_access=(
+                "walk_in"
+                if (license_type.strip().lstrip("0") or "0") in {"40", "42", "48", "61", "75"}
+                else "unknown"
+            ),
             category_evidence={"reason": classification.reason, "license_type": license_type},
             permitted_metadata=permitted,
         )

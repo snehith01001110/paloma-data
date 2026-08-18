@@ -20,13 +20,11 @@ on:
         required: true
         default: all
         type: choice
-        options: [all, ca_abc, datasf, overture, web]
+        options: [all, ca_abc, datasf, overture, fsq, web]
   schedule:
     # Government sources refresh frequently.
     - cron: '30 16 * * 1-5'
-    # Re-verify first-party public names weekly so acquisitions/rebrands do not wait for Overture.
-    - cron: '15 12 * * 0'
-    # Overture publishes monthly. Run late in the month; the official client resolves latest STAC.
+    # Overture and FSQ OS publish bulk releases monthly.
     - cron: '0 11 25 * *'
 
 permissions:
@@ -46,6 +44,10 @@ jobs:
       PALOMA_REGIONS: CA
       PALOMA_CITIES: San Francisco,Oakland,Berkeley,San Jose,San Mateo,Palo Alto,Mountain View,Sunnyvale,Santa Clara,Redwood City,Napa,Sonoma
       PALOMA_OVERTURE_BBOX: -123.2,36.8,-121.1,38.9
+      FSQ_CATALOG_URI: ${{ vars.FSQ_CATALOG_URI }}
+      FSQ_CATALOG_TOKEN: ${{ secrets.FSQ_CATALOG_TOKEN }}
+      FSQ_PLACES_TABLE: ${{ vars.FSQ_PLACES_TABLE }}
+      FSQ_CATALOG_WAREHOUSE: ${{ vars.FSQ_CATALOG_WAREHOUSE }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -78,23 +80,25 @@ jobs:
           test -n "$SUPABASE_DB_URL"
           echo "::add-mask::$SUPABASE_DB_URL"
           printf 'SUPABASE_DB_URL=%s\n' "$SUPABASE_DB_URL" >> "$GITHUB_ENV"
-      - run: pip install .
+      - run: pip install '.[fsq]'
       # Deliberate no-op workflow touch: both GitHub-OIDC-gated Supabase functions are repaired;
-      # this main push retriggers bootstrap and the forced V2 resolver rebuild.
+      # this main push retriggers bootstrap when the resolver version advances.
       - name: Run initial sources and refresh field truth after deployment
         if: github.event_name == 'push'
         run: paloma-data bootstrap
       - name: Run weekday government reconciliation
         if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 1-5'
         run: paloma-data sync-government
-      - name: Re-verify current first-party names
-        if: github.event_name == 'schedule' && github.event.schedule == '15 12 * * 0'
-        run: paloma-data enrich-web
-      - name: Run monthly Overture reconciliation and public-name refresh
+      - name: Run monthly consumer-place reconciliation
         if: github.event_name == 'schedule' && github.event.schedule == '0 11 25 * *'
+        shell: bash
         run: |
           paloma-data sync overture
-          paloma-data enrich-web
+          if [ -n "$FSQ_CATALOG_URI" ] && [ -n "$FSQ_CATALOG_TOKEN" ] && [ -n "$FSQ_PLACES_TABLE" ]; then
+            paloma-data sync fsq
+          else
+            echo "FSQ OS skipped: configure the Places Portal catalog variables and token"
+          fi
       - name: Run manual command
         if: github.event_name == 'workflow_dispatch'
         shell: bash

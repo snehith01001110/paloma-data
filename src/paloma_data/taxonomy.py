@@ -12,16 +12,17 @@ class Classification:
     reason: str
 
 
-# Accuracy-first: only license types with a strong venue/manufacturer interpretation are
-# allowed to drive an automatic Paloma type. Public-premises bar licenses remain eligible
-# candidates but require a second source / human classification.
+# ABC types describe licensed privileges, not the consumer experience. Manufacturer types retain
+# their legal facet for matching, while public-premises types resolve only to generic `bar`.
+# Neither class is allowed to prove that a walk-in venue currently exists on its own.
 ABC_STRONG_TYPES = {
     "2": "winery",
     "02": "winery",
     "23": "brewery",
     "74": "distillery",
 }
-ABC_BAR_CANDIDATE_TYPES = {"42", "48"}
+ABC_BAR_CANDIDATE_TYPES = {"40", "42", "48", "61"}
+ABC_BREWPUB_CANDIDATE_TYPES = {"75"}
 
 DATASF_STRONG_NAICS = {
     "312120": "brewery",
@@ -40,6 +41,12 @@ _OVERTURE_EXACT_TYPES = {
     "lounge": "lounge",
     "nightclub": "nightclub",
     "night_club": "nightclub",
+    "hotel_bar": "bar",
+    "tiki_bar": "cocktail_bar",
+    "speakeasy": "cocktail_bar",
+    "beer_garden": "beer_bar",
+    "irish_pub": "pub",
+    "gastropub": "pub",
     "brewery": "brewery",
     "taproom": "taproom",
     "tap_room": "taproom",
@@ -50,6 +57,22 @@ _OVERTURE_EXACT_TYPES = {
     "distillery": "distillery",
 }
 _OVERTURE_GENERIC_BAR = {"bar", "drinking_place", "drinking_places"}
+
+BAR_TYPES = frozenset(
+    {
+        "bar",
+        "cocktail_bar",
+        "dive_bar",
+        "wine_bar",
+        "beer_bar",
+        "sports_bar",
+        "pub",
+        "lounge",
+        "nightclub",
+    }
+)
+ACCESS_SPECIFIC_TYPES = frozenset({*BAR_TYPES, "taproom", "tasting_room", "brewpub"})
+GENERIC_MANUFACTURER_TYPES = frozenset({"brewery", "winery", "distillery"})
 
 _NAME_PATTERNS: list[tuple[re.Pattern[str], str, float]] = [
     (re.compile(r"\bcocktail\s+bar\b", re.I), "cocktail_bar", 0.98),
@@ -76,10 +99,11 @@ def classify_abc(name: str, license_type: str) -> Classification:
         slug = ABC_STRONG_TYPES.get(original) or ABC_STRONG_TYPES[code]
         return Classification(slug, 0.99, True, f"abc_license_type:{original}")
     if original in ABC_BAR_CANDIDATE_TYPES or code in ABC_BAR_CANDIDATE_TYPES:
-        by_name = classify_name(name)
-        if by_name.primary_type_slug:
-            return by_name
-        return Classification(None, 0.80, True, f"abc_public_premises:{original}")
+        # A legal/DBA string cannot safely provide a consumer subtype. The consumer POI source
+        # may later refine this generic bar into cocktail_bar, wine_bar, pub, and so on.
+        return Classification("bar", 0.90, True, f"abc_public_premises:{original}")
+    if original in ABC_BREWPUB_CANDIDATE_TYPES or code in ABC_BREWPUB_CANDIDATE_TYPES:
+        return Classification("brewpub", 0.93, True, f"abc_brewpub_license:{original}")
     return Classification(None, 0.0, False, f"abc_license_type_not_in_scope:{original}")
 
 
@@ -112,16 +136,8 @@ def classify_overture(
             existence = existence_confidence if existence_confidence is not None else 0.90
             return Classification(slug, min(0.94, max(0.0, existence)), True, f"overture_taxonomy:{token}")
 
-    by_name = classify_name(name)
     if normalized_tokens & _OVERTURE_GENERIC_BAR:
-        if by_name.primary_type_slug:
-            return Classification(
-                by_name.primary_type_slug,
-                min(0.92, by_name.confidence),
-                True,
-                f"overture_generic_bar+{by_name.reason}",
-            )
-        return Classification(None, 0.86, True, "overture_generic_bar")
+        return Classification("bar", 0.86, True, "overture_generic_bar")
 
     return Classification(None, 0.0, False, "overture_not_paloma_scope")
 
@@ -131,3 +147,8 @@ def classify_name(name: str) -> Classification:
         if pattern.search(name or ""):
             return Classification(slug, confidence, True, f"name_pattern:{slug}")
     return Classification(None, 0.0, False, "no_strong_name_signal")
+
+
+def is_consumer_facing_type(primary_type_slug: str | None) -> bool:
+    """True only when a category explicitly describes a visitable drinking venue."""
+    return primary_type_slug in ACCESS_SPECIFIC_TYPES

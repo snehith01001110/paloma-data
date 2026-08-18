@@ -85,6 +85,7 @@ class Database:
                 city, region, postal_code, country_code,
                 latitude, longitude, phone_e164, website_url,
                 primary_type_slug, classification_confidence,
+                source_family, consumer_facing, public_access, quality_flags,
                 category_evidence, permitted_metadata
             ) values (
                 %(source)s, %(source_record_id)s, %(source_status)s, %(source_updated_at)s,
@@ -93,6 +94,7 @@ class Database:
                 %(city)s, %(region)s, %(postal_code)s, %(country_code)s,
                 %(latitude)s, %(longitude)s, %(phone_e164)s, %(website_url)s,
                 %(primary_type_slug)s, %(classification_confidence)s,
+                %(source_family)s, %(consumer_facing)s, %(public_access)s, %(quality_flags)s,
                 %(category_evidence)s::jsonb, %(permitted_metadata)s::jsonb
             )
             on conflict (source, source_record_id) do update set
@@ -114,6 +116,10 @@ class Database:
                 website_url = excluded.website_url,
                 primary_type_slug = excluded.primary_type_slug,
                 classification_confidence = excluded.classification_confidence,
+                source_family = excluded.source_family,
+                consumer_facing = excluded.consumer_facing,
+                public_access = excluded.public_access,
+                quality_flags = excluded.quality_flags,
                 category_evidence = excluded.category_evidence,
                 permitted_metadata = excluded.permitted_metadata,
                 updated_at = now()
@@ -138,6 +144,10 @@ class Database:
                 "website_url": normalize_url(record.website_url),
                 "primary_type_slug": record.primary_type_slug,
                 "classification_confidence": record.classification_confidence,
+                "source_family": record.source_family,
+                "consumer_facing": record.consumer_facing,
+                "public_access": record.public_access,
+                "quality_flags": list(record.quality_flags),
                 "category_evidence": json.dumps(record.category_evidence, sort_keys=True),
                 "permitted_metadata": json.dumps(record.permitted_metadata, sort_keys=True),
             },
@@ -211,11 +221,12 @@ class Database:
                    trim(country_code) as country_code, latitude, longitude,
                    phone_e164, website_url, source_status, source_updated_at,
                    primary_type_slug, classification_confidence,
+                   source_family, consumer_facing, public_access, quality_flags,
                    category_evidence, permitted_metadata,
                    extensions.similarity(normalized_name, %s) as name_similarity,
                    extensions.similarity(normalized_address, %s) as address_similarity
             from ingest.source_records
-            where source <> %s
+            where source_family <> %s
               and lower(city) = lower(%s)
               and trim(country_code) = %s
               and normalized_address OPERATOR(extensions.%%) %s
@@ -229,7 +240,7 @@ class Database:
             (
                 name,
                 address,
-                record.source,
+                record.source_family,
                 record.city,
                 record.country_code,
                 address,
@@ -267,6 +278,10 @@ class Database:
             source_updated_at=row["source_updated_at"],
             primary_type_slug=row["primary_type_slug"],
             classification_confidence=row["classification_confidence"],
+            source_family=row["source_family"],
+            consumer_facing=row["consumer_facing"],
+            public_access=row["public_access"],
+            quality_flags=tuple(row["quality_flags"] or ()),
             category_evidence=row["category_evidence"] or {},
             permitted_metadata=row["permitted_metadata"] or {},
         )
@@ -441,6 +456,10 @@ class Database:
                     if row["classification_confidence"] is not None
                     else None
                 ),
+                source_family=row["source_family"],
+                consumer_facing=row["consumer_facing"],
+                public_access=row["public_access"],
+                quality_flags=tuple(row["quality_flags"] or ()),
                 category_evidence=row["category_evidence"] or {},
                 permitted_metadata=row["permitted_metadata"] or {},
             )
@@ -466,12 +485,14 @@ class Database:
             insert into public.establishments (
                 name, normalized_name, primary_type_id, address, normalized_address,
                 city, region, postal_code, country_code, location,
-                phone_e164, website_url, status, last_verified_at, data_quality_score
+                phone_e164, website_url, status, last_verified_at, data_quality_score,
+                publication_state, publication_reason, access_mode
             ) values (
                 %s, %s, %s, %s, %s,
                 %s, %s, %s, %s,
                 ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography,
-                %s, %s, 'open', now(), %s
+                %s, %s, 'open', now(), %s,
+                'candidate', 'awaiting_publication_evidence:v1', %s
             ) returning id::text
             """,
             (
@@ -489,6 +510,7 @@ class Database:
                 normalize_phone(record.phone, record.country_code),
                 normalize_url(record.website_url),
                 data_quality_score,
+                record.public_access,
             ),
         ).fetchone()
         return row["id"]

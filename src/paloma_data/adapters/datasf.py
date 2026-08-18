@@ -88,6 +88,9 @@ class DataSFAdapter:
             source_updated_at=_parse_date(_first(row, "location_end_date", "location_start_date")),
             primary_type_slug=classification.primary_type_slug,
             classification_confidence=classification.confidence,
+            source_family="government_registry",
+            consumer_facing=False,
+            public_access="unknown",
             category_evidence={"reason": classification.reason, "naics_code": naics},
             permitted_metadata=permitted,
         )

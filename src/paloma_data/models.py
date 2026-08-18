@@ -41,6 +41,12 @@ class SourceRecord:
     source_updated_at: datetime | None = None
     primary_type_slug: str | None = None
     classification_confidence: float | None = None
+    # These fields describe what a source row can prove. They deliberately separate a legal
+    # premises record from a consumer place that people can actually visit.
+    source_family: str = "unknown"
+    consumer_facing: bool = False
+    public_access: str = "unknown"
+    quality_flags: tuple[str, ...] = ()
     category_evidence: dict[str, Any] = field(default_factory=dict)
     permitted_metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -65,6 +71,10 @@ class SourceRecord:
                     if self.classification_confidence is not None
                     else None
                 ),
+                "source_family": self.source_family,
+                "consumer_facing": self.consumer_facing,
+                "public_access": self.public_access,
+                "quality_flags": sorted(set(self.quality_flags)),
                 "category_evidence": self.category_evidence,
                 "permitted_metadata": self.permitted_metadata,
             }
