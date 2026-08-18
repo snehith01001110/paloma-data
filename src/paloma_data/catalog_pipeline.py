@@ -71,7 +71,9 @@ class CatalogPipeline:
                 counters["match_reviews"] += reviews
 
                 links = self._validated_links(conn, candidate_id, anchor)
-                decision = decide_candidate(
+                decision = self._decide_candidate(
+                    conn,
+                    candidate_id,
                     links,
                     self.repo.verifications(conn, candidate_id),
                     mode="production",
@@ -187,7 +189,9 @@ class CatalogPipeline:
                     self.repo.save_verification(conn, candidate_id, verification)
 
                 existing = self.repo.verifications(conn, candidate_id)
-                decision = decide_candidate(
+                decision = self._decide_candidate(
+                    conn,
+                    candidate_id,
                     links,
                     existing
                     if api.storage_policy == "contract"
@@ -323,12 +327,39 @@ class CatalogPipeline:
             links = self._validated_links(conn, candidate_id, anchor)
         else:
             links = self.repo.linked_sources(conn, candidate_id)
-        decision = decide_candidate(
+        decision = self._decide_candidate(
+            conn,
+            candidate_id,
             links,
             self.repo.verifications(conn, candidate_id),
             mode="production",
         )
         self.repo.save_evaluation(conn, candidate_id, decision, mode="production")
+        return decision
+
+    def _decide_candidate(
+        self,
+        conn,
+        candidate_id: str,
+        links: list[LinkedSource],
+        verifications: list[VerificationEvidence],
+        *,
+        mode: str,
+    ) -> CatalogDecision:
+        decision = decide_candidate(links, verifications, mode=mode)
+        if (
+            decision.state == "verified"
+            and self.repo.has_blocking_match_review(conn, candidate_id)
+        ):
+            return CatalogDecision(
+                state="needs_review",
+                reason=(
+                    "unresolved_exact_address_identity_conflict:"
+                    f"{CATALOG_DECISION_VERSION}"
+                ),
+                reasons=("unresolved_exact_address_identity_conflict",),
+                identity_confidence=decision.identity_confidence,
+            )
         return decision
 
     def _candidate_for_anchor(

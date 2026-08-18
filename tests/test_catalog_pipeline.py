@@ -42,6 +42,15 @@ class _PublicationRepository:
         return True
 
 
+class _ReviewRepository:
+    def __init__(self, blocking: bool):
+        self.blocking = blocking
+
+    def has_blocking_match_review(self, _, candidate_id):
+        assert candidate_id == "candidate-1"
+        return self.blocking
+
+
 def _decision(state: str) -> CatalogDecision:
     return CatalogDecision(
         state=state,
@@ -83,3 +92,46 @@ def test_publish_materializes_only_after_current_decision_passes():
     assert repository.requested_version == CATALOG_DECISION_VERSION
     assert repository.materialized == ["candidate-1"]
     assert result["published"] == 1
+
+
+def test_exact_address_name_conflict_demotes_an_otherwise_verified_candidate(
+    monkeypatch,
+):
+    pipeline = CatalogPipeline(_Database())
+    pipeline.repo = _ReviewRepository(blocking=True)
+    monkeypatch.setattr(
+        "paloma_data.catalog_pipeline.decide_candidate",
+        lambda *_args, **_kwargs: _decision("verified"),
+    )
+
+    decision = pipeline._decide_candidate(
+        pipeline.db.conn,
+        "candidate-1",
+        [],
+        [],
+        mode="production",
+    )
+
+    assert decision.state == "needs_review"
+    assert decision.reason == (
+        f"unresolved_exact_address_identity_conflict:{CATALOG_DECISION_VERSION}"
+    )
+
+
+def test_nonblocking_match_review_does_not_override_hard_gate_decision(monkeypatch):
+    pipeline = CatalogPipeline(_Database())
+    pipeline.repo = _ReviewRepository(blocking=False)
+    monkeypatch.setattr(
+        "paloma_data.catalog_pipeline.decide_candidate",
+        lambda *_args, **_kwargs: _decision("verified"),
+    )
+
+    decision = pipeline._decide_candidate(
+        pipeline.db.conn,
+        "candidate-1",
+        [],
+        [],
+        mode="production",
+    )
+
+    assert decision.state == "verified"

@@ -14,7 +14,10 @@ from paloma_data.adapters import (
 from paloma_data.adapters.foursquare_api import FoursquarePlacesAPI
 from paloma_data.catalog import CATALOG_DECISION_VERSION
 from paloma_data.catalog_pipeline import CatalogPipeline
-from paloma_data.catalog_repository import CatalogRepository
+from paloma_data.catalog_repository import (
+    POTENTIAL_SOURCE_EXCLUDED_FLAGS,
+    CatalogRepository,
+)
 from paloma_data.config import Settings
 from paloma_data.db import Database
 from paloma_data.geocoding import AddressGeocoder
@@ -422,6 +425,9 @@ def catalog_status() -> None:
                 as verified_candidates_with_pending_items,
               count(distinct c.id) filter (
                 where r.state = 'pending'
+                  and sr.retired_at is null
+                  and sr.source_status = 'open'
+                  and not (sr.quality_flags && %s::text[])
                   and sr.normalized_address = c.normalized_address
                   and (
                     r.reason like '%%same_location_name_conflict'
@@ -436,7 +442,7 @@ def catalog_status() -> None:
               and c.decision_version = %s
               and c.verification_expires_at > now()
             """,
-            (CATALOG_DECISION_VERSION,),
+            (sorted(POTENTIAL_SOURCE_EXCLUDED_FLAGS), CATALOG_DECISION_VERSION),
         ).fetchone()
         exact_address_conflicts = conn.execute(
             """
@@ -451,6 +457,9 @@ def catalog_status() -> None:
               and c.decision_version = %s
               and c.verification_expires_at > now()
               and r.state = 'pending'
+              and sr.retired_at is null
+              and sr.source_status = 'open'
+              and not (sr.quality_flags && %s::text[])
               and sr.normalized_address = c.normalized_address
               and (
                 r.reason like '%%same_location_name_conflict'
@@ -459,7 +468,7 @@ def catalog_status() -> None:
             order by c.name, r.score desc, r.source
             limit 50
             """,
-            (CATALOG_DECISION_VERSION,),
+            (CATALOG_DECISION_VERSION, sorted(POTENTIAL_SOURCE_EXCLUDED_FLAGS)),
         ).fetchall()
         invariant_risk = conn.execute(
             """

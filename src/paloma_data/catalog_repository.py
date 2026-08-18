@@ -393,6 +393,40 @@ class CatalogRepository:
             ),
         )
 
+    def has_blocking_match_review(
+        self,
+        conn: psycopg.Connection,
+        candidate_id: str,
+    ) -> bool:
+        """Return true for an unresolved current-name conflict at the exact premise.
+
+        Nearby venues are common in dense nightlife districts and remain review hints. A second
+        current record at the candidate's normalized street address is different: it can be a
+        stale brand, a rebrand, or a nested venue, so publication must wait for resolution.
+        """
+        row = conn.execute(
+            """
+            select 1
+            from ingest.catalog_candidates c
+            join ingest.candidate_match_reviews r on r.candidate_id = c.id
+            join ingest.source_records sr
+              on sr.source = r.source and sr.source_record_id = r.source_record_id
+            where c.id = %s::uuid
+              and r.state = 'pending'
+              and sr.retired_at is null
+              and sr.source_status = 'open'
+              and not (sr.quality_flags && %s::text[])
+              and sr.normalized_address = c.normalized_address
+              and (
+                r.reason like '%%same_location_name_conflict'
+                or r.reason like '%%probable_identity_needs_review'
+              )
+            limit 1
+            """,
+            (candidate_id, sorted(POTENTIAL_SOURCE_EXCLUDED_FLAGS)),
+        ).fetchone()
+        return row is not None
+
     def linked_sources(
         self, conn: psycopg.Connection, candidate_id: str
     ) -> list[LinkedSource]:

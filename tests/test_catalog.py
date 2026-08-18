@@ -115,7 +115,7 @@ def test_all_hard_gates_publish_a_bar_and_resolve_only_evidenced_fields():
     decision = decide_candidate(_links(_fsq(), _abc()), [_verification()], now=NOW)
 
     assert decision.state == "verified"
-    assert decision.reason == "all_hard_gates_passed:v5"
+    assert decision.reason == "all_hard_gates_passed:v6"
     assert decision.resolved["name"] == "El Lopo"
     assert decision.resolved["hours"] == {"friday": [["16:00", "02:00"]]}
     assert decision.resolved["price_level"] == 2
@@ -208,7 +208,7 @@ def test_eating_place_license_needs_provider_or_manual_access_verification():
     decision = decide_candidate(_links(_fsq(), abc), [], now=NOW)
 
     assert decision.state == "needs_verification"
-    assert decision.reason == "missing_high_quality_verification:v5"
+    assert decision.reason == "missing_high_quality_verification:v6"
 
 
 def test_raw_abc_status_must_be_exactly_active_even_if_canonical_status_is_open():
@@ -216,7 +216,7 @@ def test_raw_abc_status_must_be_exactly_active_even_if_canonical_status_is_open(
     decision = decide_candidate(_links(_fsq(), bad_abc), [_verification()], now=NOW)
 
     assert decision.state == "withdrawn"
-    assert decision.reason == "abc_license_not_active:v5"
+    assert decision.reason == "abc_license_not_active:v6"
 
 
 def test_overture_and_a_license_cannot_replace_the_required_fsq_anchor():
@@ -228,7 +228,7 @@ def test_overture_and_a_license_cannot_replace_the_required_fsq_anchor():
     decision = decide_candidate(_links(overture, _abc()), [_verification()], now=NOW)
 
     assert decision.state == "needs_verification"
-    assert decision.reason == "missing_current_fsq_os_anchor:v5"
+    assert decision.reason == "missing_current_fsq_os_anchor:v6"
 
 
 def test_ephemeral_api_result_can_pass_a_trial_but_never_production():
@@ -251,7 +251,7 @@ def test_ephemeral_api_result_can_pass_a_trial_but_never_production():
 
     assert trial.state == "verified"
     assert production.state == "needs_verification"
-    assert production.reason == "verification_expired_or_not_storable:v5"
+    assert production.reason == "verification_expired_or_not_storable:v6"
 
 
 def test_latest_provider_result_supersedes_an_older_failure():
@@ -283,7 +283,7 @@ def test_provider_pass_for_a_different_foursquare_id_never_carries_over():
     decision = decide_candidate(_links(_fsq(), abc), [stale_pass], now=NOW)
 
     assert decision.state == "needs_verification"
-    assert decision.reason == "missing_high_quality_verification:v5"
+    assert decision.reason == "missing_high_quality_verification:v6"
 
 
 def test_tasting_room_requires_hours_or_manual_attestation():
