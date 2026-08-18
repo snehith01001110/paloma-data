@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from paloma_data.catalog import CATALOG_DECISION_VERSION, CatalogDecision
 from paloma_data.catalog_pipeline import CatalogPipeline
+from paloma_data.models import SourceRecord
 
 
 NOW = datetime(2026, 8, 18, tzinfo=timezone.utc)
@@ -76,6 +77,18 @@ class _ResolutionRepository:
     def resolve_match_review(self, _, review_id, *, resolution):
         self.resolutions.append((review_id, resolution))
         return "candidate-1"
+
+
+class _AlreadyLinkedDiscoveryRepository:
+    def __init__(self, anchor):
+        self.anchor = anchor
+
+    def discoverable_anchors(self, *_args, **_kwargs):
+        return [self.anchor]
+
+    def candidate_id_for_source(self, _, record):
+        assert record is self.anchor
+        return "candidate-that-already-owns-source"
 
 
 def _decision(state: str) -> CatalogDecision:
@@ -184,3 +197,35 @@ def test_resolving_review_refreshes_evidence_then_rechecks_candidate():
     assert database.conn.commits == 1
     assert result["candidate_state"] == "verified"
     assert result["publication_mutated"] is False
+
+
+def test_discovery_skips_anchor_claimed_after_batch_was_selected():
+    anchor = SourceRecord(
+        source="fsq",
+        source_record_id="anchor-1",
+        name="Example Bar",
+        address="123 Main St",
+        city="San Francisco",
+        latitude=37.78,
+        longitude=-122.42,
+    )
+    database = _Database()
+    pipeline = CatalogPipeline(database)
+    pipeline.repo = _AlreadyLinkedDiscoveryRepository(anchor)
+    pipeline._candidate_for_anchor = lambda *_: (_ for _ in ()).throw(
+        AssertionError("an already-linked anchor must not create a candidate")
+    )
+
+    result = pipeline.discover(city="San Francisco", limit=100)
+
+    assert result == {
+        "anchors_considered": 1,
+        "anchors_already_linked": 1,
+        "candidates_created": 0,
+        "anchors_linked": 0,
+        "sources_linked": 0,
+        "match_reviews": 0,
+        "decisions": {},
+        "candidate_ids": [],
+    }
+    assert database.conn.commits == 1

@@ -39,6 +39,7 @@ class CatalogPipeline:
     ) -> dict[str, Any]:
         counters: dict[str, Any] = {
             "anchors_considered": 0,
+            "anchors_already_linked": 0,
             "candidates_created": 0,
             "anchors_linked": 0,
             "sources_linked": 0,
@@ -55,6 +56,12 @@ class CatalogPipeline:
             )
             for anchor in anchors:
                 counters["anchors_considered"] += 1
+                # The batch was selected before processing began. Correlating an earlier anchor
+                # can claim a later source identity, so recheck the exact link at the write
+                # boundary instead of creating a rejected, source-less orphan candidate.
+                if self.repo.candidate_id_for_source(conn, anchor) is not None:
+                    counters["anchors_already_linked"] += 1
+                    continue
                 candidate_id, created = self._candidate_for_anchor(conn, anchor)
                 counters["candidate_ids"].append(candidate_id)
                 counters["candidates_created"] += int(created)

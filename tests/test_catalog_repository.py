@@ -9,6 +9,9 @@ class _EmptyCursor:
     def fetchall(self):
         return []
 
+    def fetchone(self):
+        return None
+
 
 class _RecordingConnection:
     def __init__(self):
@@ -64,3 +67,20 @@ def test_refresh_candidate_anchor_updates_denormalized_identity_fields():
     assert "anchor_source_record_id = %s" in connection.query
     assert "brewpub" in connection.params
     assert "candidate-id" in connection.params
+
+
+def test_candidate_id_for_source_rechecks_exact_source_identity():
+    connection = _RecordingConnection()
+    repository = CatalogRepository(db=None)
+    anchor = SourceRecord(
+        source="fsq",
+        source_record_id="anchor",
+        name="Example Bar",
+        address="123 Main St",
+        city="San Francisco",
+    )
+
+    assert repository.candidate_id_for_source(connection, anchor) is None
+
+    assert "from ingest.candidate_source_links" in connection.query
+    assert connection.params == ("fsq", "anchor")

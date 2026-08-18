@@ -71,6 +71,29 @@ class CatalogRepository:
         ).fetchall()
         return [_source_record(row) for row in rows]
 
+    def candidate_id_for_source(
+        self,
+        conn: psycopg.Connection,
+        record: SourceRecord,
+    ) -> str | None:
+        """Return the candidate that already owns an exact source identity, if any.
+
+        ``discoverable_anchors`` materializes a batch before discovery starts. An anchor later
+        in that batch can be linked while an earlier anchor is correlated. Rechecking here keeps
+        the materialized batch idempotent and prevents an empty orphan candidate from being
+        created for a source identity that is no longer unclaimed.
+        """
+        row = conn.execute(
+            """
+            select candidate_id::text
+            from ingest.candidate_source_links
+            where source = %s and source_record_id = %s
+            limit 1
+            """,
+            (record.source, record.source_record_id),
+        ).fetchone()
+        return str(row["candidate_id"]) if row else None
+
     def candidate_matches(
         self,
         conn: psycopg.Connection,
