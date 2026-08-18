@@ -29,6 +29,7 @@
     .flow-drop{display:flex;align-items:center;gap:8px;margin:9px 0 9px 3px;padding-left:15px;border-left:2px solid #e8dcc2;color:var(--warn);font-size:11px}.flow-drop.merge{border-left-color:#d9d9d2;color:var(--muted)}.flow-drop b{font-weight:650}
     .funnel-row{padding:14px 16px;border-bottom:1px solid var(--line)}.funnel-row:last-child{border-bottom:0}.funnel-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:8px}.funnel-name{font-weight:650}.funnel-fetched{color:var(--muted);font-size:11px}.stack{display:flex;height:15px;border-radius:6px;overflow:hidden;background:var(--drop)}.stack i{display:block;height:100%;transition:width .5s}.seg-linked{background:var(--ok)}.seg-review{background:var(--warn)}.seg-held{background:#c9c9c1}.funnel-foot{display:flex;gap:13px;flex-wrap:wrap;margin-top:7px;color:var(--muted);font-size:10.5px}.funnel-foot b{color:var(--text);font-weight:600}
 
+    .q-row{padding:13px 16px;border-bottom:1px solid var(--line)}.q-row:last-of-type{border-bottom:0}.q-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}.q-t{font-weight:650;font-size:12.5px}.q-n{font-size:16px;font-weight:650;letter-spacing:-.03em}.q-track{height:8px;border-radius:999px;background:var(--drop);overflow:hidden;margin:7px 0 6px}.q-track i{display:block;height:100%;border-radius:999px;background:var(--warn)}.q-sub{color:var(--muted);font-size:10.5px}.q-foot{padding:11px 16px;background:#fafaf7;border-radius:0 0 14px 14px;color:var(--muted);font-size:10.5px}
     /* stages */
     .modes{display:flex;gap:4px}.mode{border:1px solid var(--line);background:#fff;border-radius:9px;padding:6px 11px;color:var(--muted);font-size:11px}.mode.active{background:#f0f0ec;color:var(--text);font-weight:650;border-color:#d8d8d0}
     .mode-note{padding:13px 16px;border-bottom:1px solid var(--line);color:var(--muted);font-size:11.5px}.mode-note b{color:var(--text);font-weight:600}
@@ -76,6 +77,9 @@
     <div class="flow" id="funnel"></div>
   </section>
 
+  <div class="section-head"><h2>Why records are waiting</h2><p>None of these reach users</p></div>
+  <section class="panel" id="queuePanel"></section>
+
   <div class="section-head">
     <h2>What a run does</h2>
     <div class="modes"><button class="mode active" data-run="full" type="button">Full rebuild</button><button class="mode" data-run="incremental" type="button">Daily sync</button></div>
@@ -113,7 +117,7 @@
   // 'legal_name' and never compete for the public name at all.
   const NAME_CEILING={official_web:{v:.995,note:'verified website'},overture:{v:.773,note:'map aggregator'},osm:{v:.722,note:'community map'},canonical_seed:{v:.358,note:'old value'}};
   const state={mode:'accepted',q:'',reason:'',quality:'',offset:0,total:0,items:[],loading:false};
-  let searchTimer,breakdown=[],sources=[],runMode='full',lastData=null;
+  let searchTimer,breakdown=[],sources=[],runMode='full',lastData=null,actualMode='full',modePinned=false;
   const esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
   const fmt=v=>nf.format(Number(v||0)),compactFmt=v=>compact.format(Number(v||0)),num=v=>Number(v||0);
   const ago=iso=>{if(!iso)return'';const m=(Date.now()-new Date(iso).getTime())/6e4;if(m<0)return'just now';if(m<1)return'just now';if(m<60)return`${Math.round(m)} min ago`;if(m<1440)return`${Math.round(m/60)} hr ago`;return`${Math.round(m/1440)} days ago`};
@@ -164,7 +168,7 @@
                    :`<i style="width:100%;background:${color}"></i>`;
       const sub=[rs?split(rs):'',prev?`${per(n,prev)} of the step above`:''].filter(Boolean).join(' &middot; ');
       return `<div class="flow-stage"><div class="flow-head"><span class="flow-name">${esc(name)}</span><span class="flow-n">${fmt(n)}<span class="flow-unit">${esc(unit)}</span></span></div>
-        <div class="flow-bar" style="width:${w.toFixed(2)}%">${bars}</div><div class="flow-sub">${sub}</div></div>`;
+        <div class="flow-bar" role="img" aria-label="${fmt(n)} ${esc(unit)}" style="width:${w.toFixed(2)}%">${bars}</div><div class="flow-sub">${sub}</div></div>`;
     }
     document.getElementById('flowLegend').innerHTML=sources.map(x=>`<span><i style="background:${SRC_COLOR[x.source]||'#8a8a83'}"></i>${esc(x.label)}</span>`).join('');
     document.getElementById('funnel').innerHTML=[
@@ -183,12 +187,35 @@
     ].join('');
   }
 
+  const REVIEW_INFO={
+    needs_type_or_location_corroboration:{t:'Only one source has it',w:'Waiting for a second source to confirm what or where it is'},
+    source_conflict:{t:'Sources disagree',w:'Two sources give a different type or open/closed status'},
+    ambiguous_match:{t:'Might be a duplicate',w:'Scored close to a venue already in Paloma'},
+    same_location_name_conflict:{t:'Possible rebrand',w:'Same address, very different name'},
+    weak_match:{t:'Uncertain match',w:'Scored too low to link automatically'},
+  };
+  function renderQueue(o){
+    const rows=breakdown.slice().sort((a,b)=>b.count-a.count),max=Math.max(1,...rows.map(r=>num(r.count)));
+    const el=document.getElementById('queuePanel');
+    if(!rows.length){el.innerHTML='<div class="q-foot">Nothing waiting.</div>';return}
+    el.innerHTML=rows.map(r=>{
+      const info=REVIEW_INFO[r.reason]||{t:human(r.reason),w:''};
+      const by=(r.sources||[]).slice().sort((a,b)=>b.count-a.count).map(x=>`${fmt(x.count)} ${esc(sourceShort[x.source]||x.label)}`).join(' &middot; ');
+      return `<div class="q-row"><div class="q-head"><span class="q-t">${esc(info.t)}</span><span class="q-n">${fmt(r.count)}</span></div>
+        <div class="q-track" role="img" aria-label="${fmt(r.count)} records"><i style="width:${(num(r.count)/max*100).toFixed(1)}%"></i></div>
+        <div class="q-sub">${esc(info.w)}${by?` &middot; ${by}`:''}</div></div>`;
+    }).join('')+`<div class="q-foot">${fmt(num(o.pending_reviews))} records held back. Nothing here is auto-added, and nothing drains on its own.</div>`;
+  }
+
   const RUN_COPY={
     full:'<b>Full rebuild.</b> Re-reads everything and rescores from scratch. Runs on push to main, or when the resolver version changes.',
     incremental:'<b>Daily sync.</b> Reads only what changed. Government sources weekdays, names weekly, Overture monthly.'
   };
   function renderStages(o){
-    document.getElementById('modeNote').innerHTML=RUN_COPY[runMode];
+    // The counters below describe the last run that actually happened. Showing them under the
+    // other mode would present a rebuild's volume as if it were a sync.
+    const showCounts=runMode===actualMode;
+    document.getElementById('modeNote').innerHTML=RUN_COPY[runMode]+(showCounts?'':` <span style="color:var(--faint)">Counts are hidden here &mdash; the last run was a ${actualMode==='full'?'full rebuild':'sync'}.</span>`);
     const live=num(o.ingestion_backed),running=sources.find(s=>s.latest_run?.status==='running'),failed=sources.find(s=>s.latest_run?.status==='failed');
     const read=sources.reduce((a,s)=>a+num(s.latest_run?.fetched),0),staged=sources.reduce((a,s)=>a+num(s.staged_count),0);
     const sourcesDone=sources.length>0&&sources.every(s=>s.latest_run?.status==='succeeded');
@@ -201,7 +228,7 @@
       {n:'Score fields',w:'Weigh competing claims per field',v:`${fmt(resolved)} scored`,s:resolved?'done':'pending'},
       {n:'Verify names',w:webSkipped?'Runs weekly instead':'Only a website can confirm a name',v:webSkipped?'weekly':`${fmt(web)} verified`,s:webSkipped?'skip':web?'done':sourcesDone?'active':'pending'},
     ];
-    document.getElementById('stages').innerHTML=st.map((x,i)=>`<div class="stage ${x.s}"><div class="stage-dot">${i+1}</div><div class="stage-name">${esc(x.n)}</div><div class="stage-what">${esc(x.w)}</div><div class="stage-num">${esc(x.v)}</div></div>`).join('');
+    document.getElementById('stages').innerHTML=st.map((x,i)=>`<div class="stage ${showCounts?x.s:'pending'}"><div class="stage-dot">${i+1}</div><div class="stage-name">${esc(x.n)}</div><div class="stage-what">${esc(x.w)}</div><div class="stage-num">${showCounts?esc(x.v):'&mdash;'}</div></div>`).join('');
     document.getElementById('bothCount').textContent=compactFmt(healthy);
     document.getElementById('bothPct').textContent=live?`${Math.round(healthy/live*100)}% of ${fmt(live)}`:'—';
   }
@@ -225,7 +252,10 @@
     document.getElementById('verifyCount').textContent=compactFmt(Math.max(0,live-healthy));
     document.getElementById('reviewCount').textContent=compactFmt(num(o.pending_reviews));
     document.getElementById('updated').textContent=`Updated ${new Date(data.generated_at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}`;
-    renderGates(o);renderFunnel(o);renderStages(o);renderCeiling(data);
+    const newest=sources.map(x=>x.latest_run).filter(Boolean).sort((a,b)=>String(a.started_at||'').localeCompare(String(b.started_at||''))).pop();
+    actualMode=newest?.mode==='incremental'?'incremental':'full';
+    if(!modePinned){runMode=actualMode;document.querySelectorAll('.mode').forEach(m=>m.classList.toggle('active',m.dataset.run===runMode));}
+    renderGates(o);renderFunnel(o);renderQueue(o);renderStages(o);renderCeiling(data);
     const failed=sources.find(s=>s.latest_run?.status==='failed'),running=sources.find(s=>s.latest_run?.status==='running'),dot=document.getElementById('runDot');dot.className='dot';
     const last=sources.map(s=>s.latest_run?.finished_at).filter(Boolean).sort().pop();
     if(failed){dot.classList.add('failed');document.getElementById('runTitle').textContent=`${failed.label} failed`;document.getElementById('runDetail').textContent=failed.latest_run?.error||'Last run failed'}
@@ -244,7 +274,7 @@
   async function refreshSummary(){try{const r=await fetch(ENDPOINT,{cache:'no-store'});if(!r.ok)throw new Error(`HTTP ${r.status}`);renderSummary(await r.json())}catch(err){const e=document.getElementById('error');e.textContent=`Could not load live data: ${err.message}`;e.style.display='block';document.getElementById('updated').textContent='Disconnected'}}
   async function loadList(reset=false){if(state.loading)return;if(reset){state.offset=0;state.items=[]}state.loading=true;document.getElementById('loadMore').disabled=true;if(!state.items.length)document.getElementById('items').innerHTML='<div class="empty">Loading…</div>';try{const actualView=state.mode==='review'?'review':'accepted',p=new URLSearchParams({view:actualView,limit:'24',offset:String(state.offset)});if(state.q)p.set('q',state.q);if(state.mode==='review'&&state.reason)p.set('reason',state.reason);if(state.mode==='verify')p.set('quality',state.quality||'needs_verification');const r=await fetch(`${ENDPOINT}?${p}`,{cache:'no-store'});if(!r.ok)throw new Error(`HTTP ${r.status}`);const d=await r.json();state.total=num(d.list?.total);const next=d.list?.items||[];state.items=reset?next:state.items.concat(next);state.offset=state.items.length;renderItems()}catch(err){document.getElementById('items').innerHTML=`<div class="empty">Could not load records: ${esc(err.message)}</div>`}finally{state.loading=false;document.getElementById('loadMore').disabled=false}}
   document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>switchMode(b.dataset.mode)));
-  document.querySelectorAll('.mode').forEach(b=>b.addEventListener('click',()=>{runMode=b.dataset.run;document.querySelectorAll('.mode').forEach(m=>m.classList.toggle('active',m===b));if(lastData)renderStages(lastData.overall||{})}));
+  document.querySelectorAll('.mode').forEach(b=>b.addEventListener('click',()=>{runMode=b.dataset.run;modePinned=true;document.querySelectorAll('.mode').forEach(m=>m.classList.toggle('active',m===b));if(lastData)renderStages(lastData.overall||{})}));
   document.getElementById('verifyMetric').addEventListener('click',()=>switchMode('verify'));document.getElementById('reviewMetric').addEventListener('click',()=>switchMode('review'));
   document.getElementById('search').addEventListener('input',e=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{state.q=e.target.value.trim();loadList(true)},250)});
   document.getElementById('loadMore').addEventListener('click',()=>loadList(false));

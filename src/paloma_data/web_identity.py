@@ -45,6 +45,11 @@ class OfficialWebEnricher:
     def __init__(self, db: Database) -> None:
         self.db = db
 
+    # Verification is network bound and runs for minutes. Commit in batches so a timeout or a
+    # dropped connection cannot discard every name verified so far, and so an in-flight run is
+    # observable instead of appearing idle until the whole pass lands at once.
+    CHECKPOINT_EVERY = 25
+
     def run(self, *, max_pages_per_establishment: int = 4) -> dict[str, int]:
         metrics = {"considered": 0, "verified": 0, "claims": 0, "failed": 0, "seeded": 0}
         with self.db.connection() as conn:
@@ -68,7 +73,9 @@ class OfficialWebEnricher:
                 timeout=httpx.Timeout(9.0, connect=5.0),
                 headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/xhtml+xml"},
             ) as client:
-                for row in rows:
+                for index, row in enumerate(rows):
+                    if index and index % self.CHECKPOINT_EVERY == 0:
+                        conn.commit()
                     metrics["considered"] += 1
                     if self._apply_verified_identity(conn, row):
                         metrics["verified"] += 1
