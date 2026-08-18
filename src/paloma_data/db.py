@@ -108,8 +108,8 @@ class Database:
                 region = excluded.region,
                 postal_code = excluded.postal_code,
                 country_code = excluded.country_code,
-                latitude = excluded.latitude,
-                longitude = excluded.longitude,
+                latitude = coalesce(excluded.latitude, source_records.latitude),
+                longitude = coalesce(excluded.longitude, source_records.longitude),
                 phone_e164 = excluded.phone_e164,
                 website_url = excluded.website_url,
                 primary_type_slug = excluded.primary_type_slug,
@@ -334,6 +334,118 @@ class Database:
                 establishment_id,
             ),
         )
+        # A queued record is waiting for an answer about where it belongs. Linking it is that
+        # answer, so the queue entry is settled and must not keep asking a human for one.
+        conn.execute(
+            """
+            update ingest.establishment_review_queue
+            set state = 'superseded', resolved_at = now()
+            where source = %s and source_record_id = %s and state = 'pending'
+            """,
+            (record.source, record.source_record_id),
+        )
+
+    def records_needing_geocode(
+        self, conn: psycopg.Connection, source: str, retry_after_days: int = 30
+    ) -> list[dict]:
+        """Staged records with an address but no coordinates, skipping recent failed attempts."""
+        return conn.execute(
+            """
+            select source_record_id, address, city, region, postal_code
+            from ingest.source_records
+            where source = %s
+              and latitude is null
+              and address <> ''
+              and (
+                geocode_attempted_at is null
+                or geocode_attempted_at < now() - make_interval(days => %s)
+              )
+            order by source_record_id
+            """,
+            (source, retry_after_days),
+        ).fetchall()
+
+    def save_geocode(
+        self,
+        conn: psycopg.Connection,
+        source: str,
+        source_record_id: str,
+        latitude: float,
+        longitude: float,
+        geocoder: str,
+    ) -> None:
+        conn.execute(
+            """
+            update ingest.source_records
+            set latitude = %s,
+                longitude = %s,
+                geocode_source = %s,
+                geocoded_at = now(),
+                geocode_attempted_at = now(),
+                updated_at = now()
+            where source = %s and source_record_id = %s and latitude is null
+            """,
+            (latitude, longitude, geocoder, source, source_record_id),
+        )
+
+    def mark_geocode_attempted(
+        self, conn: psycopg.Connection, source: str, source_record_ids: list[str]
+    ) -> None:
+        if not source_record_ids:
+            return
+        conn.execute(
+            """
+            update ingest.source_records
+            set geocode_attempted_at = now(), updated_at = now()
+            where source = %s and source_record_id = any(%s)
+            """,
+            (source, source_record_ids),
+        )
+
+    def unlinked_staged_records(self, conn: psycopg.Connection, source: str) -> list[SourceRecord]:
+        """Staged records that never became part of an establishment.
+
+        Enrichment such as geocoding changes what the pipeline can decide about a record long
+        after it was first read, so these get another pass without re-fetching the source.
+        """
+        rows = conn.execute(
+            """
+            select sr.*
+            from ingest.source_records sr
+            left join ingest.establishment_sources es
+              on es.source = sr.source and es.source_record_id = sr.source_record_id
+            where sr.source = %s and es.establishment_id is null
+            order by sr.source_record_id
+            """,
+            (source,),
+        ).fetchall()
+        return [
+            SourceRecord(
+                source=row["source"],
+                source_record_id=row["source_record_id"],
+                name=row["name"],
+                address=row["address"],
+                city=row["city"],
+                region=row["region"],
+                postal_code=row["postal_code"],
+                country_code=(row["country_code"] or "US").strip(),
+                latitude=row["latitude"],
+                longitude=row["longitude"],
+                phone=row["phone_e164"],
+                website_url=row["website_url"],
+                source_status=row["source_status"],
+                source_updated_at=row["source_updated_at"],
+                primary_type_slug=row["primary_type_slug"],
+                classification_confidence=(
+                    float(row["classification_confidence"])
+                    if row["classification_confidence"] is not None
+                    else None
+                ),
+                category_evidence=row["category_evidence"] or {},
+                permitted_metadata=row["permitted_metadata"] or {},
+            )
+            for row in rows
+        ]
 
     def create_establishment(
         self, conn: psycopg.Connection, record: SourceRecord, data_quality_score: float

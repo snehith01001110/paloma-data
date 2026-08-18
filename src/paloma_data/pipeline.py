@@ -68,6 +68,40 @@ class Pipeline:
             return False
         return True
 
+    def reconcile_staged(self, source: str) -> dict[str, int]:
+        """Re-decide staged records that never joined an establishment.
+
+        Enrichment such as geocoding changes what can be decided about a record long after it was
+        first read. Re-reading the upstream source to act on that would be wasteful and, for a
+        source that publishes no coordinates, would discard the enrichment on the way back in.
+        """
+        counters = {"fetched": 0, "created": 0, "updated": 0, "unchanged": 0, "review": 0, "closed": 0}
+        with self.db.connection() as conn:
+            records = self.db.unlinked_staged_records(conn, source)
+            run_id = self.db.start_run(conn, source, "reconciliation")
+            conn.commit()
+            try:
+                for record in records:
+                    counters["fetched"] += 1
+                    if not self._in_scope(record):
+                        continue
+                    self._resolve_record(conn, record, counters)
+                    if counters["fetched"] % 250 == 0:
+                        _checkpoint_run(conn, run_id, counters)
+                        conn.commit()
+                _checkpoint_run(conn, run_id, counters)
+                conn.commit()
+                self.db.finish_run(conn, run_id, status="succeeded", counters=counters)
+                conn.commit()
+                return counters
+            except Exception as exc:
+                conn.rollback()
+                self.db.finish_run(
+                    conn, run_id, status="failed", counters=counters, error=str(exc)[:2000]
+                )
+                conn.commit()
+                raise
+
     def _process_record(self, conn, record: SourceRecord, counters: dict[str, int]) -> None:
         changed = self.db.stage_source_record(conn, record)
         linked_id = self.db.linked_establishment_id(conn, record.source, record.source_record_id)
@@ -87,6 +121,10 @@ class Pipeline:
                 counters["closed"] += 1
             return
 
+        self._resolve_record(conn, record, counters)
+
+    def _resolve_record(self, conn, record: SourceRecord, counters: dict[str, int]) -> None:
+        """Match, create, or queue an already staged record."""
         candidates = self.db.find_candidates(conn, record)
         decision = decide_match(record, candidates)
         if decision.action == "auto_match" and decision.candidate_id:

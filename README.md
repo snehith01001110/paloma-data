@@ -29,6 +29,8 @@ The statewide alcohol-license export is the authoritative California license bac
 
 GitHub-hosted runners may be rejected by ABC. The worker therefore uses the Supabase OIDC relay only to retrieve the exact official ABC-hosted export; ABC remains the source of truth.
 
+The export carries a full street address but no coordinates, and ingestion will not create an establishment it cannot place on a map. Unplaced ABC records are therefore geocoded before they are reconsidered; see **Geocoding** below.
+
 ### DataSF Registered Business Locations
 
 San Francisco business registrations provide stable local IDs, address/location evidence, and closure signals. Registered names are treated as **legal/registry-name evidence**, not assumed to be the current venue brand.
@@ -101,9 +103,29 @@ paloma-data enrich-web
 
 # Recompute field evidence/resolution without source network fetches
 paloma-data resolve-fields
+
+# Place records whose source published an address but no coordinates
+paloma-data geocode
+paloma-data geocode ca_abc
 ```
 
+Linking a staged record also supersedes any pending review for it, because linking is the answer to whatever question put it in the queue.
+
 `bootstrap` is migration-aware. Normal deployments skip already-complete initial backfills, but if ingestion-backed rows do not have the current resolver version it forces one complete three-source rebuild before resolving fields. Once all rows are current, normal skip behavior resumes.
+
+## Geocoding
+
+`_safe_to_create` requires coordinates, so a source that publishes none cannot introduce an establishment however authoritative it is. California ABC is exactly that case: its licence type is the strongest classification signal Paloma has, yet without a latitude every unmatched licence becomes a review item instead of a venue.
+
+Unplaced records are geocoded with the **US Census Bureau batch geocoder**, which is public, US-address specific, free, and needs no account or API key, so it adds no credential to manage and no per-call cost.
+
+- only an exact Census `Match` is accepted; a tie means several addresses fit and is not good enough to place a venue;
+- coordinates are stored beside the source data with `geocode_source`/`geocoded_at`, never presented as something the source published;
+- a re-ingest coalesces coordinates, so re-reading a source that publishes none does not erase what geocoding resolved;
+- failed attempts are recorded so an unresolvable address is not retried every run;
+- after geocoding, `reconcile_staged` re-decides only the affected staged records rather than re-reading the upstream source.
+
+Geocoding runs inside `bootstrap`, `rebuild-catalog`, `sync-government`, and `sync-all`.
 
 ## Matching
 

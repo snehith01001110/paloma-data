@@ -8,6 +8,7 @@ from paloma_data.adapters import CaliforniaABCAdapter, DataSFAdapter, OvertureAd
 from paloma_data.config import Settings
 from paloma_data.db import Database
 from paloma_data.field_resolution import FieldResolver, RESOLUTION_VERSION
+from paloma_data.geocoding import AddressGeocoder
 from paloma_data.pipeline import Pipeline
 from paloma_data.web_identity import OfficialWebEnricher
 
@@ -25,6 +26,40 @@ def _components() -> tuple[Settings, Pipeline]:
         allowed_countries=settings.allowed_countries,
     )
     return settings, pipeline
+
+
+def _geocode_and_reconcile(pipeline: Pipeline) -> dict[str, object]:
+    """Resolve addresses the sources left unplaced, then act on what that unlocked.
+
+    A record with no coordinates cannot become an establishment, so geocoding is the step that
+    lets an authoritative but unplaced source contribute a venue instead of a review item.
+    """
+    results: dict[str, object] = {}
+    for source in SOURCES:
+        geocoded = AddressGeocoder(pipeline.db).run(source)
+        if not geocoded["considered"]:
+            continue
+        results[source] = {"geocoded": geocoded}
+        if geocoded["matched"]:
+            results[source]["reconciled"] = pipeline.reconcile_staged(source)
+    return results
+
+
+@app.command()
+def geocode(
+    source: str = typer.Argument("", help="One source, or empty for every source"),
+) -> None:
+    """Geocode staged records missing coordinates, then re-decide the ones that were waiting."""
+    _, pipeline = _components()
+    if source:
+        geocoded = AddressGeocoder(pipeline.db).run(source)
+        results: dict[str, object] = {source: {"geocoded": geocoded}}
+        if geocoded["matched"]:
+            results[source]["reconciled"] = pipeline.reconcile_staged(source)
+    else:
+        results = _geocode_and_reconcile(pipeline)
+    results["field_resolution"] = FieldResolver(pipeline.db).refresh_and_resolve()
+    typer.echo(json.dumps(results, indent=2, sort_keys=True))
 
 
 @app.command()
@@ -46,6 +81,7 @@ def bootstrap() -> None:
         adapter = _adapter(source, settings)
         results[source] = pipeline.run(adapter.source, "full", adapter.backfill())
 
+    results["geocode"] = _geocode_and_reconcile(pipeline)
     results["field_resolution_before_web"] = FieldResolver(pipeline.db).refresh_and_resolve()
     results["official_web"] = OfficialWebEnricher(pipeline.db).run()
     results["field_resolution"] = FieldResolver(pipeline.db).refresh_and_resolve()
@@ -72,6 +108,7 @@ def rebuild_catalog() -> None:
     for source in SOURCES:
         adapter = _adapter(source, settings)
         results[source] = pipeline.run(adapter.source, "full", adapter.backfill())
+    results["geocode"] = _geocode_and_reconcile(pipeline)
     results["field_resolution_before_web"] = FieldResolver(pipeline.db).refresh_and_resolve()
     results["official_web"] = OfficialWebEnricher(pipeline.db).run()
     results["field_resolution"] = FieldResolver(pipeline.db).refresh_and_resolve()
@@ -98,6 +135,7 @@ def sync_government() -> None:
     for source in ("ca_abc", "datasf"):
         adapter = _adapter(source, settings)
         results[source] = pipeline.run(adapter.source, "incremental", adapter.incremental())
+    results["geocode"] = _geocode_and_reconcile(pipeline)
     results["field_resolution"] = FieldResolver(pipeline.db).refresh_and_resolve()
     typer.echo(json.dumps(results, indent=2, sort_keys=True))
 
@@ -110,6 +148,7 @@ def sync_all() -> None:
     for source in SOURCES:
         adapter = _adapter(source, settings)
         results[source] = pipeline.run(adapter.source, "incremental", adapter.incremental())
+    results["geocode"] = _geocode_and_reconcile(pipeline)
     results["field_resolution_before_web"] = FieldResolver(pipeline.db).refresh_and_resolve()
     results["official_web"] = OfficialWebEnricher(pipeline.db).run()
     results["field_resolution"] = FieldResolver(pipeline.db).refresh_and_resolve()
