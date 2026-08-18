@@ -1,0 +1,127 @@
+name: Probe FSQ OS catalog
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FSQ_CATALOG_URI: ${{ vars.FSQ_CATALOG_URI }}
+      FSQ_CATALOG_TOKEN: ${{ secrets.FSQ_CATALOG_TOKEN }}
+      FSQ_PLACES_TABLE: ${{ vars.FSQ_PLACES_TABLE }}
+      FSQ_CATALOG_WAREHOUSE: ${{ vars.FSQ_CATALOG_WAREHOUSE }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install bounded catalog client
+        run: pip install "pyiceberg>=0.9,<1" "pyarrow>=18,<21"
+
+      - name: Validate catalog and sample ten Bay Area places
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+
+          from pyiceberg.catalog import load_catalog
+          from pyiceberg.expressions import And, GreaterThanOrEqual, LessThanOrEqual
+
+
+          required_config = (
+              "FSQ_CATALOG_URI",
+              "FSQ_CATALOG_TOKEN",
+              "FSQ_PLACES_TABLE",
+              "FSQ_CATALOG_WAREHOUSE",
+          )
+          missing = [name for name in required_config if not os.environ.get(name)]
+          if missing:
+              raise SystemExit("Missing GitHub configuration: " + ", ".join(missing))
+
+          catalog = load_catalog(
+              "fsq",
+              **{
+                  "type": "rest",
+                  "warehouse": os.environ["FSQ_CATALOG_WAREHOUSE"],
+                  "uri": os.environ["FSQ_CATALOG_URI"],
+                  "token": os.environ["FSQ_CATALOG_TOKEN"],
+                  "header.content-type": "application/vnd.api+json",
+                  "rest-metrics-reporting-enabled": "false",
+              },
+          )
+          table = catalog.load_table(os.environ["FSQ_PLACES_TABLE"])
+          available = {field.name for field in table.schema().fields}
+          selected = [
+              name
+              for name in (
+                  "fsq_place_id",
+                  "name",
+                  "address",
+                  "locality",
+                  "region",
+                  "latitude",
+                  "longitude",
+                  "date_refreshed",
+                  "date_closed",
+                  "fsq_category_labels",
+              )
+              if name in available
+          ]
+          required_fields = {
+              "fsq_place_id",
+              "name",
+              "address",
+              "locality",
+              "region",
+              "latitude",
+              "longitude",
+              "fsq_category_labels",
+          }
+          missing_fields = sorted(required_fields - available)
+          if missing_fields:
+              raise SystemExit("FSQ schema is missing: " + ", ".join(missing_fields))
+
+          # Same conservative Bay Area envelope used by Paloma. The limit prevents a
+          # credential test from becoming an accidental bulk download or database write.
+          row_filter = And(
+              And(
+                  GreaterThanOrEqual("longitude", -123.2),
+                  LessThanOrEqual("longitude", -121.1),
+              ),
+              And(
+                  GreaterThanOrEqual("latitude", 36.8),
+                  LessThanOrEqual("latitude", 38.9),
+              ),
+          )
+          rows = table.scan(
+              row_filter=row_filter,
+              selected_fields=selected,
+              limit=10,
+          ).to_arrow().to_pylist()
+          if not rows:
+              raise SystemExit("Catalog connected, but the bounded Bay Area query returned zero rows")
+
+          print(
+              json.dumps(
+                  {
+                      "catalog_connected": True,
+                      "table": os.environ["FSQ_PLACES_TABLE"],
+                      "schema_field_count": len(available),
+                      "sample_count": len(rows),
+                      "sample": rows,
+                      "database_writes": False,
+                      "publication_mutated": False,
+                  },
+                  default=str,
+                  indent=2,
+                  sort_keys=True,
+              )
+          )
+          PY
