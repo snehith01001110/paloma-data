@@ -1,6 +1,20 @@
+import httpx
+
 from paloma_data.adapters.neighborhoods import OvertureNeighborhoodAdapter
 from paloma_data.adapters.osm import OSMAttributeAdapter
 from paloma_data.attribute_enrichment import CatalogPlace, _match_osm, _place_grid
+
+
+class _OverpassClient:
+    def __init__(self):
+        self.endpoints = []
+
+    def post(self, endpoint, **_):
+        self.endpoints.append(endpoint)
+        request = httpx.Request("POST", endpoint)
+        if len(self.endpoints) == 1:
+            return httpx.Response(504, request=request)
+        return httpx.Response(200, request=request, json={"elements": []})
 
 
 def test_osm_observation_extracts_hours_phone_and_objective_settings():
@@ -25,6 +39,17 @@ def test_osm_observation_extracts_hours_phone_and_objective_settings():
     assert observation.source_record_id == "node/123"
     assert observation.hours == "Mo-Su 16:00-02:00"
     assert observation.setting_slugs == ("garden", "outdoor_patio", "rooftop")
+
+
+def test_osm_snapshot_fails_over_after_a_transient_primary_error():
+    adapter = OSMAttributeAdapter("-123.2,36.8,-121.1,38.9")
+    client = _OverpassClient()
+
+    assert adapter._fetch_payload(client) == {"elements": []}
+    assert client.endpoints == [
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.private.coffee/api/interpreter",
+    ]
 
 
 def test_osm_attribute_match_requires_identity_and_nearby_location():

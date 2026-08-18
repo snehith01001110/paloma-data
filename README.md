@@ -107,7 +107,9 @@ Scheduled attribute coverage comes from bulk, updateable sources rather than per
 - Overture division polygons supply a conservative Bay Area neighborhood fallback where a named
   neighborhood polygon exists.
 - OpenStreetMap supplies phone, `opening_hours`, and objective setting tags only after a strict match
-  to an existing canonical candidate. It can never create a Paloma venue.
+  to an existing canonical candidate. It can never create a Paloma venue. The weekly bulk query
+  fails over between the public global Overpass instances listed by the OSM project so one transient
+  provider error does not erase the snapshot.
 - Foursquare rich fields may supply hours, price, and outdoor seating when the configured licensed
   table includes those columns. The open-source FSQ table does not provide price coverage, so price
   remains `NULL` rather than being guessed.

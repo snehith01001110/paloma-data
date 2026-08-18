@@ -27,6 +27,12 @@ class OSMAttributeAdapter:
     """Fetch one bounded OpenStreetMap attribute snapshot without creating venues."""
 
     source = "osm"
+    # The OSM wiki lists these as global public instances. One weekly bounded query is far below
+    # their published usage limits; fail over instead of turning a transient 504 into zero hours.
+    _FALLBACK_ENDPOINTS = (
+        "https://overpass.private.coffee/api/interpreter",
+        "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+    )
 
     def __init__(
         self,
@@ -39,15 +45,30 @@ class OSMAttributeAdapter:
     def observations(self) -> Iterator[OSMAttributeObservation]:
         with httpx.Client(
             timeout=httpx.Timeout(240.0, connect=20.0),
-            headers={"User-Agent": "paloma-data/0.3 (catalog attributes)"},
+            headers={
+                "User-Agent": "paloma-data/0.3 (weekly catalog attributes; github.com/snehith01001110/paloma-data)"
+            },
         ) as client:
-            response = client.post(self.endpoint, data={"data": self._query()})
-            response.raise_for_status()
-        payload = response.json()
+            payload = self._fetch_payload(client)
         for element in payload.get("elements") or []:
             observation = self._to_observation(element)
             if observation is not None:
                 yield observation
+
+    def _fetch_payload(self, client: httpx.Client) -> dict[str, Any]:
+        errors: list[tuple[str, Exception]] = []
+        for endpoint in dict.fromkeys((self.endpoint, *self._FALLBACK_ENDPOINTS)):
+            try:
+                response = client.post(endpoint, data={"data": self._query()})
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, dict):
+                    raise ValueError("Overpass response is not a JSON object")
+                return payload
+            except (httpx.HTTPError, ValueError) as exc:
+                errors.append((endpoint, exc))
+        detail = "; ".join(f"{endpoint}: {error}" for endpoint, error in errors)
+        raise RuntimeError(f"all configured Overpass instances failed: {detail}")
 
     def _query(self) -> str:
         west, south, east, north = self.bbox.split(",")
