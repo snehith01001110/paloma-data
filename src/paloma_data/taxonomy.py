@@ -179,6 +179,29 @@ def classify_overture(
             "overture_taxonomy:brewery+restaurant",
         )
 
+    # A narrowly explicit consumer-access phrase in the business name can refine a compatible
+    # generic producer category when the taxonomy itself is not already more specific. This is
+    # intentionally one-way: "Brewpub" may refine Brewery, but a generic "Brewing"/"Winery"
+    # name never creates public-access evidence.
+    name_classification = classify_name(name)
+    name_refinements = {
+        "brewery": frozenset({"brewpub", "taproom"}),
+        "winery": frozenset({"tasting_room"}),
+        "distillery": frozenset({"tasting_room"}),
+    }
+    for generic_type, allowed_refinements in name_refinements.items():
+        if (
+            generic_type in normalized_tokens
+            and name_classification.primary_type_slug in allowed_refinements
+        ):
+            refined = str(name_classification.primary_type_slug)
+            return Classification(
+                refined,
+                min(0.94, max(0.0, existence), name_classification.confidence),
+                True,
+                f"overture_taxonomy:{generic_type}+name_{refined}",
+            )
+
     for token, slug in _OVERTURE_EXACT_TYPES.items():
         if token in normalized_tokens:
             # Overture is a strong corroboration source, but v1 deliberately caps it below the

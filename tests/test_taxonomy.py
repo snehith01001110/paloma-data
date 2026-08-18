@@ -42,3 +42,34 @@ def test_bare_manufacturer_category_remains_generic():
     )
 
     assert classification.primary_type_slug == "winery"
+
+
+def test_explicit_brewpub_name_refines_generic_brewery_category():
+    classification = classify_overture(
+        "Lost Marbles Brewpub",
+        {"dining_and_drinking", "brewery"},
+        0.99,
+    )
+
+    assert classification.primary_type_slug == "brewpub"
+    assert classification.reason == "overture_taxonomy:brewery+name_brewpub"
+
+
+def test_generic_brewing_name_does_not_refine_brewery_access():
+    classification = classify_overture(
+        "Standard Deviant Brewing",
+        {"dining_and_drinking", "brewery"},
+        0.99,
+    )
+
+    assert classification.primary_type_slug == "brewery"
+
+
+def test_explicit_tasting_room_name_refines_generic_winery_category():
+    classification = classify_overture(
+        "Hestan Vineyards Tasting Room",
+        {"dining_and_drinking", "winery"},
+        0.99,
+    )
+
+    assert classification.primary_type_slug == "tasting_room"

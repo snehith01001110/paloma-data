@@ -236,5 +236,6 @@ ruff check .
 pytest -q
 ```
 
-Decision version: `v4` (v3 protections plus mandatory manual access evidence for generic
-manufacturer identities). The additive database architecture remains catalog v2.
+Decision version: `v5` (v4 protections plus narrow name/category refinement for explicit
+brewpub, taproom, and tasting-room identities). The additive database architecture remains
+catalog v2.

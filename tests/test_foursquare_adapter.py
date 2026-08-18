@@ -309,3 +309,25 @@ def test_fsq_brewery_restaurant_becomes_access_gated_brewpub_candidate():
     assert record.primary_type_slug == "brewpub"
     assert record.consumer_facing is True
     assert record.public_access == "walk_in"
+
+
+def test_fsq_explicit_brewpub_name_refines_generic_brewery_category():
+    record = _adapter()._to_record(
+        {
+            "fsq_place_id": "lost-marbles",
+            "name": "Lost Marbles Brewpub",
+            "latitude": 37.782,
+            "longitude": -122.467,
+            "address": "823 Clement St",
+            "locality": "San Francisco",
+            "region": "CA",
+            "country": "US",
+            "date_refreshed": "2026-08-10T00:00:00Z",
+            "fsq_category_labels": ["Dining and Drinking > Brewery"],
+            "unresolved_flags": [],
+        }
+    )
+
+    assert record is not None
+    assert record.primary_type_slug == "brewpub"
+    assert record.category_evidence["reason"] == "fsq_taxonomy:brewery+name_brewpub"

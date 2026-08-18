@@ -22,10 +22,10 @@ Reviewed 2026-08-18. Primary sources:
 
 ## Decision
 
-Automated publication semantics are versioned as `v4`. This revision retains the v3
-parent-category, lineage, and neighborhood protections and additionally prevents generic
-brewery/winery/distillery identities from treating provider business hours as proof of public
-access.
+Automated publication semantics are versioned as `v5`. This revision retains the v4 protections
+and narrowly permits an explicit `brewpub`, `taproom`, or `tasting room` name to refine a
+compatible generic producer category. Generic `brewery`, `winery`, and `distillery` names remain
+access-unknown.
 
 Use California ABC for exact license state/privileges and Apache-2.0 FSQ OS for durable bulk
 discovery/name/address plus phone/website observations. Their complementary facts may verify only direct
