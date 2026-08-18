@@ -23,11 +23,16 @@ Reviewed 2026-08-18. Primary sources:
 ## Decision
 
 Use California ABC for exact license state/privileges and Apache-2.0 FSQ OS for durable bulk
-discovery/name/address/phone/website evidence. Their complementary facts may verify only direct
+discovery/name/address plus phone/website observations. Their complementary facts may verify only direct
 public-premises bars and explicit Type 75 brewpubs. Restaurant-license bars and every manufacturer
 premise require a manual attestation or a data agreement that expressly permits server retention.
 Use municipal polygons, OSM, DataSF, and Overture only as field-specific enrichment or
 corroboration.
+
+FSQ OS `date_refreshed` does not assert field-level freshness. Open-evidence rows therefore omit a
+phone or website unless a second durable source with independent upstream lineage agrees. Civic
+neighborhood matches within 10 meters of a polygon edge are also omitted rather than risk a label
+caused by coordinate noise.
 
 Do not use a state license as sufficient publication evidence. It proves a licensed premise, not a
 current consumer-facing brand, ordinary walk-in access, or even the existence of a tasting room.

@@ -122,3 +122,42 @@ def test_places_api_rejects_a_success_response_without_identity_fields():
 
     with pytest.raises(ValueError, match="lacked required identity fields"):
         adapter.details("broken")
+
+
+def test_places_api_cannot_verify_a_restaurant_with_secondary_bar_category():
+    adapter = FoursquarePlacesAPI(
+        "test-key",
+        storage_policy="contract",
+        client=httpx.Client(transport=httpx.MockTransport(lambda _: httpx.Response(500))),
+    )
+
+    record = adapter._to_record(
+        {
+            "fsq_place_id": "restaurant-bar",
+            "name": "Osha Thai Restaurant & Lounge",
+            "latitude": 37.79,
+            "longitude": -122.39,
+            "location": {
+                "address": "4 Embarcadero Ctr",
+                "locality": "San Francisco",
+                "region": "CA",
+                "country": "US",
+            },
+            "categories": [
+                {
+                    "id": "thai",
+                    "label": "Dining and Drinking > Restaurant > Asian Restaurant > Thai Restaurant",
+                },
+                {
+                    "id": "cocktails",
+                    "label": "Dining and Drinking > Bar > Cocktail Bar",
+                },
+            ],
+            "hours": {"friday": [["16:00", "02:00"]]},
+            "veracity_rating": 5,
+        }
+    )
+
+    assert record is not None
+    assert record.consumer_facing is False
+    assert record.public_access == "unknown"

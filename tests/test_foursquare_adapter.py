@@ -158,7 +158,7 @@ def test_fsq_generic_bar_category_requires_consumer_name_signal():
     assert "consumer_identity_conflict" in record.quality_flags
 
 
-def test_fsq_bar_name_can_resolve_restaurant_category_conflict():
+def test_fsq_bar_name_cannot_override_restaurant_category_conflict():
     record = _adapter()._to_record(
         {
             "fsq_place_id": "bar123",
@@ -179,5 +179,107 @@ def test_fsq_bar_name_can_resolve_restaurant_category_conflict():
     )
 
     assert record is not None
+    assert record.consumer_facing is False
+    assert record.public_access == "unknown"
+    assert "consumer_identity_conflict" in record.quality_flags
+
+
+def test_fsq_supermarket_with_secondary_wine_bar_category_is_not_a_candidate():
+    record = _adapter()._to_record(
+        {
+            "fsq_place_id": "cal-mart",
+            "name": "Cal-Mart",
+            "latitude": 37.786,
+            "longitude": -122.452,
+            "address": "3585 California St",
+            "locality": "San Francisco",
+            "region": "CA",
+            "country": "US",
+            "date_refreshed": "2026-08-10T00:00:00Z",
+            "fsq_category_labels": [
+                "Retail > Food and Beverage Retail > Supermarket",
+                "Dining and Drinking > Bar > Wine Bar",
+            ],
+            "unresolved_flags": [],
+        }
+    )
+
+    assert record is not None
+    assert record.primary_type_slug == "wine_bar"
+    assert record.consumer_facing is False
+    assert record.public_access == "unknown"
+    assert "consumer_identity_conflict" in record.quality_flags
+
+
+def test_fsq_parent_hotel_record_with_bar_category_is_not_a_candidate():
+    record = _adapter()._to_record(
+        {
+            "fsq_place_id": "hotel-parent",
+            "name": "InterContinental Bar @ InterContinental San Francisco",
+            "latitude": 37.782,
+            "longitude": -122.404,
+            "address": "888 Howard St",
+            "locality": "San Francisco",
+            "region": "CA",
+            "country": "US",
+            "date_refreshed": "2026-08-10T00:00:00Z",
+            "fsq_category_labels": [
+                "Dining and Drinking > Bar > Hotel Bar",
+                "Travel and Transportation > Lodging > Hostel",
+                "Sports and Recreation > Gym and Studio > Gym",
+            ],
+            "unresolved_flags": [],
+        }
+    )
+
+    assert record is not None
+    assert record.consumer_facing is False
+    assert "consumer_identity_conflict" in record.quality_flags
+
+
+def test_fsq_standalone_hotel_bar_remains_a_candidate():
+    record = _adapter()._to_record(
+        {
+            "fsq_place_id": "hotel-bar",
+            "name": "Top of the Mark",
+            "latitude": 37.792,
+            "longitude": -122.410,
+            "address": "999 California St",
+            "locality": "San Francisco",
+            "region": "CA",
+            "country": "US",
+            "date_refreshed": "2026-08-10T00:00:00Z",
+            "fsq_category_labels": ["Dining and Drinking > Bar > Hotel Bar"],
+            "unresolved_flags": [],
+        }
+    )
+
+    assert record is not None
     assert record.consumer_facing is True
     assert record.public_access == "walk_in"
+
+
+def test_fsq_social_club_with_secondary_bar_category_is_not_a_candidate():
+    record = _adapter()._to_record(
+        {
+            "fsq_place_id": "social-club",
+            "name": "Power Exchange",
+            "latitude": 37.783,
+            "longitude": -122.412,
+            "address": "220 Jones St",
+            "locality": "San Francisco",
+            "region": "CA",
+            "country": "US",
+            "date_refreshed": "2026-08-10T00:00:00Z",
+            "fsq_category_labels": [
+                "Arts and Entertainment > Night Club",
+                "Dining and Drinking > Bar",
+                "Community and Government > Social Club",
+            ],
+            "unresolved_flags": [],
+        }
+    )
+
+    assert record is not None
+    assert record.consumer_facing is False
+    assert "consumer_identity_conflict" in record.quality_flags

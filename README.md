@@ -29,8 +29,10 @@ CLI no longer calls that path, and code pushes no longer trigger data rebuilds.
 
 `catalog.py` uses hard gates, not a composite quality score. A candidate is publishable only when:
 
-1. A current FSQ OS record identifies a Paloma consumer POI. Generic manufacturer categories
-   remain private until the richer access checks below pass.
+1. A current FSQ OS record identifies a Paloma consumer POI. Rows that also describe a
+   restaurant, cafe, retail store, lodging property, gym, office, social club, or other parent
+   business cannot anchor a candidate merely because FSQ attached a secondary bar category.
+   Generic manufacturer categories remain private until the richer access checks below pass.
 2. Its FSQ `date_refreshed` is no more than 365 days old and no closure/private/duplicate flag is
    present.
 3. A conservatively linked California ABC record has raw status exactly `ACTIVE` and is a license,
@@ -72,9 +74,11 @@ snapshot was fully consumed successfully; a download failure can never cause mas
 ## Consumer data and licensing
 
 FSQ Open Source Places is the preferred discovery layer. It is Apache-2.0, has stable place IDs,
-phone and website fields, quality flags, refresh/closure dates, and monthly add/update/remove/merge
-deltas. The current implementation performs a geography-bounded complete snapshot; stable hashes
-and `last_seen_run_id` provide idempotency and safe absence detection.
+phone and website observations, quality flags, refresh/closure dates, and monthly
+add/update/remove/merge deltas. Its `date_refreshed` is place-level rather than field-level, so an
+open-evidence publication retains phone/website only when an independent durable source agrees.
+The current implementation performs a geography-bounded complete snapshot; stable hashes and
+`last_seen_run_id` provide idempotency and safe absence detection.
 
 Hours, price, provider veracity, and richer attributes require Foursquare Premium/API access. The
 current Foursquare Usage Guidelines allow self-service pay-as-you-go/sandbox customers to retain
@@ -94,9 +98,10 @@ and use with a non-Google map. A data source that cannot legally back Paloma's p
 is not part of this pipeline.
 
 The current Places API does not expose neighborhoods. San Francisco labels therefore come from
-the public-domain SF Find polygon feed and a deterministic point-in-polygon join. Other cities
-remain `NULL` until a reviewed civic boundary feed is configured; the pipeline never guesses a
-neighborhood from an address.
+the public-domain SF Find polygon feed and a deterministic point-in-polygon join. A point within
+10 meters of a polygon edge remains `NULL` because ordinary coordinate noise can put a storefront
+on the wrong side of a neighborhood boundary. Other cities remain `NULL` until a reviewed civic
+boundary feed is configured; the pipeline never guesses a neighborhood from an address.
 
 ## Field contract
 
@@ -114,8 +119,8 @@ Optional fields remain `NULL` when trustworthy evidence is unavailable:
 
 | Field | Preferred source | Fallback | Never do |
 |---|---|---|---|
-| phone | FSQ OS / specifically licensed provider | manual owner attestation | infer or copy a nearby business |
-| website | FSQ OS / specifically licensed provider | manual owner attestation | accept an aggregator profile as official |
+| phone | specifically licensed provider | two independent durable sources/manual | trust one POI observation as field-current |
+| website | specifically licensed provider | two independent durable sources/manual | accept one POI/aggregator profile as official |
 | neighborhood | reviewed civic polygon | reviewed division polygon | free-text guess from address |
 | hours | contracted FSQ | manual owner attestation | fabricate a schedule |
 | price | contracted FSQ/manual | none | infer from type or neighborhood |

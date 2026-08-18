@@ -8,6 +8,7 @@ import httpx
 
 from paloma_data.adapters.foursquare import (
     _category_tokens,
+    _consumer_identity_is_supported,
     _datetime_or_none,
     _first_text,
     _hours,
@@ -18,7 +19,7 @@ from paloma_data.adapters.foursquare import (
     _text,
 )
 from paloma_data.models import SourceRecord
-from paloma_data.taxonomy import classify_overture, is_consumer_facing_type
+from paloma_data.taxonomy import classify_overture
 
 
 PLACES_API_VERSION = "2025-06-17"
@@ -179,7 +180,12 @@ class FoursquarePlacesAPI:
         hard_closed = bool(
             {"closed", "delete", "doesnt_exist", "does_not_exist"} & set(flags)
         )
-        consumer_facing = is_consumer_facing_type(classification.primary_type_slug)
+        consumer_facing = _consumer_identity_is_supported(
+            name,
+            _category_tokens(category_labels),
+            classification.primary_type_slug,
+            classification.reason,
+        )
         private = bool({"privatevenue", "private_venue"} & set(flags))
         attributes = payload.get("attributes")
         hours = _api_hours(payload.get("hours"))

@@ -16,6 +16,9 @@ from paloma_data.models import SourceRecord
 from paloma_data.normalizers import normalize_address, normalize_name
 
 
+NEIGHBORHOOD_BOUNDARY_GUARD_METERS = 10
+
+
 class CatalogRepository:
     def __init__(self, db: Database) -> None:
         self.db = db
@@ -455,7 +458,13 @@ class CatalogRepository:
         # persist their Apache/public-record snapshot even though they never touch the app table.
         if mutate_candidate and decision.state == "verified" and not persist_snapshot:
             raise ValueError("A verified candidate cannot be mutated without its snapshot")
-        snapshot = decision.resolved if decision.state == "verified" and persist_snapshot else {}
+        snapshot = (
+            dict(decision.resolved)
+            if decision.state == "verified" and persist_snapshot
+            else {}
+        )
+        if snapshot:
+            self._attach_civic_neighborhood(conn, snapshot)
         conn.execute(
             """
             insert into ingest.catalog_evaluations (
@@ -605,7 +614,11 @@ class CatalogRepository:
     ) -> dict[str, Any] | None:
         row = conn.execute(
             """
-            select name, source, authority::float
+            select name, source, authority::float,
+                   ST_Distance(
+                     ST_Boundary(boundary)::geography,
+                     ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography
+                   )::float as boundary_distance_m
             from ingest.neighborhood_boundaries
             where retired_at is null
               and lower(jurisdiction) = lower(%s)
@@ -613,12 +626,47 @@ class CatalogRepository:
                 boundary,
                 ST_SetSRID(ST_MakePoint(%s, %s), 4326)
               )
+              and ST_Distance(
+                ST_Boundary(boundary)::geography,
+                ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography
+              ) >= %s
             order by authority desc, ST_Area(boundary::geography), source, source_record_id
             limit 1
             """,
-            (city, longitude, latitude),
+            (
+                longitude,
+                latitude,
+                city,
+                longitude,
+                latitude,
+                longitude,
+                latitude,
+                NEIGHBORHOOD_BOUNDARY_GUARD_METERS,
+            ),
         ).fetchone()
         return dict(row) if row else None
+
+    def _attach_civic_neighborhood(
+        self, conn: psycopg.Connection, resolved: dict[str, Any]
+    ) -> bool:
+        if resolved.get("neighborhood"):
+            return False
+        neighborhood = self.neighborhood_at(
+            conn,
+            city=str(resolved["city"]),
+            latitude=float(resolved["latitude"]),
+            longitude=float(resolved["longitude"]),
+        )
+        if not neighborhood:
+            return False
+        field_sources = dict(resolved.get("field_sources") or {})
+        field_confidences = dict(resolved.get("field_confidences") or {})
+        resolved["neighborhood"] = neighborhood["name"]
+        field_sources["neighborhood"] = neighborhood["source"]
+        field_confidences["neighborhood"] = neighborhood["authority"]
+        resolved["field_sources"] = field_sources
+        resolved["field_confidences"] = field_confidences
+        return True
 
     def materialize(self, conn: psycopg.Connection, candidate_id: str) -> bool:
         candidate = conn.execute(
@@ -637,27 +685,17 @@ class CatalogRepository:
         resolved = dict(candidate["resolved_snapshot"] or {})
         field_sources = dict(resolved.get("field_sources") or {})
         field_confidences = dict(resolved.get("field_confidences") or {})
-        if not resolved.get("neighborhood"):
-            neighborhood = self.neighborhood_at(
-                conn,
-                city=str(resolved["city"]),
-                latitude=float(resolved["latitude"]),
-                longitude=float(resolved["longitude"]),
+        if self._attach_civic_neighborhood(conn, resolved):
+            field_sources = dict(resolved.get("field_sources") or {})
+            field_confidences = dict(resolved.get("field_confidences") or {})
+            conn.execute(
+                """
+                update ingest.catalog_candidates
+                set resolved_snapshot = %s::jsonb, updated_at = now()
+                where id = %s::uuid
+                """,
+                (json.dumps(resolved, sort_keys=True), candidate_id),
             )
-            if neighborhood:
-                resolved["neighborhood"] = neighborhood["name"]
-                field_sources["neighborhood"] = neighborhood["source"]
-                field_confidences["neighborhood"] = neighborhood["authority"]
-                resolved["field_sources"] = field_sources
-                resolved["field_confidences"] = field_confidences
-                conn.execute(
-                    """
-                    update ingest.catalog_candidates
-                    set resolved_snapshot = %s::jsonb, updated_at = now()
-                    where id = %s::uuid
-                    """,
-                    (json.dumps(resolved, sort_keys=True), candidate_id),
-                )
         type_row = conn.execute(
             "select id from public.primary_types where slug = %s",
             (resolved.get("primary_type_slug"),),

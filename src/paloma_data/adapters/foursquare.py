@@ -9,6 +9,7 @@ from typing import Any
 from paloma_data.adapters.overture import _validate_bbox
 from paloma_data.models import SourceRecord
 from paloma_data.taxonomy import (
+    BAR_TYPES,
     classify_name,
     classify_overture,
     is_consumer_facing_type,
@@ -53,19 +54,53 @@ _FSQ_REQUIRED_FIELDS = frozenset(
 
 FSQ_RECENCY_DAYS = 365
 
-_CONFLICTING_CONSUMER_IDENTITIES = frozenset(
+# These categories describe a different primary consumer place.  A secondary bar category on
+# one of these rows usually means "alcohol is available here", not "this is a distinct bar".
+# Paloma deliberately drops the row as an anchor and accepts the resulting coverage loss.  A
+# real subvenue (for example, a named hotel bar) should have its own FSQ place without the parent
+# hotel/restaurant/retail category attached.
+_HARD_CONFLICTING_CONSUMER_IDENTITIES = frozenset(
     {
+        "apartment_or_condo",
         "cafe",
         "caf",
         "cafe_coffee_and_tea_house",
         "coffee_shop",
         "comedy_club",
+        "country_club",
+        "fitness_center",
+        "food_court",
+        "gym",
+        "gym_and_studio",
         "harbor_or_marina",
+        "hostel",
+        "lodging",
+        "motel",
         "office",
         "performing_arts_venue",
+        "residential_building",
+        "residential_building_or_home",
         "restaurant",
+        "social_club",
         "tech_startup",
         "theater",
+    }
+)
+
+# Retail/manufacturer combinations can represent legitimate tasting rooms and therefore remain
+# private manufacturer candidates subject to the hours/manual-access gate.  Retail mixed with a
+# bar category is not safe: supermarkets, bottle shops, and liquor stores commonly receive a
+# secondary wine/beer/bar category even though they are not on-premise drinking destinations.
+_BAR_RETAIL_CONFLICTS = frozenset(
+    {
+        "convenience_store",
+        "food_and_beverage_retail",
+        "grocery_store",
+        "liquor_store",
+        "retail",
+        "shopping",
+        "supermarket",
+        "wine_store",
     }
 )
 
@@ -252,20 +287,37 @@ def _consumer_identity_is_supported(
 ) -> bool:
     """Reject category leakage before it becomes a private catalog candidate.
 
-    FSQ can attach a secondary ``Bar`` category to restaurants, coffee shops, offices,
-    entertainment venues, and even a marina. Those rows remain available as source evidence,
-    but they cannot anchor a Paloma candidate unless the consumer-facing name independently
-    signals a drinking establishment. A generic Bar category receives the same treatment.
+    FSQ can attach a secondary ``Bar`` category to restaurants, supermarkets, hotels, offices,
+    and entertainment venues. Those rows remain available as source evidence but cannot anchor a
+    Paloma candidate. A generic Bar category additionally requires a consumer-facing name signal.
     """
     if not is_consumer_facing_type(primary_type_slug):
+        return False
+    if _has_conflicting_category(
+        category_tokens, _HARD_CONFLICTING_CONSUMER_IDENTITIES
+    ):
+        return False
+    if primary_type_slug in BAR_TYPES and _has_conflicting_category(
+        category_tokens, _BAR_RETAIL_CONFLICTS
+    ):
         return False
     name_signal = classify_name(name).primary_type_slug
     name_is_consumer_facing = is_consumer_facing_type(name_signal)
     if classification_reason == "overture_generic_bar" and not name_is_consumer_facing:
         return False
-    if category_tokens & _CONFLICTING_CONSUMER_IDENTITIES:
-        return name_is_consumer_facing
     return True
+
+
+def _has_conflicting_category(
+    category_tokens: set[str], families: frozenset[str]
+) -> bool:
+    """Match both full breadcrumbs and API leaf labels such as ``Thai Restaurant``."""
+    for token in category_tokens:
+        if token in families:
+            return True
+        if any(token.endswith(f"_{family}") for family in families):
+            return True
+    return False
 
 
 def _quality_flags(value: Any) -> tuple[str, ...]:

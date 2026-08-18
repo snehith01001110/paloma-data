@@ -394,21 +394,27 @@ def _resolve_fields(
     city = str(snapshot.get("city") or anchor.city).strip()
     country = str(snapshot.get("country_code") or anchor.country_code or "US").strip()
 
-    phone = snapshot.get("phone") or anchor.phone
-    website = snapshot.get("website_url") or anchor.website_url
-    neighborhood = snapshot.get("neighborhood") or anchor.neighborhood
+    if verification.verification_tier == "open_evidence":
+        # FSQ's date_refreshed means at least one reference for the place was refreshed; it is
+        # not field-level proof that a phone number or website is still current.  Keep optional
+        # contact data only when an independent durable source agrees exactly.
+        phone, phone_source = _corroborated_phone(records, country)
+        website, website_source = _corroborated_website(records)
+        # Neighborhoods are attached later from a reviewed civic polygon.  Do not preserve an
+        # old free-text POI label as if it came from that boundary source.
+        neighborhood = None
+    else:
+        phone = snapshot.get("phone")
+        phone_source = verification.verifier if phone else None
+        website = snapshot.get("website_url")
+        website_source = verification.verifier if website else None
+        neighborhood = snapshot.get("neighborhood")
     hours = snapshot.get("hours") if "hours" in snapshot else anchor.hours
     price = snapshot.get("price_level") if "price_level" in snapshot else anchor.price_level
     settings = set(anchor.setting_slugs)
     settings.update(snapshot.get("setting_slugs") or ())
     for record in records:
         settings.update(record.setting_slugs)
-        if not phone and record.source in {"fsq", "osm"}:
-            phone = record.phone
-        if not website and record.source in {"fsq", "osm"}:
-            website = record.website_url
-        if not neighborhood and record.source in {"datasf", "fsq"}:
-            neighborhood = record.neighborhood
 
     field_source = (
         anchor.source
@@ -439,14 +445,64 @@ def _resolve_fields(
             "type": field_source,
             "address": field_source,
             "location": field_source,
-            "phone": field_source if snapshot.get("phone") else "fsq",
-            "website": field_source if snapshot.get("website_url") else "fsq",
+            "phone": phone_source,
+            "website": website_source,
             "hours": field_source if hours is not None else None,
             "price": field_source if price is not None else None,
             "neighborhood": field_source if neighborhood is not None else None,
             "settings": field_source if settings else None,
         },
     }
+
+
+def _corroborated_phone(
+    records: list[SourceRecord], country_code: str
+) -> tuple[str | None, str | None]:
+    observations: list[tuple[str, SourceRecord, frozenset[str]]] = []
+    for record in records:
+        normalized = normalize_phone(record.phone, country_code)
+        if normalized:
+            observations.append((normalized, record, _origins(record)))
+    return _independently_agreed_value(observations)
+
+
+def _corroborated_website(
+    records: list[SourceRecord],
+) -> tuple[str | None, str | None]:
+    observations: list[tuple[str, SourceRecord, frozenset[str]]] = []
+    display_values: dict[tuple[str, str], str] = {}
+    for record in records:
+        normalized = normalize_url(record.website_url)
+        host = website_host(normalized)
+        if normalized and host:
+            observations.append((host, record, _origins(record)))
+            display_values[(host, record.source)] = normalized
+    value, source = _independently_agreed_value(observations)
+    if not value or not source:
+        return None, None
+    matching = sorted(
+        normalized
+        for (host, _), normalized in display_values.items()
+        if host == value
+    )
+    return (matching[0], source) if matching else (None, None)
+
+
+def _independently_agreed_value(
+    observations: list[tuple[str, SourceRecord, frozenset[str]]],
+) -> tuple[str | None, str | None]:
+    """Require equal values from two records with non-overlapping upstream lineage."""
+    for index, (value, left, left_origins) in enumerate(observations):
+        for other_value, right, right_origins in observations[index + 1 :]:
+            if value != other_value or left_origins & right_origins:
+                continue
+            sources = "+".join(sorted({left.source, right.source}))
+            return value, sources
+    return None, None
+
+
+def _origins(record: SourceRecord) -> frozenset[str]:
+    return frozenset(record.origin_keys or (record.source,))
 
 
 def _open_evidence_verification(
