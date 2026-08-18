@@ -3,298 +3,534 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Paloma Data</title>
-  <meta name="description" content="Live Paloma establishment catalog health." />
+  <title>Paloma catalog operations</title>
+  <meta name="description" content="Live operational health for Paloma's Bay Area venue catalog." />
   <style>
-    :root{color-scheme:light;--bg:#f6f6f3;--panel:#fff;--text:#171716;--muted:#777771;--faint:#a2a29b;--line:#e5e5df;--ok:#2f7752;--ok-soft:#e8f3ed;--warn:#9a681f;--warn-soft:#faf0df;--run:#4267ad;--run-soft:#eaf0fb;--bad:#a7443d;--bad-soft:#fbeceb;--drop:#ebebe5}
-    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}button,input{font:inherit;color:inherit}button{cursor:pointer}main{width:min(1000px,calc(100% - 28px));margin:0 auto;padding:34px 0 64px}header{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:16px}h1{margin:0;font-size:clamp(28px,5vw,40px);letter-spacing:-.045em}h2{margin:0;font-size:15px}.subtitle{margin:6px 0 0;color:var(--muted)}.updated{color:var(--muted);font-size:12px;white-space:nowrap}.panel{background:var(--panel);border:1px solid var(--line);border-radius:15px}.error{display:none;margin-bottom:12px;padding:11px 13px;color:var(--bad);background:var(--bad-soft);border:1px solid #efc9c6;border-radius:11px}
-    .section-head{display:flex;align-items:baseline;justify-content:space-between;gap:14px;margin:26px 0 9px}.section-head p{margin:0;color:var(--muted);font-size:11px}
+    :root {
+      color-scheme: light;
+      --ink: #1f211d;
+      --muted: #6d7068;
+      --faint: #969990;
+      --canvas: #f4f2ec;
+      --card: #fffefa;
+      --line: #deddd5;
+      --green: #28704d;
+      --green-bg: #e7f2eb;
+      --amber: #93631d;
+      --amber-bg: #f8edd9;
+      --red: #a2443e;
+      --red-bg: #f9e9e7;
+      --blue: #405f9e;
+      --blue-bg: #e8eef9;
+      --slate: #535a66;
+      --slate-bg: #eceef1;
+      --shadow: 0 1px 1px rgba(22, 24, 20, .03), 0 12px 35px rgba(32, 33, 28, .04);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--canvas);
+      font: 14px/1.45 Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    button, input, select { color: inherit; font: inherit; }
+    button { cursor: pointer; }
+    .shell { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 34px 0 70px; }
+    header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 18px; }
+    .eyebrow { color: var(--green); font-size: 11px; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
+    h1 { margin: 3px 0 0; font-size: clamp(29px, 5vw, 44px); line-height: 1; letter-spacing: -.048em; }
+    .header-meta { color: var(--muted); font-size: 12px; text-align: right; }
+    .header-meta strong { display: block; color: var(--ink); font-size: 13px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); }
+    .statusbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 13px 16px; margin-bottom: 10px; }
+    .status-copy { display: flex; align-items: center; gap: 11px; min-width: 0; }
+    .status-dot { width: 10px; height: 10px; flex: 0 0 auto; border-radius: 999px; background: var(--green); }
+    .status-dot.running { background: var(--blue); animation: pulse 1.35s ease-in-out infinite; }
+    .status-dot.failed { background: var(--red); }
+    @keyframes pulse { 50% { opacity: .28; } }
+    .status-copy strong, .status-copy span { display: block; }
+    .status-copy span { margin-top: 1px; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .status-aside { flex: 0 0 auto; color: var(--muted); font-size: 11px; }
+    .error { display: none; margin-bottom: 10px; padding: 12px 15px; color: var(--red); background: var(--red-bg); border: 1px solid #eac8c4; border-radius: 12px; }
 
-    /* run banner */
-    .runbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 17px;margin-bottom:10px}.runstate{display:flex;align-items:center;gap:10px;min-width:0}.dot{width:9px;height:9px;border-radius:50%;background:var(--ok);flex:0 0 auto}.dot.running{background:var(--run);animation:pulse 1.4s ease-in-out infinite}.dot.failed{background:var(--bad)}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}.runcopy{min-width:0}.runcopy strong{display:block}.runcopy span{display:block;color:var(--muted);font-size:11px;margin-top:2px}.runsummary{color:var(--muted);font-size:11px;white-space:nowrap}
+    .hero { display: grid; grid-template-columns: 1.18fr .82fr; overflow: hidden; }
+    .hero-main { padding: clamp(24px, 4vw, 40px); }
+    .hero-main h2 { max-width: 680px; margin: 0; font-size: clamp(25px, 4vw, 40px); line-height: 1.08; letter-spacing: -.042em; }
+    .hero-main p { max-width: 680px; margin: 12px 0 0; color: var(--muted); font-size: 13px; }
+    .hero-main p b { color: var(--ink); }
+    .hero-number { display: flex; flex-direction: column; justify-content: center; padding: 28px 34px; color: #fff; background: var(--green); }
+    .hero-number strong { font-size: clamp(54px, 8vw, 82px); line-height: .9; letter-spacing: -.065em; }
+    .hero-number span { margin-top: 13px; font-size: 13px; font-weight: 700; }
+    .hero-number small { margin-top: 4px; color: rgba(255,255,255,.72); font-size: 10px; }
 
-    /* hero + gates */
-    .hero{padding:20px 20px 8px;margin-bottom:10px}.hero-top{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:18px}.hero-count{display:flex;align-items:baseline;gap:9px}.hero-count strong{font-size:42px;letter-spacing:-.045em;line-height:1}.hero-count span{font-weight:600}.hero-note{max-width:430px;color:var(--muted);font-size:12px;padding:9px 12px;background:var(--warn-soft);border-radius:10px;color:#7d5518}.hero-note.clear{background:var(--ok-soft);color:var(--ok)}.hero-note b{font-weight:650}
-    .gates{border-top:1px solid var(--line)}.gate{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(120px,1fr) 108px;gap:14px;align-items:center;padding:13px 0;border-bottom:1px solid var(--line)}.gate:last-child{border-bottom:0}.gate-q{min-width:0}.gate-q strong{display:block;font-weight:600}.gate-q span{display:block;color:var(--faint);font-size:10.5px;margin-top:2px}.track{height:9px;border-radius:999px;background:var(--drop);overflow:hidden}.track i{display:block;height:100%;border-radius:999px;background:var(--ok);transition:width .5s}.gate.blocked .track i{background:var(--warn)}.gate.empty .track i{background:var(--bad)}.gate-num{text-align:right;font-size:11px;color:var(--muted);white-space:nowrap}.gate-num b{display:block;font-size:15px;color:var(--text);letter-spacing:-.02em}.gate-foot{padding:12px 0 4px;color:var(--muted);font-size:11px;line-height:1.5}.gate-foot b{color:var(--text);font-weight:650}.gate.blocked .gate-num b,.gate.empty .gate-num b{color:var(--warn)}
+    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; margin-top: 9px; }
+    .metric { appearance: none; width: 100%; padding: 17px; text-align: left; background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
+    button.metric { transition: border-color .16s, transform .16s; }
+    button.metric:hover { transform: translateY(-1px); border-color: #b7b9b0; }
+    .metric strong { display: block; font-size: 27px; line-height: 1; letter-spacing: -.045em; }
+    .metric span { display: block; margin-top: 8px; font-size: 11.5px; font-weight: 700; }
+    .metric small { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }
+    .metric.review strong { color: var(--red); }
+    .metric.wait strong { color: var(--amber); }
 
-    /* small metric row */
-    .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.metric{padding:14px 16px;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:14px}.metric strong{display:block;font-size:24px;letter-spacing:-.04em;line-height:1}.metric span{display:block;margin-top:7px;font-weight:600;font-size:11.5px}.metric small{display:block;color:var(--muted);font-size:10px;margin-top:3px}.metric.warn strong{color:var(--warn)}button.metric{transition:transform .15s,border-color .15s;width:100%}button.metric:hover{transform:translateY(-1px);border-color:#bebeb7}
+    .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin: 28px 1px 9px; }
+    .section-head h2 { margin: 0; font-size: 15px; letter-spacing: -.01em; }
+    .section-head p { margin: 0; color: var(--muted); font-size: 10.5px; }
+    .grid { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(330px, .88fr); gap: 10px; }
+    .card-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 16px 17px 12px; border-bottom: 1px solid var(--line); }
+    .card-title strong { font-size: 13px; }
+    .card-title span { color: var(--muted); font-size: 10px; }
 
-    /* funnel */
-    .legend{display:flex;gap:14px;flex-wrap:wrap;padding:13px 16px;border-bottom:1px solid var(--line);color:var(--muted);font-size:10.5px}.legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:-1px;background:#8a8a83}.key-linked{background:var(--ok)}.key-review{background:var(--warn)}.key-held{background:#c9c9c1}.key-drop{background:var(--drop)}
-    .flow{padding:16px 18px 20px}.flow-stage{padding:2px 0}.flow-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}.flow-name{font-weight:650;font-size:13px}.flow-n{font-size:19px;font-weight:650;letter-spacing:-.03em}.flow-bar{display:flex;height:19px;border-radius:5px;overflow:hidden;background:#f2f2ee;margin:7px 0 5px;min-width:3px;transition:width .5s}.flow-bar i{display:block;height:100%;min-width:2px}
-    .flow-band{margin:4px 0 10px;color:var(--faint);font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase}.flow-stage+.flow-band{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}.flow-sub{color:var(--muted);font-size:10.5px}.flow-sub b{color:var(--text);font-weight:600}
-    .flow-merge{display:flex;align-items:flex-start;gap:10px;margin:12px 0 4px;padding:11px 13px;background:var(--run-soft);border:1px solid #d5e0f4;border-radius:10px;color:var(--run);font-size:11.5px}.flow-merge>span{font-size:15px;line-height:1.2}.flow-merge b{font-weight:700}.flow-merge div span{display:block;margin-top:3px;color:#5a76a8;font-size:10.5px}
-    .flow-unit{font-size:10.5px;font-weight:500;color:var(--muted);margin-left:5px}
-    .flow-drop{display:flex;align-items:center;gap:8px;margin:9px 0 9px 3px;padding-left:15px;border-left:2px solid #e8dcc2;color:var(--warn);font-size:11px}.flow-drop.merge{border-left-color:#d9d9d2;color:var(--muted)}.flow-drop b{font-weight:650}.drop-detail{display:block;margin-top:2px;color:var(--faint);font-size:10px;font-weight:400}
-    .flow-merge.geo{background:#eef4ee;border-color:#cfe0d3;color:var(--ok)}.flow-merge.geo div span{color:#54785f}
-    .funnel-row{padding:14px 16px;border-bottom:1px solid var(--line)}.funnel-row:last-child{border-bottom:0}.funnel-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:8px}.funnel-name{font-weight:650}.funnel-fetched{color:var(--muted);font-size:11px}.stack{display:flex;height:15px;border-radius:6px;overflow:hidden;background:var(--drop)}.stack i{display:block;height:100%;transition:width .5s}.seg-linked{background:var(--ok)}.seg-review{background:var(--warn)}.seg-held{background:#c9c9c1}.funnel-foot{display:flex;gap:13px;flex-wrap:wrap;margin-top:7px;color:var(--muted);font-size:10.5px}.funnel-foot b{color:var(--text);font-weight:600}
+    .gate-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border-bottom: 1px solid var(--line); }
+    .gate-state { padding: 15px 14px; background: var(--card); }
+    .gate-state strong { display: block; font-size: 21px; line-height: 1; letter-spacing: -.04em; }
+    .gate-state span { display: block; margin-top: 7px; font-size: 10px; font-weight: 700; }
+    .gate-state small { display: block; margin-top: 2px; color: var(--muted); font-size: 9px; }
+    .gate-state.published strong { color: var(--green); }
+    .gate-state.candidate strong { color: var(--amber); }
+    .gate-state.review strong { color: var(--red); }
+    .gate-state.suppressed strong { color: var(--slate); }
+    .reason-list { padding: 7px 0; }
+    .reason-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; width: 100%; padding: 10px 16px; text-align: left; background: transparent; border: 0; border-bottom: 1px solid #efeee8; }
+    .reason-row:last-child { border-bottom: 0; }
+    .reason-row:hover { background: #faf9f4; }
+    .reason-row strong { display: block; font-size: 11.5px; font-weight: 700; }
+    .reason-row small { display: block; margin-top: 2px; color: var(--muted); font-size: 9.5px; }
+    .reason-row b { align-self: center; font-size: 14px; }
+    .explain { padding: 12px 16px; color: var(--muted); background: #faf9f4; border-top: 1px solid var(--line); border-radius: 0 0 15px 15px; font-size: 10px; }
 
-    .q-row{padding:13px 16px;border-bottom:1px solid var(--line)}.q-row:last-of-type{border-bottom:0}.q-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}.q-t{font-weight:650;font-size:12.5px}.q-n{font-size:16px;font-weight:650;letter-spacing:-.03em}.q-track{height:8px;border-radius:999px;background:var(--drop);overflow:hidden;margin:7px 0 6px}.q-track i{display:block;height:100%;border-radius:999px;background:var(--warn)}.q-sub{color:var(--muted);font-size:10.5px}.q-foot{padding:11px 16px;background:#fafaf7;border-radius:0 0 14px 14px;color:var(--muted);font-size:10.5px}
-    /* stages */
-    .modes{display:flex;gap:4px}.mode{border:1px solid var(--line);background:#fff;border-radius:9px;padding:6px 11px;color:var(--muted);font-size:11px}.mode.active{background:#f0f0ec;color:var(--text);font-weight:650;border-color:#d8d8d0}
-    .mode-note{padding:13px 16px;border-bottom:1px solid var(--line);color:var(--muted);font-size:11.5px}.mode-note b{color:var(--text);font-weight:600}
-    .stages{display:grid;grid-template-columns:repeat(5,1fr);gap:0;padding:6px 8px 14px}.stage{position:relative;padding:14px 12px 0}.stage::before{content:'';position:absolute;top:22px;left:-50%;width:100%;height:2px;background:var(--line)}.stage:first-child::before{display:none}.stage.done::before{background:#bcd8c8}.stage-dot{position:relative;width:17px;height:17px;border-radius:50%;background:#fff;border:2px solid var(--line);margin-bottom:11px;display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--muted)}.stage.done .stage-dot{background:var(--ok);border-color:var(--ok);color:#fff}.stage.active .stage-dot{border-color:var(--run);background:var(--run-soft);animation:pulse 1.4s ease-in-out infinite}.stage.skip .stage-dot{border-style:dashed}.stage-name{font-weight:600;font-size:11.5px;line-height:1.3}.stage-what{color:var(--faint);font-size:10px;margin-top:4px;line-height:1.35}.stage-num{margin-top:7px;font-size:11px;font-weight:650;letter-spacing:-.02em}.stage.done .stage-num{color:var(--ok)}.stage.active .stage-num{color:var(--run)}.stage.pending .stage-num,.stage.skip .stage-num{color:var(--faint)}.stage.warnstage .stage-num{color:var(--warn)}
+    .actions { padding: 7px 0; }
+    .action { display: grid; grid-template-columns: 35px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 11px 16px; border-bottom: 1px solid #efeee8; }
+    .action:last-child { border-bottom: 0; }
+    .action-icon { display: grid; place-items: center; width: 31px; height: 31px; color: var(--green); background: var(--green-bg); border-radius: 9px; font-size: 12px; font-weight: 800; }
+    .action.urgent .action-icon { color: var(--red); background: var(--red-bg); }
+    .action.waiting .action-icon { color: var(--amber); background: var(--amber-bg); }
+    .action strong { display: block; font-size: 11.5px; }
+    .action span { display: block; margin-top: 2px; color: var(--muted); font-size: 9.5px; }
+    .action b { font-size: 17px; letter-spacing: -.035em; }
+    .action-button { appearance: none; display: block; width: calc(100% - 28px); margin: 8px 14px 12px; padding: 9px 11px; color: var(--ink); background: #f4f3ed; border: 1px solid var(--line); border-radius: 9px; font-size: 10.5px; font-weight: 700; }
 
-    /* name ceiling */
-    .ceil-row{display:grid;grid-template-columns:minmax(0,150px) 1fr 92px;gap:12px;align-items:center;padding:11px 16px;border-bottom:1px solid var(--line)}.ceil-row:last-child{border-bottom:0}.ceil-name{min-width:0}.ceil-name strong{display:block;font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ceil-name span{color:var(--faint);font-size:10px}.ceil-track{position:relative;height:9px;border-radius:999px;background:var(--drop)}.ceil-track i{display:block;height:100%;border-radius:999px}.ceil-track u{position:absolute;top:-4px;bottom:-4px;width:2px;background:#8c8c85;text-decoration:none}.ceil-val{text-align:right;font-size:11px;white-space:nowrap;color:var(--muted)}.ceil-val b{color:var(--text)}.pass i{background:var(--ok)}.fail i{background:var(--warn)}.ceil-foot{padding:11px 16px;color:var(--muted);font-size:10.5px;background:#fafaf7;border-radius:0 0 14px 14px}
+    .source-list { display: grid; grid-template-columns: repeat(3, 1fr); }
+    .source { padding: 17px; border-right: 1px solid var(--line); }
+    .source:last-child { border-right: 0; }
+    .source-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+    .source-name { font-size: 12px; font-weight: 750; }
+    .pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 7px; border-radius: 999px; color: var(--green); background: var(--green-bg); font-size: 9px; font-weight: 750; }
+    .pill.running { color: var(--blue); background: var(--blue-bg); }
+    .pill.failed { color: var(--red); background: var(--red-bg); }
+    .source-time { margin-top: 5px; color: var(--muted); font-size: 9.5px; }
+    .source-stat { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding-top: 8px; margin-top: 11px; border-top: 1px solid #efeee8; color: var(--muted); font-size: 9.5px; }
+    .source-stat b { color: var(--ink); font-size: 10.5px; }
+    .source-note { padding: 11px 16px; color: var(--muted); background: #faf9f4; border-top: 1px solid var(--line); border-radius: 0 0 15px 15px; font-size: 9.5px; }
 
-    /* browser */
-    .browser{overflow:hidden}.browser-top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px;border-bottom:1px solid var(--line)}.tabs{display:flex;gap:3px;flex-wrap:wrap}.tab{border:0;background:transparent;color:var(--muted);border-radius:9px;padding:8px 10px}.tab.active{background:#f0f0ec;color:var(--text);font-weight:650}.search{border:1px solid var(--line);background:#fff;border-radius:9px;padding:8px 10px;outline:none;width:min(240px,36vw)}.search:focus{border-color:#aaa9a1}.subfilters{display:none;gap:6px;flex-wrap:wrap;padding:10px 12px 0}.subfilters.visible{display:flex}.chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 9px;color:var(--muted);font-size:10px}.chip.active{background:var(--warn-soft);border-color:#e5c98e;color:#815716}.list-meta{padding:12px 14px 3px;color:var(--muted);font-size:11px}.items{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:10px 11px 12px}.item{border:1px solid var(--line);border-radius:12px;padding:13px;background:#fff;min-width:0}.item.attention{border-color:#e2cda9}.item-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.item-name{font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.item-type{color:var(--muted);font-size:10px;margin-top:3px;text-transform:capitalize}.item-address{color:var(--muted);font-size:11px;margin-top:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.badge{display:inline-block;border-radius:999px;padding:3px 7px;font-size:9px;background:#f0f0ec;color:#5e5e59;white-space:nowrap}.badge.good{background:var(--ok-soft);color:var(--ok)}.badge.warn{background:var(--warn-soft);color:var(--warn)}.issue-row{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px}.issue{border-radius:8px;padding:6px 7px;background:var(--warn-soft);font-size:10px;color:var(--warn)}.name-source{margin-top:9px;color:var(--muted);font-size:10px}.possible{margin-top:9px;padding:8px;background:#f6f6f2;border-radius:8px;color:var(--muted);font-size:10px}details{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}details summary{cursor:pointer;color:var(--muted);font-size:10px}.evidence-row{display:grid;grid-template-columns:auto 1fr auto;gap:7px;align-items:center;padding:6px 0;border-bottom:1px solid #f1f1ed;font-size:9px}.evidence-row:last-child{border-bottom:0}.evidence-source{font-weight:650}.evidence-value{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.selected{color:var(--ok)}.empty{grid-column:1/-1;text-align:center;color:var(--muted);padding:34px 14px}.load-wrap{text-align:center;padding:1px 11px 13px}.load{border:1px solid var(--line);background:#fff;border-radius:9px;padding:8px 13px}.load[hidden]{display:none}footer{display:flex;justify-content:space-between;gap:12px;margin-top:12px;color:var(--muted);font-size:10px}
-    @media(max-width:820px){.stages{grid-template-columns:1fr;padding:8px 14px 14px}.stage{padding:11px 0 11px 26px}.stage::before{top:-11px;left:8px;width:2px;height:100%}.stage-dot{position:absolute;left:0;top:12px;margin:0}}
-    @media(max-width:760px){main{padding-top:26px}header{align-items:flex-start;flex-direction:column;gap:7px}.runbar{align-items:flex-start;flex-direction:column}.runsummary{white-space:normal}.metrics{grid-template-columns:1fr}.gate{grid-template-columns:1fr auto;gap:8px}.gate .track{grid-column:1/-1;order:3}.gate-num{text-align:left;display:flex;align-items:baseline;gap:6px}.gate-num b{font-size:13px}.ceil-row{grid-template-columns:1fr auto}.ceil-track{grid-column:1/-1;order:3}.browser-top{align-items:stretch;flex-direction:column}.search{width:100%}.items{grid-template-columns:1fr}}
+    .coverage { display: grid; grid-template-columns: 1fr .85fr; }
+    .coverage-part { padding: 15px 17px 17px; }
+    .coverage-part + .coverage-part { border-left: 1px solid var(--line); }
+    .mini-title { margin-bottom: 11px; font-size: 10px; font-weight: 750; text-transform: uppercase; letter-spacing: .07em; }
+    .bar-row { display: grid; grid-template-columns: minmax(85px, 150px) 1fr 38px; gap: 9px; align-items: center; margin-top: 8px; font-size: 9.5px; }
+    .bar-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bar-track { height: 7px; overflow: hidden; background: #ecebe5; border-radius: 999px; }
+    .bar-track i { display: block; height: 100%; background: var(--green); border-radius: inherit; }
+    .bar-row b { text-align: right; }
+    .city-cloud { display: flex; flex-wrap: wrap; gap: 6px; }
+    .city { padding: 6px 8px; background: #f0efe9; border-radius: 8px; font-size: 9.5px; }
+    .city b { margin-left: 4px; }
+
+    .inspector { overflow: hidden; }
+    .inspector-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px; border-bottom: 1px solid var(--line); }
+    .tabs { display: flex; flex-wrap: wrap; gap: 3px; }
+    .tab { appearance: none; padding: 8px 10px; color: var(--muted); background: transparent; border: 0; border-radius: 8px; font-size: 10.5px; }
+    .tab.active { color: var(--ink); background: #efeee8; font-weight: 750; }
+    .search { width: min(245px, 35vw); padding: 8px 10px; outline: none; background: #fff; border: 1px solid var(--line); border-radius: 9px; font-size: 11px; }
+    .search:focus { border-color: #a8aaa1; }
+    .filters { display: flex; align-items: center; gap: 7px; padding: 9px 12px; background: #faf9f4; border-bottom: 1px solid var(--line); }
+    .filters select { padding: 7px 9px; background: #fff; border: 1px solid var(--line); border-radius: 8px; font-size: 10px; }
+    .active-filter { display: none; padding: 5px 8px; color: var(--amber); background: var(--amber-bg); border-radius: 999px; font-size: 9px; }
+    .active-filter.visible { display: inline-block; }
+    .clear-filter { display: none; padding: 5px 7px; color: var(--muted); background: transparent; border: 0; font-size: 9px; }
+    .clear-filter.visible { display: inline-block; }
+    .list-meta { padding: 11px 14px 2px; color: var(--muted); font-size: 10px; }
+    .items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 10px 11px 12px; }
+    .item { min-width: 0; padding: 13px; background: #fff; border: 1px solid var(--line); border-radius: 12px; }
+    .item-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+    .item-name { overflow: hidden; font-size: 12px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+    .item-type, .item-address, .item-source { margin-top: 3px; color: var(--muted); font-size: 9.5px; }
+    .item-address { margin-top: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .state-badge { flex: 0 0 auto; padding: 4px 7px; color: var(--green); background: var(--green-bg); border-radius: 999px; font-size: 8.5px; font-weight: 800; text-transform: capitalize; }
+    .state-badge.candidate { color: var(--amber); background: var(--amber-bg); }
+    .state-badge.review { color: var(--red); background: var(--red-bg); }
+    .state-badge.suppressed { color: var(--slate); background: var(--slate-bg); }
+    .blocker { margin-top: 10px; padding: 8px 9px; color: #74511d; background: var(--amber-bg); border-radius: 8px; font-size: 9.5px; }
+    .blocker.review { color: var(--red); background: var(--red-bg); }
+    .blocker.suppressed { color: var(--slate); background: var(--slate-bg); }
+    .confidence { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+    .confidence span { padding: 4px 6px; color: var(--muted); background: #f2f1ec; border-radius: 6px; font-size: 8.5px; }
+    .empty { grid-column: 1/-1; padding: 36px 15px; color: var(--muted); text-align: center; }
+    .load-wrap { padding: 0 11px 13px; text-align: center; }
+    .load { padding: 8px 13px; background: #fff; border: 1px solid var(--line); border-radius: 9px; font-size: 10px; }
+    .load[hidden] { display: none; }
+    footer { display: flex; justify-content: space-between; gap: 14px; margin-top: 12px; color: var(--muted); font-size: 9.5px; }
+
+    @media (max-width: 900px) {
+      .metrics { grid-template-columns: repeat(2, 1fr); }
+      .grid { grid-template-columns: 1fr; }
+      .source-list { grid-template-columns: 1fr; }
+      .source { border-right: 0; border-bottom: 1px solid var(--line); }
+      .source:last-child { border-bottom: 0; }
+    }
+    @media (max-width: 700px) {
+      .shell { width: min(100% - 20px, 1180px); padding-top: 22px; }
+      header { align-items: flex-start; flex-direction: column; gap: 9px; }
+      .header-meta { text-align: left; }
+      .statusbar { align-items: flex-start; flex-direction: column; }
+      .status-copy span { white-space: normal; }
+      .hero { grid-template-columns: 1fr; }
+      .hero-number { min-height: 165px; }
+      .gate-summary { grid-template-columns: repeat(2, 1fr); }
+      .coverage { grid-template-columns: 1fr; }
+      .coverage-part + .coverage-part { border-top: 1px solid var(--line); border-left: 0; }
+      .inspector-top { align-items: stretch; flex-direction: column; }
+      .search { width: 100%; }
+      .items { grid-template-columns: 1fr; }
+      footer { flex-direction: column; }
+    }
   </style>
 </head>
 <body>
-<main>
-  <header>
-    <div><h1>Paloma data</h1><p class="subtitle">Catalog health</p></div>
-    <div class="updated" id="updated">Loading…</div>
-  </header>
-  <div class="error" id="error"></div>
+  <main class="shell">
+    <header>
+      <div>
+        <div class="eyebrow">Paloma data</div>
+        <h1>Catalog operations</h1>
+      </div>
+      <div class="header-meta"><strong id="updated">Connecting…</strong><span>Bay Area drinking venues</span></div>
+    </header>
 
-  <section class="panel runbar">
-    <div class="runstate"><span class="dot" id="runDot"></span><div class="runcopy"><strong id="runTitle">Checking pipeline…</strong><span id="runDetail"></span></div></div>
-    <div class="runsummary" id="runSummary"></div>
-  </section>
+    <div class="error" id="error"></div>
+    <section class="card statusbar" aria-live="polite">
+      <div class="status-copy">
+        <span class="status-dot" id="statusDot"></span>
+        <div><strong id="statusTitle">Checking the pipeline…</strong><span id="statusDetail"></span></div>
+      </div>
+      <div class="status-aside" id="statusAside"></div>
+    </section>
 
-  <section class="panel hero">
-    <div class="hero-top">
-      <div class="hero-count"><strong id="liveCount">—</strong><span>venues live in Paloma</span></div>
-      <div class="hero-note" id="heroNote">Loading checks…</div>
-    </div>
-    <div class="gates" id="gates"></div>
-  </section>
+    <section class="card hero">
+      <div class="hero-main">
+        <h2 id="heroTitle">Only places safe for a consumer catalog go live.</h2>
+        <p id="heroCopy">Loading publication evidence…</p>
+      </div>
+      <div class="hero-number">
+        <strong id="publishedCount">—</strong>
+        <span>venues live in Paloma</span>
+        <small>Published + open; this mirrors the app catalog</small>
+      </div>
+    </section>
 
-  <section class="metrics">
-    <div class="metric"><strong id="bothCount">—</strong><span>Fully verified</span><small id="bothPct">—</small></div>
-    <button class="metric warn" id="verifyMetric" type="button"><strong id="verifyCount">—</strong><span>Missing a check</span><small>Live, still shown</small></button>
-    <button class="metric warn" id="reviewMetric" type="button"><strong id="reviewCount">—</strong><span>Waiting on a human</span><small>Never auto-added</small></button>
-  </section>
+    <section class="metrics" aria-label="Catalog summary">
+      <button class="metric wait" data-open="candidate" type="button">
+        <strong id="candidateCount">—</strong><span>Held for evidence</span><small>Safe canonical records, invisible in the app</small>
+      </button>
+      <button class="metric review" data-open="review" type="button">
+        <strong id="publicationReviewCount">—</strong><span>Publication decisions</span><small>Duplicate or status conflicts</small>
+      </button>
+      <button class="metric review" data-open="match" type="button">
+        <strong id="matchReviewCount">—</strong><span>Matching decisions</span><small>Potential duplicate, rebrand, or disagreement</small>
+      </button>
+      <div class="metric"><strong id="currentResolverCount">—</strong><span>On resolver v3</span><small id="resolverDetail">Canonical fields evaluated</small></div>
+    </section>
 
-  <div class="section-head"><h2>Where records go</h2><p>Every stage, and what leaves</p></div>
-  <section class="panel">
-    <div class="legend" id="flowLegend"></div>
-    <div class="flow" id="funnel"></div>
-  </section>
+    <div class="section-head"><h2>Publication gate</h2><p>The decision that controls app visibility</p></div>
+    <section class="grid">
+      <article class="card">
+        <div class="card-title"><strong>Where canonical venues stand</strong><span id="gateTotal"></span></div>
+        <div class="gate-summary">
+          <div class="gate-state published"><strong id="gatePublished">—</strong><span>Published</span><small>Visible</small></div>
+          <div class="gate-state candidate"><strong id="gateCandidate">—</strong><span>Candidate</span><small>Needs evidence</small></div>
+          <div class="gate-state review"><strong id="gateReview">—</strong><span>Review</span><small>Needs a decision</small></div>
+          <div class="gate-state suppressed"><strong id="gateSuppressed">—</strong><span>Suppressed</span><small>Closed or unsafe</small></div>
+        </div>
+        <div class="reason-list" id="publicationReasons"><div class="empty">Loading blockers…</div></div>
+        <div class="explain">A license is necessary but never sufficient. Publishing requires a compatible active ABC license, a current consumer-place observation, walk-in access, and a resolved identity/name.</div>
+      </article>
 
-  <div class="section-head"><h2>Why records are waiting</h2><p>None of these reach users</p></div>
-  <section class="panel" id="queuePanel"></section>
+      <article class="card">
+        <div class="card-title"><strong>Operator attention</strong><span>Sorted by what can be acted on</span></div>
+        <div class="actions" id="actions"><div class="empty">Loading work queues…</div></div>
+        <button class="action-button" id="openActions" type="button">Open the actionable queue</button>
+      </article>
+    </section>
 
-  <div class="section-head">
-    <h2>What a run does</h2>
-    <div class="modes"><button class="mode active" data-run="full" type="button">Full rebuild</button><button class="mode" data-run="incremental" type="button">Daily sync</button></div>
-  </div>
-  <section class="panel">
-    <div class="mode-note" id="modeNote"></div>
-    <div class="stages" id="stages"></div>
-  </section>
+    <div class="section-head"><h2>Source health</h2><p>Freshness and contribution, not raw volume alone</p></div>
+    <section class="card">
+      <div class="source-list" id="sourceList"><div class="empty">Loading sources…</div></div>
+      <div class="source-note">“Published contribution” can overlap: a venue should normally be supported by both regulatory and consumer-place evidence.</div>
+    </section>
 
-  <div class="section-head"><h2>Why names fail</h2><p>Best score each source can reach</p></div>
-  <section class="panel" id="ceilPanel"></section>
+    <div class="section-head"><h2>What users can discover</h2><p>Only currently published, open venues</p></div>
+    <section class="card coverage">
+      <div class="coverage-part"><div class="mini-title">Venue types</div><div id="typeBreakdown"></div></div>
+      <div class="coverage-part"><div class="mini-title">Cities</div><div class="city-cloud" id="cityBreakdown"></div></div>
+    </section>
 
-  <div class="section-head"><h2>Browse</h2><p>Drill in when something looks wrong</p></div>
-  <section class="panel browser">
-    <div class="browser-top">
-      <div class="tabs"><button class="tab active" data-mode="accepted" type="button">All venues</button><button class="tab" data-mode="verify" type="button">Failing a check</button><button class="tab" data-mode="review" type="button">Waiting for a human</button></div>
-      <input class="search" id="search" type="search" placeholder="Search venues" aria-label="Search venues" />
-    </div>
-    <div class="subfilters" id="subfilters"></div>
-    <div class="list-meta" id="listMeta">Loading…</div>
-    <div class="items" id="items"><div class="empty">Loading venues…</div></div>
-    <div class="load-wrap"><button class="load" id="loadMore" type="button" hidden>Load more</button></div>
-  </section>
-  <footer><span>Live · refreshes every 15 seconds</span><span>Click a warning count to inspect it</span></footer>
-</main>
-<script>
-  const ENDPOINT='https://lighcnfzajgvfbdoekzt.supabase.co/functions/v1/paloma-data-progress';
-  const nf=new Intl.NumberFormat(),compact=new Intl.NumberFormat(undefined,{notation:'compact',maximumFractionDigits:1});
-  const sourceShort={ca_abc:'ABC',datasf:'DataSF',overture:'Overture',official_web:'Official web',canonical_seed:'Previous canonical',osm:'OpenStreetMap',unresolved:'Unresolved'};
-  // Gate thresholds mirror ingest field resolution (field_resolution.py). Keep in sync.
-  const GATE_MIN={identity:.90,name:.85,type:.85};
-  // Best achievable score per name source = authority x evidence_confidence, from
-  // SOURCE_POLICIES in field_resolution.py and OfficialWebEnricher. Keep in sync.
-  // Only sources that write field_name='display_name' belong here. ABC and DataSF write
-  // 'legal_name' and never compete for the public name at all.
-  const NAME_CEILING={official_web:{v:.995,note:'verified website'},overture:{v:.773,note:'map aggregator'},osm:{v:.722,note:'community map'},canonical_seed:{v:.358,note:'old value'}};
-  const state={mode:'accepted',q:'',reason:'',quality:'',offset:0,total:0,items:[],loading:false};
-  let searchTimer,breakdown=[],sources=[],runMode='full',lastData=null,actualMode='full',modePinned=false;
-  const esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
-  const fmt=v=>nf.format(Number(v||0)),compactFmt=v=>compact.format(Number(v||0)),num=v=>Number(v||0);
-  const ago=iso=>{if(!iso)return'';const m=(Date.now()-new Date(iso).getTime())/6e4;if(m<0)return'just now';if(m<1)return'just now';if(m<60)return`${Math.round(m)} min ago`;if(m<1440)return`${Math.round(m/60)} hr ago`;return`${Math.round(m/1440)} days ago`};
-  const pct=v=>v==null?'—':`${Math.round(Number(v)*100)}%`,human=v=>String(v||'').replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase());
-  const reasonInfo=reason=>({needs_type_or_location_corroboration:'Needs corroboration',source_conflict:'Sources disagree',ambiguous_match:'Possible duplicate',weak_match:'Uncertain match',same_location_name_conflict:'Possible rebrand'}[reason]||human(reason||'Other'));
-  const needsVerification=i=>i.field_resolution_version!=='v2'||i.identity_confidence==null||i.identity_confidence<GATE_MIN.identity||i.display_name_confidence==null||i.display_name_confidence<GATE_MIN.name||i.type_confidence==null||i.type_confidence<GATE_MIN.type;
+    <div class="section-head"><h2>Inspect records</h2><p>Start with a product state, then drill into the blocker</p></div>
+    <section class="card inspector" id="inspector">
+      <div class="inspector-top">
+        <div class="tabs">
+          <button class="tab active" data-mode="published" type="button">Live</button>
+          <button class="tab" data-mode="candidate" type="button">Candidates</button>
+          <button class="tab" data-mode="review" type="button">Publication review</button>
+          <button class="tab" data-mode="suppressed" type="button">Suppressed</button>
+          <button class="tab" data-mode="match" type="button">Match queue</button>
+        </div>
+        <input class="search" id="search" type="search" placeholder="Search name, address, or city" aria-label="Search records" />
+      </div>
+      <div class="filters">
+        <select id="sourceFilter" aria-label="Filter by source">
+          <option value="">All sources</option><option value="ca_abc">California ABC</option>
+          <option value="datasf">DataSF</option><option value="overture">Overture Maps</option>
+        </select>
+        <span class="active-filter" id="activeFilter"></span>
+        <button class="clear-filter" id="clearFilter" type="button">Clear blocker</button>
+      </div>
+      <div class="list-meta" id="listMeta">Loading…</div>
+      <div class="items" id="items"><div class="empty">Loading records…</div></div>
+      <div class="load-wrap"><button class="load" id="loadMore" type="button" hidden>Load more</button></div>
+    </section>
 
-  function switchMode(mode){state.mode=mode;state.reason='';state.quality=mode==='verify'?'needs_verification':'';syncTabs();renderSubfilters();loadList(true);document.querySelector('.browser').scrollIntoView({behavior:'smooth',block:'start'})}
-  function syncTabs(){document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.mode===state.mode))}
-  function renderSubfilters(){const h=document.getElementById('subfilters');if(state.mode==='verify'){const f=[['needs_verification','All'],['name','Name'],['identity','Identity'],['type','Type'],['unresolved','Not resolved']];h.classList.add('visible');h.innerHTML=f.map(([v,l])=>`<button class="chip ${state.quality===v?'active':''}" data-quality="${v}">${l}</button>`).join('');h.querySelectorAll('.chip').forEach(b=>b.addEventListener('click',()=>{state.quality=b.dataset.quality;renderSubfilters();loadList(true)}));return}if(state.mode==='review'){h.classList.add('visible');h.innerHTML=`<button class="chip ${!state.reason?'active':''}" data-reason="">All</button>`+breakdown.map(x=>`<button class="chip ${state.reason===x.reason?'active':''}" data-reason="${esc(x.reason)}">${esc(reasonInfo(x.reason))} · ${compactFmt(x.count)}</button>`).join('');h.querySelectorAll('.chip').forEach(b=>b.addEventListener('click',()=>{state.reason=b.dataset.reason||'';renderSubfilters();loadList(true)}));return}h.classList.remove('visible');h.innerHTML=''}
+    <footer><span>Live operational data · refreshes every 15 seconds</span><span>Hidden candidates remain available for reconciliation without appearing in Paloma</span></footer>
+  </main>
 
-  function renderGates(o){
-    const live=num(o.ingestion_backed);
-    const gates=[
-      {key:'identity',label:'real place',q:'Is this a real, distinct place?',sub:`needs ${pct(GATE_MIN.identity)}`,pass:num(o.strong_identity)},
-      {key:'type',label:'kind of place',q:'What kind of place is it?',sub:`needs ${pct(GATE_MIN.type)}`,pass:num(o.strong_type)},
-      {key:'name',label:'current name',q:'Is this its current name?',sub:`needs ${pct(GATE_MIN.name)}`,pass:num(o.strong_display_name)},
-    ];
-    document.getElementById('gates').innerHTML=gates.map(g=>{
-      const share=live?g.pass/live:0,cls=g.pass===0?'empty':share<1?'blocked':'';
-      return `<div class="gate ${cls}"><div class="gate-q"><strong>${esc(g.q)}</strong><span>${esc(g.sub)}</span></div><div class="track"><i style="width:${(share*100).toFixed(1)}%"></i></div><div class="gate-num"><b>${fmt(g.pass)}</b>of ${fmt(live)}</div></div>`;
-    }).join('');
-    const worst=gates.slice().sort((a,b)=>a.pass-b.pass)[0],healthy=num(o.field_healthy),note=document.getElementById('heroNote');
-    // Each bar counts one check alone; field_healthy is the overlap of all three.
-    const gap=Math.max(0,worst.pass-healthy);
-    document.getElementById('gates').insertAdjacentHTML('beforeend',
-      `<div class="gate-foot">Each bar is one check alone. <b>${fmt(healthy)}</b> pass all three${gap?`; <b>${fmt(gap)}</b> of the <b>${fmt(worst.pass)}</b> fail another check`:''}.</div>`);
-    if(live&&healthy===live){note.className='hero-note clear';note.innerHTML='All 3 checks pass on every venue.';}
-    else if(live){note.className='hero-note';note.innerHTML=`<b>${fmt(live-healthy)} of ${fmt(live)} aren't fully verified.</b> Weakest check: <b>${esc(worst.label)}</b>, ${fmt(worst.pass)} pass.`;}
-    else{note.className='hero-note';note.textContent='No ingestion-backed venues yet.';}
-  }
+  <script>
+    const ENDPOINT = 'https://lighcnfzajgvfbdoekzt.supabase.co/functions/v1/paloma-data-progress';
+    const nf = new Intl.NumberFormat();
+    const compact = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 });
+    const state = { mode: 'published', q: '', reason: '', source: '', offset: 0, total: 0, items: [], loading: false };
+    let summary = null, searchTimer = null;
+    const fmt = value => nf.format(Number(value || 0));
+    const short = value => compact.format(Number(value || 0));
+    const num = value => Number(value || 0);
+    const esc = value => String(value ?? '').replace(/[&<>'"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[c]));
+    const human = value => String(value || '').replace(/:v\d+$/, '').replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const ago = iso => {
+      if (!iso) return 'never';
+      const minutes = Math.max(0, (Date.now() - new Date(iso).getTime()) / 60000);
+      if (minutes < 1) return 'just now';
+      if (minutes < 60) return `${Math.round(minutes)} min ago`;
+      if (minutes < 1440) return `${Math.round(minutes / 60)} hr ago`;
+      return `${Math.round(minutes / 1440)} days ago`;
+    };
+    const pct = value => value == null ? '—' : `${Math.round(Number(value) * 100)}%`;
 
-  const SRC_COLOR={ca_abc:'#4267ad',overture:'#2f7752',datasf:'#9a681f'};
-  // Two methods introduce a venue; every other method attaches a record to one that existed.
-  const CREATES=new Set(['high_confidence_new','cross_source_corroboration']);
-  function renderFunnel(o){
-    const by=f=>sources.map(x=>({src:x.source,label:x.label,n:num(f(x))})).filter(r=>r.n>0).sort((a,b)=>b.n-a.n);
-    const sum=rs=>rs.reduce((a,r)=>a+r.n,0);
-    const read=by(x=>x.latest_run?.fetched),kept=by(x=>x.staged_count),linked=by(x=>x.linked_record_count);
-    const readN=sum(read),keptN=sum(kept),linkedN=sum(linked);
-    const reviewN=sum(by(x=>x.pending_review_record_count)),heldN=Math.max(0,keptN-linkedN-reviewN);
-    const geocodedN=sum(by(x=>x.geocoded_count));
-    const live=num(o.ingestion_backed),healthy=num(o.field_healthy),dupes=Math.max(0,linkedN-live);
-    const methods=lastData?.match_methods||[];
-    const createdN=methods.filter(m=>CREATES.has(m.method)).reduce((a,m)=>a+num(m.records),0);
-    const joinedN=methods.filter(m=>!CREATES.has(m.method)).reduce((a,m)=>a+num(m.records),0);
-    const per=(a,b)=>b?`${(a/b*100).toFixed(a/b*100<10?1:0)}%`:'';
-    const split=rs=>rs.map(r=>`<b>${fmt(r.n)}</b> ${esc(r.label)}`).join(' &middot; ');
-    const drop=(n,why,detail)=>n>0?`<div class="flow-drop"><span>&darr;</span><span><b>${fmt(n)}</b> ${esc(why)}${detail?`<span class="drop-detail">${detail}</span>`:''}</span></div>`:'';
-    // Reasons are listed under the total rather than as separate steps, so the arithmetic of the
-    // funnel stays exact even while a record can still carry more than one open question.
-    const reasons=breakdown.slice().sort((a,b)=>b.count-a.count)
-      .map(r=>`${esc((REVIEW_INFO[r.reason]||{t:human(r.reason)}).t.toLowerCase())} ${fmt(r.count)}`).join(' &middot; ');
-    function stage(name,n,unit,rs,prev,color){
-      const w=prev?Math.max(1.5,n/prev*100):100;
-      const bars=rs?rs.map(r=>`<i style="width:${(r.n/n*100).toFixed(2)}%;background:${SRC_COLOR[r.src]||'#8a8a83'}" title="${esc(r.label)} ${fmt(r.n)}"></i>`).join('')
-                   :`<i style="width:100%;background:${color}"></i>`;
-      const sub=[rs?split(rs):'',prev?`${per(n,prev)} of the step above`:''].filter(Boolean).join(' &middot; ');
-      return `<div class="flow-stage"><div class="flow-head"><span class="flow-name">${esc(name)}</span><span class="flow-n">${fmt(n)}<span class="flow-unit">${esc(unit)}</span></span></div>
-        <div class="flow-bar" role="img" aria-label="${fmt(n)} ${esc(unit)}" style="width:${w.toFixed(2)}%">${bars}</div><div class="flow-sub">${sub}</div></div>`;
+    const REASONS = {
+      full_gate_not_satisfied: ['Gate not yet satisfied', 'One or more required facts are still missing'],
+      manufacturer_without_access_evidence: ['Manufacturer, not a venue yet', 'No explicit taproom or tasting-room evidence'],
+      abc_only_missing_consumer_evidence: ['License record only', 'ABC confirms legality, not a visitable consumer place'],
+      missing_consumer_access_evidence: ['No public-access evidence', 'No current consumer source says people can walk in'],
+      stale_consumer_evidence: ['Consumer evidence is stale', 'The public-place observation is older than the freshness window'],
+      identity_not_resolved: ['Identity is uncertain', 'The consumer place and legal record are not a confident match'],
+      consumer_name_not_resolved: ['Consumer name is uncertain', 'The public-facing name does not resolve cleanly'],
+      missing_active_abc_license: ['No active compatible license', 'A consumer place exists, but current ABC evidence is missing'],
+      license_does_not_support_consumer_venue_type: ['License/type mismatch', 'The license does not support the claimed consumer venue type'],
+      consumer_duplicate_requires_merge: ['Possible duplicate', 'Consumer data marks this as a duplicate that needs merging'],
+      consumer_status_conflict: ['Open/closed conflict', 'Consumer sources disagree about current operating status'],
+      consumer_reported_closed: ['Reported closed', 'Consumer evidence says this place is closed'],
+      consumer_hard_negative: ['Unsafe source record', 'Consumer data marks it deleted, private, or nonexistent'],
+      canonical_closed: ['Closed', 'The canonical venue is closed'],
+      public_bar_license_and_current_consumer_poi: ['Licensed public bar', 'Compatible bar license plus current consumer-place evidence'],
+      brewery_license_and_explicit_taproom: ['Licensed taproom', 'Brewery license plus an explicit taproom observation'],
+      manufacturer_license_and_explicit_tasting_room: ['Licensed tasting room', 'Manufacturer license plus an explicit tasting-room observation'],
+      brewery_license_and_explicit_brewpub: ['Licensed brewpub', 'Brewery/brewpub license plus an explicit brewpub observation'],
+      needs_type_or_location_corroboration: ['Waiting for another source', 'No human action yet; another independent source can resolve it'],
+      source_conflict: ['Sources disagree', 'Type, location, or status needs an operator decision'],
+      same_location_name_conflict: ['Possible rebrand', 'Same address, materially different public name'],
+      ambiguous_match: ['Possible duplicate', 'Two venue identities scored too closely'],
+      weak_match: ['Uncertain match', 'Evidence is too weak to link automatically'],
+    };
+    const reasonKey = value => String(value || '').replace(/:v\d+$/, '');
+    const reasonInfo = value => REASONS[reasonKey(value)] || [human(value || 'not evaluated'), ''];
+
+    function setText(id, value) { document.getElementById(id).textContent = value; }
+    function openInspector(mode, reason = '') {
+      state.mode = mode; state.reason = reason; state.offset = 0; state.items = [];
+      document.querySelectorAll('.tab').forEach(tab => tab.classList.toggle('active', tab.dataset.mode === mode));
+      const info = reason ? reasonInfo(reason)[0] : '';
+      const badge = document.getElementById('activeFilter');
+      badge.textContent = info; badge.classList.toggle('visible', Boolean(reason));
+      document.getElementById('clearFilter').classList.toggle('visible', Boolean(reason));
+      loadList(true);
+      document.getElementById('inspector').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-    const band=(icon,title,detail,cls)=>`<div class="flow-merge ${cls||''}"><span>${icon}</span><div><b>${title}</b><span>${detail}</span></div></div>`;
-    document.getElementById('flowLegend').innerHTML=sources.map(x=>`<span><i style="background:${SRC_COLOR[x.source]||'#8a8a83'}"></i>${esc(x.label)}</span>`).join('');
-    document.getElementById('funnel').innerHTML=[
-      `<div class="flow-band">Source records</div>`,
-      stage('From sources',readN,'records',read,0),
-      drop(readN-keptN,'outside the Bay Area'),
-      stage('In the Bay Area',keptN,'records',kept,readN),
-      geocodedN?band('&#9678;','Geocoded here &middot; '+fmt(geocodedN)+' records placed on a map',
-        'Their source published a street address but no coordinates, and a venue that cannot be placed cannot be created','geo'):'',
-      drop(reviewN,'need a human',reasons),
-      drop(heldN,'left staged, no decision'),
-      stage('Linked to a venue',linkedN,'records',linked,keptN),
-      createdN||joinedN?band('&#8681;','Deduped here &middot; '+fmt(linkedN)+' records become '+fmt(live)+' venues',
-        `<b>${fmt(createdN)}</b> introduced a new venue &middot; <b>${fmt(joinedN)}</b> joined one that already existed &middot; ${fmt(dupes)} were a venue already counted`)
-       :band('&#8681;','Deduped here &middot; '+fmt(linkedN)+' records become '+fmt(live)+' venues',
-        `${fmt(dupes)} were a venue already counted, seen again by another source`),
-      `<div class="flow-band">Venues</div>`,
-      stage('Live in Paloma',live,'venues',null,0,'#171716'),
-      drop(Math.max(0,live-healthy),'name or type unconfirmed'),
-      stage('Fully verified',healthy,'venues',null,live,'#2f7752'),
-    ].join('');
-  }
 
-  const REVIEW_INFO={
-    needs_type_or_location_corroboration:{t:'Only one source has it',w:'Waiting for a second source to confirm what or where it is'},
-    source_conflict:{t:'Sources disagree',w:'Two sources give a different type or open/closed status'},
-    ambiguous_match:{t:'Might be a duplicate',w:'Scored close to a venue already in Paloma'},
-    same_location_name_conflict:{t:'Possible rebrand',w:'Same address, very different name'},
-    weak_match:{t:'Uncertain match',w:'Scored too low to link automatically'},
-  };
-  function renderQueue(o){
-    const rows=breakdown.slice().sort((a,b)=>b.count-a.count),max=Math.max(1,...rows.map(r=>num(r.count)));
-    const el=document.getElementById('queuePanel');
-    if(!rows.length){el.innerHTML='<div class="q-foot">Nothing waiting.</div>';return}
-    el.innerHTML=rows.map(r=>{
-      const info=REVIEW_INFO[r.reason]||{t:human(r.reason),w:''};
-      const by=(r.sources||[]).slice().sort((a,b)=>b.count-a.count).map(x=>`${fmt(x.count)} ${esc(sourceShort[x.source]||x.label)}`).join(' &middot; ');
-      return `<div class="q-row"><div class="q-head"><span class="q-t">${esc(info.t)}</span><span class="q-n">${fmt(r.count)}</span></div>
-        <div class="q-track" role="img" aria-label="${fmt(r.count)} records"><i style="width:${(num(r.count)/max*100).toFixed(1)}%"></i></div>
-        <div class="q-sub">${esc(info.w)}${by?` &middot; ${by}`:''}</div></div>`;
-    }).join('')+`<div class="q-foot">${fmt(num(o.pending_reviews))} records held back. Nothing here is auto-added, and nothing drains on its own.</div>`;
-  }
+    function renderStatus(data) {
+      const runs = (data.recent_runs || []).filter(Boolean);
+      const running = runs.find(run => run.status === 'running');
+      const failed = (data.sources || []).map(source => source.latest_run).filter(run => run?.status === 'failed')
+        .sort((a, b) => String(b.started_at).localeCompare(String(a.started_at)))[0];
+      const dot = document.getElementById('statusDot');
+      dot.className = 'status-dot';
+      if (running) {
+        dot.classList.add('running');
+        setText('statusTitle', `Refresh running · ${running.label}`);
+        setText('statusDetail', `${human(running.mode)} · ${fmt(running.fetched)} records read so far. The published catalog remains protected.`);
+        setText('statusAside', `Started ${ago(running.started_at)}`);
+      } else if (failed) {
+        dot.classList.add('failed');
+        setText('statusTitle', `Latest ${failed.label} refresh failed`);
+        setText('statusDetail', failed.error || 'The source did not finish. Existing publication decisions remain in force.');
+        setText('statusAside', ago(failed.finished_at || failed.started_at));
+      } else {
+        const finished = (data.sources || []).map(source => source.latest_run?.finished_at).filter(Boolean).sort().pop();
+        setText('statusTitle', 'All core sources are healthy');
+        setText('statusDetail', 'No failed or running source refreshes. The catalog gate is using the latest completed evidence.');
+        setText('statusAside', finished ? `Last activity ${ago(finished)}` : 'No runs yet');
+      }
+      return { running, failed };
+    }
 
-  const RUN_COPY={
-    full:'<b>Full rebuild.</b> Re-reads everything and rescores from scratch. Runs on push to main, or when the resolver version changes.',
-    incremental:'<b>Daily sync.</b> Reads only what changed. Government sources weekdays, names weekly, Overture monthly.'
-  };
-  function renderStages(o){
-    // The counters below describe the last run that actually happened. Showing them under the
-    // other mode would present a rebuild's volume as if it were a sync.
-    const showCounts=runMode===actualMode;
-    document.getElementById('modeNote').innerHTML=RUN_COPY[runMode]+(showCounts?'':` <span style="color:var(--faint)">Counts are hidden here &mdash; the last run was a ${actualMode==='full'?'full rebuild':'sync'}.</span>`);
-    const live=num(o.ingestion_backed),running=sources.find(s=>s.latest_run?.status==='running'),failed=sources.find(s=>s.latest_run?.status==='failed');
-    const read=sources.reduce((a,s)=>a+num(s.latest_run?.fetched),0),staged=sources.reduce((a,s)=>a+num(s.staged_count),0);
-    const sourcesDone=sources.length>0&&sources.every(s=>s.latest_run?.status==='succeeded');
-    const resolved=num(o.field_resolved),web=num(o.official_web_names),healthy=num(o.field_healthy);
-    const webSkipped=runMode==='incremental';
-    const st=[
-      {n:'Read sources',w:runMode==='full'?'Every record':'Only what changed',v:`${fmt(read)} read`,s:failed?'warnstage':running?'active':sourcesDone?'done':'pending'},
-      {n:'Filter',w:'Drop anything outside the Bay Area',v:`${fmt(staged)} kept`,s:staged?'done':'pending'},
-      {n:'Match',w:'By ID, then phone, address, site',v:`${fmt(live)} venues`,s:live?'done':'pending'},
-      {n:'Score fields',w:'Weigh competing claims per field',v:`${fmt(resolved)} scored`,s:resolved?'done':'pending'},
-      {n:'Verify names',w:webSkipped?'Runs weekly instead':'Only a website can confirm a name',v:webSkipped?'weekly':`${fmt(web)} verified`,s:webSkipped?'skip':web?'done':sourcesDone?'active':'pending'},
-    ];
-    document.getElementById('stages').innerHTML=st.map((x,i)=>`<div class="stage ${showCounts?x.s:'pending'}"><div class="stage-dot">${i+1}</div><div class="stage-name">${esc(x.n)}</div><div class="stage-what">${esc(x.w)}</div><div class="stage-num">${showCounts?esc(x.v):'&mdash;'}</div></div>`).join('');
-    document.getElementById('bothCount').textContent=compactFmt(healthy);
-    document.getElementById('bothPct').textContent=live?`${Math.round(healthy/live*100)}% of ${fmt(live)}`:'—';
-  }
+    function renderReasons(data) {
+      const rows = (data.publication_breakdown || [])
+        .filter(row => row.state !== 'published')
+        .sort((a, b) => num(b.count) - num(a.count))
+        .slice(0, 7);
+      const el = document.getElementById('publicationReasons');
+      if (!rows.length) { el.innerHTML = '<div class="empty">No venues are held back.</div>'; return; }
+      el.innerHTML = rows.map(row => {
+        const info = reasonInfo(row.reason);
+        return `<button class="reason-row" type="button" data-state="${esc(row.state)}" data-reason="${esc(row.reason)}"><span><strong>${esc(info[0])}</strong><small>${esc(info[1])}</small></span><b>${fmt(row.count)}</b></button>`;
+      }).join('');
+      el.querySelectorAll('.reason-row').forEach(button => button.addEventListener('click', () => openInspector(button.dataset.state, button.dataset.reason)));
+    }
 
-  function renderCeiling(data){
-    const used=new Map((data.display_name_sources||[]).map(r=>[String(r.source),num(r.count)]));
-    const floorPct=v=>`${Math.floor(v*100)}%`;
-    const rows=Object.entries(NAME_CEILING).sort((a,b)=>b[1].v-a[1].v).map(([src,info])=>{
-      const passes=info.v>=GATE_MIN.name,count=used.get(src)||0;
-      return `<div class="ceil-row ${passes?'pass':'fail'}"><div class="ceil-name"><strong>${esc(sourceShort[src]||human(src))}</strong><span>${esc(info.note)}</span></div>
-        <div class="ceil-track"><i style="width:${(info.v*100).toFixed(1)}%"></i><u style="left:${(GATE_MIN.name*100).toFixed(1)}%" title="Pass mark ${pct(GATE_MIN.name)}"></u></div>
-        <div class="ceil-val"><b>${floorPct(info.v)}</b> ${passes?'passes':'fails'}<br>names ${fmt(count)}</div></div>`;
-    }).join('');
-    document.getElementById('ceilPanel').innerHTML=rows+`<div class="ceil-foot">The mark is ${pct(GATE_MIN.name)}. Only a verified website clears it alone, so a map can't silently rename a venue. ABC and DataSF publish legal names, never public ones.</div>`;
-  }
+    function renderActions(data) {
+      const o = data.overall || {};
+      const publication = num(o.publication_reviews), matching = num(o.actionable_match_reviews), waiting = num(o.evidence_waiting);
+      const actions = [
+        { cls: publication ? 'urgent' : '', icon: publication ? '!' : '✓', title: 'Publication conflicts', detail: publication ? 'Resolve duplicate or open/closed conflicts before these can publish' : 'No canonical venue publication conflicts', count: publication },
+        { cls: matching ? 'urgent' : '', icon: matching ? '!' : '✓', title: 'Identity and rebrand decisions', detail: matching ? 'Potential duplicates, source disagreements, and same-address renames' : 'No actionable matching conflicts', count: matching },
+        { cls: 'waiting', icon: '↻', title: 'Automatic evidence queue', detail: 'Waiting for an independent source; this is not a human backlog', count: waiting },
+      ];
+      document.getElementById('actions').innerHTML = actions.map(action => `<div class="action ${action.cls}"><div class="action-icon">${action.icon}</div><div><strong>${esc(action.title)}</strong><span>${esc(action.detail)}</span></div><b>${fmt(action.count)}</b></div>`).join('');
+      setText('matchReviewCount', fmt(matching));
+    }
 
-  function renderSummary(data){
-    lastData=data;const o=data.overall||{};sources=data.sources||[];breakdown=data.review_breakdown||[];
-    const live=num(o.ingestion_backed),healthy=num(o.field_healthy);
-    document.getElementById('liveCount').textContent=fmt(live);
-    document.getElementById('verifyCount').textContent=compactFmt(Math.max(0,live-healthy));
-    document.getElementById('reviewCount').textContent=compactFmt(num(o.pending_reviews));
-    document.getElementById('updated').textContent=`Updated ${new Date(data.generated_at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}`;
-    const newest=sources.map(x=>x.latest_run).filter(Boolean).sort((a,b)=>String(a.started_at||'').localeCompare(String(b.started_at||''))).pop();
-    actualMode=newest?.mode==='incremental'?'incremental':'full';
-    if(!modePinned){runMode=actualMode;document.querySelectorAll('.mode').forEach(m=>m.classList.toggle('active',m.dataset.run===runMode));}
-    renderGates(o);renderFunnel(o);renderQueue(o);renderStages(o);renderCeiling(data);
-    const failed=sources.find(s=>s.latest_run?.status==='failed'),running=sources.find(s=>s.latest_run?.status==='running'),dot=document.getElementById('runDot');dot.className='dot';
-    const last=sources.map(s=>s.latest_run?.finished_at).filter(Boolean).sort().pop();
-    if(failed){dot.classList.add('failed');document.getElementById('runTitle').textContent=`${failed.label} failed`;document.getElementById('runDetail').textContent=failed.latest_run?.error||'Last run failed'}
-    else if(running){dot.classList.add('running');document.getElementById('runTitle').textContent='Running now';document.getElementById('runDetail').textContent=`Reading ${running.label} · ${fmt(running.latest_run?.fetched||0)} records`}
-    else{document.getElementById('runTitle').textContent='Idle';document.getElementById('runDetail').textContent=last?`Last run finished ${ago(last)}`:'No run yet'}
-    document.getElementById('runSummary').textContent=running?(running.latest_run?.mode==='full'?'full rebuild':'sync'):`${sources.filter(s=>s.latest_run?.status==='succeeded').length}/${sources.length} sources ok`;
-    const error=document.getElementById('error');if(failed){error.textContent=`${failed.label}: ${failed.latest_run?.error||'Latest run failed'}`;error.style.display='block'}else error.style.display='none';
-    renderSubfilters();
-  }
+    function renderSources(data) {
+      document.getElementById('sourceList').innerHTML = (data.sources || []).map(source => {
+        const run = source.latest_run || {};
+        const cls = run.status === 'running' ? 'running' : run.status === 'failed' ? 'failed' : '';
+        const label = run.status === 'running' ? 'Running' : run.status === 'failed' ? 'Failed' : run.status === 'succeeded' ? 'Healthy' : 'No run';
+        const time = run.status === 'running' ? `${fmt(run.fetched)} read · started ${ago(run.started_at)}` : run.finished_at ? `Finished ${ago(run.finished_at)}` : 'Never completed';
+        return `<div class="source"><div class="source-top"><div><div class="source-name">${esc(source.label)}</div><div class="source-time">${esc(time)}</div></div><span class="pill ${cls}">${esc(label)}</span></div>
+          <div class="source-stat"><span>Current source records</span><b>${fmt(source.record_count)}</b></div>
+          <div class="source-stat"><span>Consumer walk-in observations</span><b>${fmt(source.consumer_place_count)}</b></div>
+          <div class="source-stat"><span>Linked canonical venues</span><b>${fmt(source.linked_establishment_count)}</b></div>
+          <div class="source-stat"><span>Published contribution</span><b>${fmt(source.published_establishment_count)}</b></div></div>`;
+      }).join('');
+    }
 
-  function evidenceRows(items){if(!items?.length)return '<div class="evidence-row"><span></span><span class="evidence-value">No name evidence yet.</span><span></span></div>';return items.map(e=>`<div class="evidence-row"><span class="evidence-source">${esc(sourceShort[e.source]||human(e.source))}</span><span class="evidence-value">${esc(e.value_text)}</span><span class="${e.selected?'selected':''}">${e.selected?'selected':pct(e.evidence_confidence)}</span></div>`).join('')}
-  function weakFields(i){const f=[];if(i.field_resolution_version!=='v2')f.push(['Resolver','Not run']);if(i.identity_confidence==null||i.identity_confidence<GATE_MIN.identity)f.push(['Identity',pct(i.identity_confidence)]);if(i.display_name_confidence==null||i.display_name_confidence<GATE_MIN.name)f.push(['Name',pct(i.display_name_confidence)]);if(i.type_confidence==null||i.type_confidence<GATE_MIN.type)f.push(['Type',pct(i.type_confidence)]);return f}
-  function renderAcceptedItem(i){const flagged=needsVerification(i),issues=weakFields(i),nameSource=sourceShort[i.display_name_source]||human(i.display_name_source||'unresolved');return `<article class="item ${flagged?'attention':''}"><div class="item-head"><div style="min-width:0"><div class="item-name">${esc(i.name)}</div><div class="item-type">${esc(human(i.primary_type_slug||'Establishment'))} · ${esc(i.city||'')}</div></div><span class="badge ${flagged?'warn':'good'}">${flagged?`fails ${issues.length} check${issues.length===1?'':'s'}`:'passes all checks'}</span></div><div class="item-address">${esc(i.address||'')}${i.region?` · ${esc(i.region)}`:''}</div>${flagged?`<div class="issue-row">${issues.map(([l,v])=>`<span class="issue">${esc(l)} ${esc(v)}</span>`).join('')}</div>`:''}<div class="name-source">Name source: ${esc(nameSource)}${num(i.source_count)>1?` · ${i.source_count} ingestion sources`:''}</div><details><summary>Why is this the selected name?</summary>${evidenceRows(i.name_evidence)}</details></article>`}
-  function renderReviewItem(i){return `<article class="item attention"><div class="item-head"><div style="min-width:0"><div class="item-name">${esc(i.name)}</div><div class="item-type">${esc(human(i.primary_type_slug||'Unclassified'))} · ${esc(i.city||'')}</div></div><span class="badge warn">${esc(reasonInfo(i.reason))}</span></div><div class="item-address">${esc(i.address||'')}${i.region?` · ${esc(i.region)}`:''}</div><div class="name-source">Source: ${esc(sourceShort[i.source]||i.label||i.source)}</div>${i.candidate_name?`<div class="possible">Possible existing match: <strong>${esc(i.candidate_name)}</strong></div>`:''}</article>`}
-  function renderItems(){const h=document.getElementById('items'),label=state.mode==='review'?`${fmt(state.total)} source records need a human decision`:state.mode==='verify'?`${fmt(state.total)} live venues fail at least one check`:`${fmt(state.total)} live venues`;document.getElementById('listMeta').textContent=label;if(!state.items.length)h.innerHTML='<div class="empty">Nothing to show here.</div>';else h.innerHTML=state.items.map(i=>state.mode==='review'?renderReviewItem(i):renderAcceptedItem(i)).join('');document.getElementById('loadMore').hidden=state.items.length>=state.total}
-  async function refreshSummary(){try{const r=await fetch(ENDPOINT,{cache:'no-store'});if(!r.ok)throw new Error(`HTTP ${r.status}`);renderSummary(await r.json())}catch(err){const e=document.getElementById('error');e.textContent=`Could not load live data: ${err.message}`;e.style.display='block';document.getElementById('updated').textContent='Disconnected'}}
-  async function loadList(reset=false){if(state.loading)return;if(reset){state.offset=0;state.items=[]}state.loading=true;document.getElementById('loadMore').disabled=true;if(!state.items.length)document.getElementById('items').innerHTML='<div class="empty">Loading…</div>';try{const actualView=state.mode==='review'?'review':'accepted',p=new URLSearchParams({view:actualView,limit:'24',offset:String(state.offset)});if(state.q)p.set('q',state.q);if(state.mode==='review'&&state.reason)p.set('reason',state.reason);if(state.mode==='verify')p.set('quality',state.quality||'needs_verification');const r=await fetch(`${ENDPOINT}?${p}`,{cache:'no-store'});if(!r.ok)throw new Error(`HTTP ${r.status}`);const d=await r.json();state.total=num(d.list?.total);const next=d.list?.items||[];state.items=reset?next:state.items.concat(next);state.offset=state.items.length;renderItems()}catch(err){document.getElementById('items').innerHTML=`<div class="empty">Could not load records: ${esc(err.message)}</div>`}finally{state.loading=false;document.getElementById('loadMore').disabled=false}}
-  document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>switchMode(b.dataset.mode)));
-  document.querySelectorAll('.mode').forEach(b=>b.addEventListener('click',()=>{runMode=b.dataset.run;modePinned=true;document.querySelectorAll('.mode').forEach(m=>m.classList.toggle('active',m===b));if(lastData)renderStages(lastData.overall||{})}));
-  document.getElementById('verifyMetric').addEventListener('click',()=>switchMode('verify'));document.getElementById('reviewMetric').addEventListener('click',()=>switchMode('review'));
-  document.getElementById('search').addEventListener('input',e=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{state.q=e.target.value.trim();loadList(true)},250)});
-  document.getElementById('loadMore').addEventListener('click',()=>loadList(false));
-  refreshSummary();loadList(true);setInterval(refreshSummary,15000);
-</script>
+    function renderCoverage(data) {
+      const types = data.published_types || [], max = Math.max(1, ...types.map(row => num(row.count)));
+      document.getElementById('typeBreakdown').innerHTML = types.length ? types.slice(0, 12).map(row => `<div class="bar-row"><span>${esc(row.name)}</span><div class="bar-track"><i style="width:${(num(row.count) / max * 100).toFixed(1)}%"></i></div><b>${fmt(row.count)}</b></div>`).join('') : '<div class="empty">No published venues.</div>';
+      const cities = data.published_cities || [];
+      document.getElementById('cityBreakdown').innerHTML = cities.length ? cities.map(row => `<span class="city">${esc(row.city)} <b>${fmt(row.count)}</b></span>`).join('') : '<span class="empty">No published cities.</span>';
+    }
+
+    function renderSummary(data) {
+      summary = data;
+      const o = data.overall || {}, status = renderStatus(data);
+      const published = num(o.published), candidates = num(o.candidates), reviews = num(o.publication_reviews), suppressed = num(o.suppressed);
+      setText('updated', `Updated ${new Date(data.generated_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`);
+      setText('publishedCount', fmt(published)); setText('candidateCount', fmt(candidates));
+      setText('publicationReviewCount', fmt(reviews)); setText('currentResolverCount', fmt(o.resolver_current));
+      setText('resolverDetail', `${fmt(o.resolver_current)} of ${fmt(o.ingestion_backed)} ingestion-backed venues`);
+      setText('gatePublished', fmt(published)); setText('gateCandidate', fmt(candidates)); setText('gateReview', fmt(reviews)); setText('gateSuppressed', fmt(suppressed));
+      setText('gateTotal', `${fmt(num(o.ingestion_backed))} ingestion-backed venues`);
+      if (status.running) {
+        setText('heroTitle', 'A catalog refresh is running behind a closed publication gate.');
+        document.getElementById('heroCopy').innerHTML = `<b>${fmt(published)} currently published venues remain available.</b> New and changed records stay hidden until the full resolver and publication decision complete.`;
+      } else if (status.failed) {
+        setText('heroTitle', 'The source refresh failed, but the consumer catalog stayed protected.');
+        document.getElementById('heroCopy').innerHTML = `<b>${fmt(published)} previously approved venues remain live.</b> No incomplete candidate bypassed the publication gate.`;
+      } else {
+        setText('heroTitle', 'The catalog is current and protected by consumer evidence.');
+        document.getElementById('heroCopy').innerHTML = `<b>${fmt(published)} open venues are published.</b> ${fmt(candidates)} candidates remain invisible until public access, current identity, name, type, and licensing all agree.`;
+      }
+      renderReasons(data); renderActions(data); renderSources(data); renderCoverage(data);
+    }
+
+    function renderVenue(item) {
+      const publication = item.publication_state || 'unknown';
+      const info = reasonInfo(item.publication_reason);
+      const confidence = [
+        item.identity_confidence == null ? null : `Identity ${pct(item.identity_confidence)}`,
+        item.display_name_confidence == null ? null : `Name ${pct(item.display_name_confidence)}`,
+        item.type_confidence == null ? null : `Type ${pct(item.type_confidence)}`,
+      ].filter(Boolean);
+      const blocker = publication === 'published' ? '' : `<div class="blocker ${esc(publication)}"><b>${esc(info[0])}</b>${info[1] ? ` · ${esc(info[1])}` : ''}</div>`;
+      return `<article class="item"><div class="item-head"><div style="min-width:0"><div class="item-name">${esc(item.name)}</div><div class="item-type">${esc(item.primary_type_name || human(item.primary_type_slug || 'unclassified'))} · ${esc(item.city || '')}</div></div><span class="state-badge ${esc(publication)}">${esc(publication)}</span></div>
+        <div class="item-address">${esc(item.address || 'No address')}${item.region ? ` · ${esc(item.region)}` : ''}</div>${blocker}
+        <div class="item-source">Sources: ${(item.sources || []).map(human).join(' · ') || 'Curated record'}</div>
+        ${confidence.length ? `<div class="confidence">${confidence.map(value => `<span>${esc(value)}</span>`).join('')}<span>Resolver ${esc(item.field_resolution_version || 'not run')}</span></div>` : ''}</article>`;
+    }
+
+    function renderQueueItem(item) {
+      const info = reasonInfo(item.reason), actionable = reasonKey(item.reason) !== 'needs_type_or_location_corroboration';
+      return `<article class="item"><div class="item-head"><div style="min-width:0"><div class="item-name">${esc(item.name)}</div><div class="item-type">${esc(human(item.primary_type_slug || 'unclassified'))} · ${esc(item.city || '')}</div></div><span class="state-badge ${actionable ? 'review' : 'candidate'}">${actionable ? 'decision' : 'waiting'}</span></div>
+        <div class="item-address">${esc(item.address || 'No address')}${item.region ? ` · ${esc(item.region)}` : ''}</div>
+        <div class="blocker ${actionable ? 'review' : ''}"><b>${esc(info[0])}</b>${info[1] ? ` · ${esc(info[1])}` : ''}</div>
+        <div class="item-source">Source: ${esc(item.label || human(item.source))}${item.candidate_name ? ` · Possible match: ${esc(item.candidate_name)}` : ''}</div></article>`;
+    }
+
+    function renderItems() {
+      const modeLabel = { published: 'live venues', candidate: 'hidden candidates', review: 'publication decisions', suppressed: 'suppressed venues', match: 'source records in the match queue' }[state.mode];
+      setText('listMeta', `${fmt(state.total)} ${modeLabel}${state.reason ? ` · ${reasonInfo(state.reason)[0]}` : ''}`);
+      document.getElementById('items').innerHTML = state.items.length ? state.items.map(item => state.mode === 'match' ? renderQueueItem(item) : renderVenue(item)).join('') : '<div class="empty">Nothing to show here.</div>';
+      document.getElementById('loadMore').hidden = state.items.length >= state.total;
+    }
+
+    async function loadList(reset = false) {
+      if (state.loading) return;
+      if (reset) { state.offset = 0; state.items = []; }
+      state.loading = true; document.getElementById('loadMore').disabled = true;
+      if (!state.items.length) document.getElementById('items').innerHTML = '<div class="empty">Loading records…</div>';
+      const params = new URLSearchParams({ view: state.mode === 'match' ? 'review_queue' : 'venues', limit: '24', offset: String(state.offset) });
+      if (state.mode !== 'match') params.set('state', state.mode);
+      if (state.q) params.set('q', state.q); if (state.reason) params.set('reason', state.reason); if (state.source) params.set('source', state.source);
+      try {
+        const response = await fetch(`${ENDPOINT}?${params}`, { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json(), next = data.list?.items || [];
+        state.total = num(data.list?.total); state.items = reset ? next : state.items.concat(next); state.offset = state.items.length; renderItems();
+      } catch (error) {
+        document.getElementById('items').innerHTML = `<div class="empty">Could not load records: ${esc(error.message)}</div>`;
+      } finally { state.loading = false; document.getElementById('loadMore').disabled = false; }
+    }
+
+    async function refreshSummary() {
+      try {
+        const response = await fetch(ENDPOINT, { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        renderSummary(await response.json());
+        document.getElementById('error').style.display = 'none';
+      } catch (error) {
+        const el = document.getElementById('error'); el.textContent = `Could not load live catalog data: ${error.message}`; el.style.display = 'block';
+        setText('updated', 'Disconnected');
+      }
+    }
+
+    document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => openInspector(tab.dataset.mode)));
+    document.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => openInspector(button.dataset.open)));
+    document.getElementById('openActions').addEventListener('click', () => {
+      const publication = num(summary?.overall?.publication_reviews), mode = publication ? 'review' : 'match'; openInspector(mode);
+    });
+    document.getElementById('sourceFilter').addEventListener('change', event => { state.source = event.target.value; loadList(true); });
+    document.getElementById('clearFilter').addEventListener('click', () => openInspector(state.mode));
+    document.getElementById('search').addEventListener('input', event => {
+      clearTimeout(searchTimer); searchTimer = setTimeout(() => { state.q = event.target.value.trim(); loadList(true); }, 250);
+    });
+    document.getElementById('loadMore').addEventListener('click', () => loadList(false));
+
+    refreshSummary(); loadList(true); setInterval(refreshSummary, 15000);
+  </script>
 </body>
 </html>
