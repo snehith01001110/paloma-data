@@ -182,6 +182,19 @@ class Pipeline:
 
             quality = _combined_quality(record, other, identity_score)
             if _safe_to_create(combined, quality):
+                other_establishment_id = self.db.linked_establishment_id(
+                    conn, other.source, other.source_record_id
+                )
+                if other_establishment_id:
+                    self.db.upsert_source_link(
+                        conn,
+                        other_establishment_id,
+                        record,
+                        identity_score,
+                        "linked_source_corroboration",
+                    )
+                    counters["updated"] += 1
+                    return
                 establishment_id = self.db.create_establishment(conn, combined, quality)
                 self.db.upsert_source_link(
                     conn,

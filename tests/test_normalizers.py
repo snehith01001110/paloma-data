@@ -1,9 +1,21 @@
-from paloma_data.normalizers import normalize_address, normalize_name, normalize_phone, normalize_url
+from paloma_data.normalizers import (
+    consumer_display_name,
+    normalize_address,
+    normalize_name,
+    normalize_phone,
+    normalize_url,
+)
 
 
 def test_name_normalization():
     assert normalize_name("  The Alembic, LLC ") == "the alembic"
     assert normalize_name("A & B") == "a and b"
+
+
+def test_consumer_display_name_removes_only_a_terminal_corporate_suffix():
+    assert consumer_display_name("2211 Club, Llc") == "2211 Club"
+    assert consumer_display_name("Bar Corporation") == "Bar"
+    assert consumer_display_name("The Company Bar") == "The Company Bar"
 
 
 def test_address_normalization():

@@ -8,6 +8,10 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from rapidfuzz.fuzz import ratio
 
 _LEGAL_SUFFIX = re.compile(r"\b(?:llc|inc|incorporated|corp|corporation|ltd|limited|lp|llp)\.?$", re.I)
+_DISPLAY_LEGAL_SUFFIX = re.compile(
+    r"(?:,\s*|\s+)(?:llc|inc|incorporated|corp|corporation|ltd|limited|lp|llp)\.?$",
+    re.I,
+)
 _NON_ALNUM = re.compile(r"[^\w\s]", re.UNICODE)
 _SPACE = re.compile(r"\s+")
 _TRACKING = re.compile(r"^(?:utm_|fbclid$|gclid$)", re.I)
@@ -26,6 +30,13 @@ def normalize_name(value: str | None) -> str:
     cleaned = _clean_text(value)
     cleaned = _LEGAL_SUFFIX.sub("", cleaned).strip()
     return _SPACE.sub(" ", cleaned)
+
+
+def consumer_display_name(value: str | None) -> str:
+    """Remove a terminal corporate suffix without rewriting source capitalization."""
+    original = str(value or "").strip()
+    cleaned = _DISPLAY_LEGAL_SUFFIX.sub("", original).rstrip(" ,")
+    return cleaned or original
 
 
 def normalize_address(value: str | None) -> str:

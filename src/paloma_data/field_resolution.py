@@ -7,7 +7,7 @@ import json
 from typing import Any
 
 from paloma_data.db import Database, execute_many
-from paloma_data.normalizers import normalize_name
+from paloma_data.normalizers import consumer_display_name, normalize_name
 
 RESOLUTION_VERSION = "v4"
 
@@ -350,7 +350,7 @@ class FieldResolver:
                     )
                 )
                 if can_replace:
-                    chosen_name = str(best["value_text"])
+                    chosen_name = consumer_display_name(str(best["value_text"]))
                     chosen_source = str(best["best_source"])
                     name_confidence = min(0.995, best_score)
                     selections.append((best_score, str(best["evidence_id"])))
