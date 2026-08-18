@@ -6,44 +6,97 @@
   <title>Paloma Data</title>
   <meta name="description" content="Live Paloma establishment catalog health." />
   <style>
-    :root{color-scheme:light;--bg:#f6f6f3;--panel:#fff;--text:#171716;--muted:#777771;--line:#e5e5df;--ok:#2f7752;--ok-soft:#e8f3ed;--warn:#9a681f;--warn-soft:#faf0df;--run:#4267ad;--run-soft:#eaf0fb;--bad:#a7443d;--bad-soft:#fbeceb}
-    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}button,input{font:inherit;color:inherit}button{cursor:pointer}main{width:min(960px,calc(100% - 28px));margin:0 auto;padding:34px 0 64px}header{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:18px}h1{margin:0;font-size:clamp(28px,5vw,40px);letter-spacing:-.045em}h2{margin:0;font-size:15px}.subtitle{margin:6px 0 0;color:var(--muted)}.updated{color:var(--muted);font-size:12px;white-space:nowrap}.panel{background:var(--panel);border:1px solid var(--line);border-radius:15px}.error{display:none;margin-bottom:12px;padding:11px 13px;color:var(--bad);background:var(--bad-soft);border:1px solid #efc9c6;border-radius:11px}
-    .pipeline-banner{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px 17px;margin-bottom:10px}.pipeline-state{display:flex;align-items:center;gap:10px;min-width:0}.dot{width:9px;height:9px;border-radius:50%;background:var(--ok);flex:0 0 auto}.dot.running{background:var(--run)}.dot.failed{background:var(--bad)}.pipeline-copy{min-width:0}.pipeline-copy strong{display:block}.pipeline-copy span{display:block;color:var(--muted);font-size:11px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pipeline-summary{color:var(--muted);font-size:11px;white-space:nowrap}
-    .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:26px}.metric{padding:15px 16px;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:14px}.metric strong{display:block;font-size:27px;letter-spacing:-.04em;line-height:1}.metric span{display:block;margin-top:7px;font-weight:600;font-size:11px}.metric small{display:block;color:var(--muted);font-size:10px;margin-top:3px}.metric.good strong{color:var(--ok)}.metric.warn strong{color:var(--warn)}button.metric{transition:transform .15s,border-color .15s;width:100%}button.metric:hover{transform:translateY(-1px);border-color:#bebeb7}
-    .section-head{display:flex;align-items:baseline;justify-content:space-between;gap:14px;margin:0 0 9px}.section-head p{margin:0;color:var(--muted);font-size:11px}.sources{overflow:hidden;margin-bottom:26px}.source-row{display:grid;grid-template-columns:150px 1fr auto;gap:12px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line)}.source-row:last-child{border-bottom:0}.source-name{font-weight:650}.source-detail{color:var(--muted);font-size:11px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.status{padding:4px 8px;border-radius:999px;font-size:10px;text-transform:capitalize;white-space:nowrap}.status.succeeded{background:var(--ok-soft);color:var(--ok)}.status.running{background:var(--run-soft);color:var(--run)}.status.failed{background:var(--bad-soft);color:var(--bad)}.status.idle{background:#f0f0ec;color:var(--muted)}
+    :root{color-scheme:light;--bg:#f6f6f3;--panel:#fff;--text:#171716;--muted:#777771;--faint:#a2a29b;--line:#e5e5df;--ok:#2f7752;--ok-soft:#e8f3ed;--warn:#9a681f;--warn-soft:#faf0df;--run:#4267ad;--run-soft:#eaf0fb;--bad:#a7443d;--bad-soft:#fbeceb;--drop:#ebebe5}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}button,input{font:inherit;color:inherit}button{cursor:pointer}main{width:min(1000px,calc(100% - 28px));margin:0 auto;padding:34px 0 64px}header{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:16px}h1{margin:0;font-size:clamp(28px,5vw,40px);letter-spacing:-.045em}h2{margin:0;font-size:15px}.subtitle{margin:6px 0 0;color:var(--muted)}.updated{color:var(--muted);font-size:12px;white-space:nowrap}.panel{background:var(--panel);border:1px solid var(--line);border-radius:15px}.error{display:none;margin-bottom:12px;padding:11px 13px;color:var(--bad);background:var(--bad-soft);border:1px solid #efc9c6;border-radius:11px}
+    .section-head{display:flex;align-items:baseline;justify-content:space-between;gap:14px;margin:26px 0 9px}.section-head p{margin:0;color:var(--muted);font-size:11px}
+
+    /* run banner */
+    .runbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 17px;margin-bottom:10px}.runstate{display:flex;align-items:center;gap:10px;min-width:0}.dot{width:9px;height:9px;border-radius:50%;background:var(--ok);flex:0 0 auto}.dot.running{background:var(--run);animation:pulse 1.4s ease-in-out infinite}.dot.failed{background:var(--bad)}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}.runcopy{min-width:0}.runcopy strong{display:block}.runcopy span{display:block;color:var(--muted);font-size:11px;margin-top:2px}.runsummary{color:var(--muted);font-size:11px;white-space:nowrap}
+
+    /* hero + gates */
+    .hero{padding:20px 20px 8px;margin-bottom:10px}.hero-top{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:18px}.hero-count{display:flex;align-items:baseline;gap:9px}.hero-count strong{font-size:42px;letter-spacing:-.045em;line-height:1}.hero-count span{font-weight:600}.hero-note{max-width:430px;color:var(--muted);font-size:12px;padding:9px 12px;background:var(--warn-soft);border-radius:10px;color:#7d5518}.hero-note.clear{background:var(--ok-soft);color:var(--ok)}.hero-note b{font-weight:650}
+    .gates{border-top:1px solid var(--line)}.gate{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(120px,1fr) 108px;gap:14px;align-items:center;padding:13px 0;border-bottom:1px solid var(--line)}.gate:last-child{border-bottom:0}.gate-q{min-width:0}.gate-q strong{display:block;font-weight:600}.gate-q span{display:block;color:var(--faint);font-size:10.5px;margin-top:2px}.track{height:9px;border-radius:999px;background:var(--drop);overflow:hidden}.track i{display:block;height:100%;border-radius:999px;background:var(--ok);transition:width .5s}.gate.blocked .track i{background:var(--warn)}.gate.empty .track i{background:var(--bad)}.gate-num{text-align:right;font-size:11px;color:var(--muted);white-space:nowrap}.gate-num b{display:block;font-size:15px;color:var(--text);letter-spacing:-.02em}.gate.blocked .gate-num b,.gate.empty .gate-num b{color:var(--warn)}
+
+    /* small metric row */
+    .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.metric{padding:14px 16px;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:14px}.metric strong{display:block;font-size:24px;letter-spacing:-.04em;line-height:1}.metric span{display:block;margin-top:7px;font-weight:600;font-size:11.5px}.metric small{display:block;color:var(--muted);font-size:10px;margin-top:3px}.metric.warn strong{color:var(--warn)}button.metric{transition:transform .15s,border-color .15s;width:100%}button.metric:hover{transform:translateY(-1px);border-color:#bebeb7}
+
+    /* funnel */
+    .legend{display:flex;gap:14px;flex-wrap:wrap;padding:13px 16px;border-bottom:1px solid var(--line);color:var(--muted);font-size:10.5px}.legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:-1px}.key-linked{background:var(--ok)}.key-review{background:var(--warn)}.key-held{background:#c9c9c1}.key-drop{background:var(--drop)}
+    .funnel-row{padding:14px 16px;border-bottom:1px solid var(--line)}.funnel-row:last-child{border-bottom:0}.funnel-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:8px}.funnel-name{font-weight:650}.funnel-fetched{color:var(--muted);font-size:11px}.stack{display:flex;height:15px;border-radius:6px;overflow:hidden;background:var(--drop)}.stack i{display:block;height:100%;transition:width .5s}.seg-linked{background:var(--ok)}.seg-review{background:var(--warn)}.seg-held{background:#c9c9c1}.funnel-foot{display:flex;gap:13px;flex-wrap:wrap;margin-top:7px;color:var(--muted);font-size:10.5px}.funnel-foot b{color:var(--text);font-weight:600}
+
+    /* stages */
+    .modes{display:flex;gap:4px}.mode{border:1px solid var(--line);background:#fff;border-radius:9px;padding:6px 11px;color:var(--muted);font-size:11px}.mode.active{background:#f0f0ec;color:var(--text);font-weight:650;border-color:#d8d8d0}
+    .mode-note{padding:13px 16px;border-bottom:1px solid var(--line);color:var(--muted);font-size:11.5px}.mode-note b{color:var(--text);font-weight:600}
+    .stages{display:grid;grid-template-columns:repeat(5,1fr);gap:0;padding:6px 8px 14px}.stage{position:relative;padding:14px 12px 0}.stage::before{content:'';position:absolute;top:22px;left:-50%;width:100%;height:2px;background:var(--line)}.stage:first-child::before{display:none}.stage.done::before{background:#bcd8c8}.stage-dot{position:relative;width:17px;height:17px;border-radius:50%;background:#fff;border:2px solid var(--line);margin-bottom:11px;display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--muted)}.stage.done .stage-dot{background:var(--ok);border-color:var(--ok);color:#fff}.stage.active .stage-dot{border-color:var(--run);background:var(--run-soft);animation:pulse 1.4s ease-in-out infinite}.stage.skip .stage-dot{border-style:dashed}.stage-name{font-weight:600;font-size:11.5px;line-height:1.3}.stage-what{color:var(--faint);font-size:10px;margin-top:4px;line-height:1.35}.stage-num{margin-top:7px;font-size:11px;font-weight:650;letter-spacing:-.02em}.stage.done .stage-num{color:var(--ok)}.stage.active .stage-num{color:var(--run)}.stage.pending .stage-num,.stage.skip .stage-num{color:var(--faint)}.stage.warnstage .stage-num{color:var(--warn)}
+
+    /* name ceiling */
+    .ceil-row{display:grid;grid-template-columns:minmax(0,150px) 1fr 92px;gap:12px;align-items:center;padding:11px 16px;border-bottom:1px solid var(--line)}.ceil-row:last-child{border-bottom:0}.ceil-name{min-width:0}.ceil-name strong{display:block;font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ceil-name span{color:var(--faint);font-size:10px}.ceil-track{position:relative;height:9px;border-radius:999px;background:var(--drop)}.ceil-track i{display:block;height:100%;border-radius:999px}.ceil-track u{position:absolute;top:-4px;bottom:-4px;width:2px;background:#8c8c85;text-decoration:none}.ceil-val{text-align:right;font-size:11px;white-space:nowrap;color:var(--muted)}.ceil-val b{color:var(--text)}.pass i{background:var(--ok)}.fail i{background:var(--warn)}.ceil-foot{padding:11px 16px;color:var(--muted);font-size:10.5px;background:#fafaf7;border-radius:0 0 14px 14px}
+
+    /* browser */
     .browser{overflow:hidden}.browser-top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px;border-bottom:1px solid var(--line)}.tabs{display:flex;gap:3px;flex-wrap:wrap}.tab{border:0;background:transparent;color:var(--muted);border-radius:9px;padding:8px 10px}.tab.active{background:#f0f0ec;color:var(--text);font-weight:650}.search{border:1px solid var(--line);background:#fff;border-radius:9px;padding:8px 10px;outline:none;width:min(240px,36vw)}.search:focus{border-color:#aaa9a1}.subfilters{display:none;gap:6px;flex-wrap:wrap;padding:10px 12px 0}.subfilters.visible{display:flex}.chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 9px;color:var(--muted);font-size:10px}.chip.active{background:var(--warn-soft);border-color:#e5c98e;color:#815716}.list-meta{padding:12px 14px 3px;color:var(--muted);font-size:11px}.items{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:10px 11px 12px}.item{border:1px solid var(--line);border-radius:12px;padding:13px;background:#fff;min-width:0}.item.attention{border-color:#e2cda9}.item-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.item-name{font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.item-type{color:var(--muted);font-size:10px;margin-top:3px;text-transform:capitalize}.item-address{color:var(--muted);font-size:11px;margin-top:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.badge{display:inline-block;border-radius:999px;padding:3px 7px;font-size:9px;background:#f0f0ec;color:#5e5e59;white-space:nowrap}.badge.good{background:var(--ok-soft);color:var(--ok)}.badge.warn{background:var(--warn-soft);color:var(--warn)}.issue-row{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px}.issue{border-radius:8px;padding:6px 7px;background:var(--warn-soft);font-size:10px;color:var(--warn)}.name-source{margin-top:9px;color:var(--muted);font-size:10px}.possible{margin-top:9px;padding:8px;background:#f6f6f2;border-radius:8px;color:var(--muted);font-size:10px}details{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}details summary{cursor:pointer;color:var(--muted);font-size:10px}.evidence-row{display:grid;grid-template-columns:auto 1fr auto;gap:7px;align-items:center;padding:6px 0;border-bottom:1px solid #f1f1ed;font-size:9px}.evidence-row:last-child{border-bottom:0}.evidence-source{font-weight:650}.evidence-value{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.selected{color:var(--ok)}.empty{grid-column:1/-1;text-align:center;color:var(--muted);padding:34px 14px}.load-wrap{text-align:center;padding:1px 11px 13px}.load{border:1px solid var(--line);background:#fff;border-radius:9px;padding:8px 13px}.load[hidden]{display:none}footer{display:flex;justify-content:space-between;gap:12px;margin-top:12px;color:var(--muted);font-size:10px}
-    @media(max-width:760px){main{padding-top:26px}header{align-items:flex-start;flex-direction:column;gap:7px}.pipeline-banner{align-items:flex-start;flex-direction:column}.pipeline-summary{white-space:normal}.metrics{grid-template-columns:repeat(2,1fr)}.source-row{grid-template-columns:1fr auto}.source-detail{grid-column:1/-1;grid-row:2}.browser-top{align-items:stretch;flex-direction:column}.search{width:100%}.items{grid-template-columns:1fr}}
+    @media(max-width:820px){.stages{grid-template-columns:1fr;padding:8px 14px 14px}.stage{padding:11px 0 11px 26px}.stage::before{top:-11px;left:8px;width:2px;height:100%}.stage-dot{position:absolute;left:0;top:12px;margin:0}}
+    @media(max-width:760px){main{padding-top:26px}header{align-items:flex-start;flex-direction:column;gap:7px}.runbar{align-items:flex-start;flex-direction:column}.runsummary{white-space:normal}.metrics{grid-template-columns:1fr}.gate{grid-template-columns:1fr auto;gap:8px}.gate .track{grid-column:1/-1;order:3}.gate-num{text-align:left;display:flex;align-items:baseline;gap:6px}.gate-num b{font-size:13px}.ceil-row{grid-template-columns:1fr auto}.ceil-track{grid-column:1/-1;order:3}.browser-top{align-items:stretch;flex-direction:column}.search{width:100%}.items{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
 <main>
-  <header><div><h1>Paloma data</h1><p class="subtitle">Is the catalog healthy, and what needs attention?</p></div><div class="updated" id="updated">Loading…</div></header>
+  <header>
+    <div><h1>Paloma data</h1><p class="subtitle">What is in the catalog, and what is holding it back.</p></div>
+    <div class="updated" id="updated">Loading…</div>
+  </header>
   <div class="error" id="error"></div>
 
-  <section class="panel pipeline-banner">
-    <div class="pipeline-state"><span class="dot" id="pipelineDot"></span><div class="pipeline-copy"><strong id="pipelineTitle">Checking pipeline…</strong><span id="pipelineDetail"></span></div></div>
-    <div class="pipeline-summary" id="pipelineSummary"></div>
+  <section class="panel runbar">
+    <div class="runstate"><span class="dot" id="runDot"></span><div class="runcopy"><strong id="runTitle">Checking pipeline…</strong><span id="runDetail"></span></div></div>
+    <div class="runsummary" id="runSummary"></div>
+  </section>
+
+  <section class="panel hero">
+    <div class="hero-top">
+      <div class="hero-count"><strong id="liveCount">—</strong><span>venues live in Paloma</span></div>
+      <div class="hero-note" id="heroNote">Loading checks…</div>
+    </div>
+    <div class="gates" id="gates"></div>
   </section>
 
   <section class="metrics">
-    <div class="metric"><strong id="acceptedCount">—</strong><span>In Paloma</span><small>Accepted establishments</small></div>
-    <div class="metric good"><strong id="healthyCount">—</strong><span>Healthy</span><small id="healthyPct">—</small></div>
-    <button class="metric warn" id="verifyMetric" type="button"><strong id="verifyCount">—</strong><span>Need verification</span><small>Weak name, identity, or type</small></button>
-    <button class="metric warn" id="reviewMetric" type="button"><strong id="reviewCount">—</strong><span>Manual review</span><small>Not safe to auto-accept</small></button>
+    <div class="metric"><strong id="bothCount">—</strong><span>Venues that pass all 3 checks</span><small id="bothPct">—</small></div>
+    <button class="metric warn" id="verifyMetric" type="button"><strong id="verifyCount">—</strong><span>Venues failing at least 1 check</span><small>Live, but a field is not trusted yet</small></button>
+    <button class="metric warn" id="reviewMetric" type="button"><strong id="reviewCount">—</strong><span>Source records a human must judge</span><small>Never auto-added to the catalog</small></button>
   </section>
 
-  <div class="section-head"><h2>Pipeline</h2><p>Only the latest run for each source</p></div>
-  <section class="panel sources" id="sources"></section>
+  <div class="section-head"><h2>Where source records end up</h2><p>Sources publish far more than Paloma keeps</p></div>
+  <section class="panel">
+    <div class="legend">
+      <span><i class="key-linked"></i>Linked to a venue</span>
+      <span><i class="key-review"></i>Waiting for a human</span>
+      <span><i class="key-held"></i>Kept, no decision yet</span>
+      <span><i class="key-drop"></i>Dropped — outside the Bay Area filter</span>
+    </div>
+    <div id="funnel"></div>
+  </section>
 
-  <div class="section-head"><h2>Establishments</h2><p>Drill in only when something looks wrong</p></div>
+  <div class="section-head">
+    <h2>What a run actually does</h2>
+    <div class="modes"><button class="mode active" data-run="full" type="button">Full rebuild</button><button class="mode" data-run="incremental" type="button">Daily sync</button></div>
+  </div>
+  <section class="panel">
+    <div class="mode-note" id="modeNote"></div>
+    <div class="stages" id="stages"></div>
+  </section>
+
+  <div class="section-head"><h2>Why names fail the check</h2><p>Best score a name can reach, by where it came from</p></div>
+  <section class="panel" id="ceilPanel"></section>
+
+  <div class="section-head"><h2>Browse the catalog</h2><p>Drill in only when something looks wrong</p></div>
   <section class="panel browser">
     <div class="browser-top">
-      <div class="tabs"><button class="tab active" data-mode="accepted" type="button">All</button><button class="tab" data-mode="verify" type="button">Needs attention</button><button class="tab" data-mode="review" type="button">Manual review</button></div>
-      <input class="search" id="search" type="search" placeholder="Search establishments" aria-label="Search establishments" />
+      <div class="tabs"><button class="tab active" data-mode="accepted" type="button">All venues</button><button class="tab" data-mode="verify" type="button">Failing a check</button><button class="tab" data-mode="review" type="button">Waiting for a human</button></div>
+      <input class="search" id="search" type="search" placeholder="Search venues" aria-label="Search venues" />
     </div>
     <div class="subfilters" id="subfilters"></div>
     <div class="list-meta" id="listMeta">Loading…</div>
-    <div class="items" id="items"><div class="empty">Loading establishments…</div></div>
+    <div class="items" id="items"><div class="empty">Loading venues…</div></div>
     <div class="load-wrap"><button class="load" id="loadMore" type="button" hidden>Load more</button></div>
   </section>
   <footer><span>Live · refreshes every 15 seconds</span><span>Click a warning count to inspect it</span></footer>
@@ -51,35 +104,124 @@
 <script>
   const ENDPOINT='https://lighcnfzajgvfbdoekzt.supabase.co/functions/v1/paloma-data-progress';
   const nf=new Intl.NumberFormat(),compact=new Intl.NumberFormat(undefined,{notation:'compact',maximumFractionDigits:1});
-  const sourceShort={ca_abc:'ABC',datasf:'DataSF',overture:'Overture',official_web:'Official web',canonical_seed:'Previous canonical',unresolved:'Unresolved'};
-  const state={mode:'accepted',q:'',reason:'',quality:'',offset:0,total:0,items:[],loading:false};let searchTimer,breakdown=[];
+  const sourceShort={ca_abc:'ABC',datasf:'DataSF',overture:'Overture',official_web:'Official web',canonical_seed:'Previous canonical',osm:'OpenStreetMap',unresolved:'Unresolved'};
+  // Gate thresholds mirror ingest field resolution (field_resolution.py). Keep in sync.
+  const GATE_MIN={identity:.90,name:.85,type:.85};
+  // Best achievable score per name source = authority x evidence_confidence, from
+  // SOURCE_POLICIES in field_resolution.py and OfficialWebEnricher. Keep in sync.
+  // Only sources that write field_name='display_name' belong here. ABC and DataSF write
+  // 'legal_name' and never compete for the public name at all.
+  const NAME_CEILING={official_web:{v:.995,note:'verified first-party website'},overture:{v:.773,note:'map aggregator'},osm:{v:.722,note:'community map'},canonical_seed:{v:.358,note:'pre-pipeline value'}};
+  const state={mode:'accepted',q:'',reason:'',quality:'',offset:0,total:0,items:[],loading:false};
+  let searchTimer,breakdown=[],sources=[],runMode='full',lastData=null;
   const esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
-  const fmt=v=>nf.format(Number(v||0)),compactFmt=v=>compact.format(Number(v||0)),pct=v=>v==null?'—':`${Math.round(Number(v)*100)}%`,human=v=>String(v||'').replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase());
+  const fmt=v=>nf.format(Number(v||0)),compactFmt=v=>compact.format(Number(v||0)),num=v=>Number(v||0);
+  const pct=v=>v==null?'—':`${Math.round(Number(v)*100)}%`,human=v=>String(v||'').replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase());
   const reasonInfo=reason=>({needs_type_or_location_corroboration:'Needs corroboration',source_conflict:'Sources disagree',ambiguous_match:'Possible duplicate',weak_match:'Uncertain match',same_location_name_conflict:'Possible rebrand'}[reason]||human(reason||'Other'));
-  const needsVerification=i=>i.field_resolution_version!=='v2'||i.identity_confidence==null||i.identity_confidence<.90||i.display_name_confidence==null||i.display_name_confidence<.85||i.type_confidence==null||i.type_confidence<.85;
+  const needsVerification=i=>i.field_resolution_version!=='v2'||i.identity_confidence==null||i.identity_confidence<GATE_MIN.identity||i.display_name_confidence==null||i.display_name_confidence<GATE_MIN.name||i.type_confidence==null||i.type_confidence<GATE_MIN.type;
 
   function switchMode(mode){state.mode=mode;state.reason='';state.quality=mode==='verify'?'needs_verification':'';syncTabs();renderSubfilters();loadList(true);document.querySelector('.browser').scrollIntoView({behavior:'smooth',block:'start'})}
   function syncTabs(){document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.mode===state.mode))}
   function renderSubfilters(){const h=document.getElementById('subfilters');if(state.mode==='verify'){const f=[['needs_verification','All'],['name','Name'],['identity','Identity'],['type','Type'],['unresolved','Not resolved']];h.classList.add('visible');h.innerHTML=f.map(([v,l])=>`<button class="chip ${state.quality===v?'active':''}" data-quality="${v}">${l}</button>`).join('');h.querySelectorAll('.chip').forEach(b=>b.addEventListener('click',()=>{state.quality=b.dataset.quality;renderSubfilters();loadList(true)}));return}if(state.mode==='review'){h.classList.add('visible');h.innerHTML=`<button class="chip ${!state.reason?'active':''}" data-reason="">All</button>`+breakdown.map(x=>`<button class="chip ${state.reason===x.reason?'active':''}" data-reason="${esc(x.reason)}">${esc(reasonInfo(x.reason))} · ${compactFmt(x.count)}</button>`).join('');h.querySelectorAll('.chip').forEach(b=>b.addEventListener('click',()=>{state.reason=b.dataset.reason||'';renderSubfilters();loadList(true)}));return}h.classList.remove('visible');h.innerHTML=''}
 
+  function renderGates(o){
+    const live=num(o.ingestion_backed);
+    const gates=[
+      {key:'identity',label:'is this a real place',q:'Is this a real, distinct place?',sub:`Identity confidence at or above ${pct(GATE_MIN.identity)}`,pass:num(o.strong_identity)},
+      {key:'type',label:'what kind of place',q:'Do we know what kind of place it is?',sub:`Type confidence at or above ${pct(GATE_MIN.type)}`,pass:num(o.strong_type)},
+      {key:'name',label:'current public name',q:'Do we know its current public name?',sub:`Name confidence at or above ${pct(GATE_MIN.name)}`,pass:num(o.strong_display_name)},
+    ];
+    document.getElementById('gates').innerHTML=gates.map(g=>{
+      const share=live?g.pass/live:0,cls=g.pass===0?'empty':share<1?'blocked':'';
+      return `<div class="gate ${cls}"><div class="gate-q"><strong>${esc(g.q)}</strong><span>${esc(g.sub)}</span></div><div class="track"><i style="width:${(share*100).toFixed(1)}%"></i></div><div class="gate-num"><b>${fmt(g.pass)}</b>of ${fmt(live)} pass</div></div>`;
+    }).join('');
+    const worst=gates.slice().sort((a,b)=>a.pass-b.pass)[0],healthy=num(o.field_healthy),note=document.getElementById('heroNote');
+    if(live&&healthy===live){note.className='hero-note clear';note.innerHTML='Every live venue passes all three checks.';}
+    else if(live){note.className='hero-note';note.innerHTML=`<b>${fmt(live-healthy)} of ${fmt(live)} venues are live but not fully trusted.</b> The weakest check is <b>${esc(worst.label)}</b> — ${fmt(worst.pass)} of ${fmt(live)} pass it.`;}
+    else{note.className='hero-note';note.textContent='No ingestion-backed venues yet.';}
+  }
+
+  function renderFunnel(){
+    const scale=Math.max(1,...sources.map(s=>Math.max(num(s.latest_run?.fetched),num(s.staged_count))));
+    document.getElementById('funnel').innerHTML=sources.map(s=>{
+      const staged=num(s.staged_count),linked=num(s.linked_record_count),review=num(s.pending_review_record_count);
+      const held=Math.max(0,staged-linked-review),base=Math.max(staged,num(s.latest_run?.fetched)),dropped=Math.max(0,base-staged);
+      const w=v=>`${(v/scale*100).toFixed(2)}%`;
+      const foot=[`<b>${fmt(base)}</b> read`,`<b>${fmt(staged)}</b> kept`,`<b>${fmt(linked)}</b> linked to ${fmt(num(s.linked_establishment_count))} venues`,`<b>${fmt(review)}</b> waiting`];
+      if(dropped)foot.push(`<b>${fmt(dropped)}</b> outside the filter`);
+      return `<div class="funnel-row"><div class="funnel-head"><span class="funnel-name">${esc(s.label)}</span><span class="funnel-fetched">${fmt(base)} records read from source</span></div>
+        <div class="stack" style="width:${(base/scale*100).toFixed(2)}%;min-width:6%">
+          <i class="seg-linked" style="width:${w(linked)}" title="Linked ${fmt(linked)}"></i><i class="seg-review" style="width:${w(review)}" title="Waiting ${fmt(review)}"></i><i class="seg-held" style="width:${w(held)}" title="Kept, undecided ${fmt(held)}"></i>
+        </div>
+        <div class="funnel-foot">${foot.map(t=>`<span>${t}</span>`).join('')}</div></div>`;
+    }).join('');
+  }
+
+  const RUN_COPY={
+    full:'<b>Full rebuild.</b> Re-reads every record from every source, then rebuilds field evidence from scratch. Runs on a push to main, on manual dispatch, and automatically once whenever the field resolver version changes.',
+    incremental:'<b>Daily sync.</b> Reads only records the source changed, then re-scores affected fields. Government sources run weekdays; first-party name checks run weekly; Overture runs monthly.'
+  };
+  function renderStages(o){
+    document.getElementById('modeNote').innerHTML=RUN_COPY[runMode];
+    const live=num(o.ingestion_backed),running=sources.find(s=>s.latest_run?.status==='running'),failed=sources.find(s=>s.latest_run?.status==='failed');
+    const read=sources.reduce((a,s)=>a+num(s.latest_run?.fetched),0),staged=sources.reduce((a,s)=>a+num(s.staged_count),0);
+    const sourcesDone=sources.length>0&&sources.every(s=>s.latest_run?.status==='succeeded');
+    const resolved=num(o.field_resolved),web=num(o.official_web_names),healthy=num(o.field_healthy);
+    const webSkipped=runMode==='incremental';
+    const st=[
+      {n:'Read sources',w:runMode==='full'?'Every record from ABC, DataSF and Overture':'Only records changed since the last run',v:`${fmt(read)} read`,s:failed?'warnstage':running?'active':sourcesDone?'done':'pending'},
+      {n:'Filter and stage',w:'Drop anything outside the Bay Area, keep the rest in the ingest schema',v:`${fmt(staged)} staged`,s:staged?'done':'pending'},
+      {n:'Match to venues',w:'Exact source ID, then phone/address/website, then fuzzy score',v:`${fmt(live)} venues linked`,s:live?'done':'pending'},
+      {n:'Score each field',w:'Weigh competing claims per field instead of overwriting',v:`${fmt(resolved)} scored`,s:resolved?'done':'pending'},
+      {n:'Verify real names',w:webSkipped?'Skipped — runs on its own weekly schedule':'Check first-party websites, the only source that can clear the name gate',v:webSkipped?'weekly job':`${fmt(web)} verified`,s:webSkipped?'skip':web?'done':sourcesDone?'active':'pending'},
+    ];
+    document.getElementById('stages').innerHTML=st.map((x,i)=>`<div class="stage ${x.s}"><div class="stage-dot">${i+1}</div><div class="stage-name">${esc(x.n)}</div><div class="stage-what">${esc(x.w)}</div><div class="stage-num">${esc(x.v)}</div></div>`).join('');
+    document.getElementById('bothCount').textContent=compactFmt(healthy);
+    document.getElementById('bothPct').textContent=live?`${Math.round(healthy/live*100)}% of ${fmt(live)} live venues`:'—';
+  }
+
+  function renderCeiling(data){
+    const used=new Map((data.display_name_sources||[]).map(r=>[String(r.source),num(r.count)]));
+    const floorPct=v=>`${Math.floor(v*100)}%`;
+    const rows=Object.entries(NAME_CEILING).sort((a,b)=>b[1].v-a[1].v).map(([src,info])=>{
+      const passes=info.v>=GATE_MIN.name,count=used.get(src)||0;
+      return `<div class="ceil-row ${passes?'pass':'fail'}"><div class="ceil-name"><strong>${esc(sourceShort[src]||human(src))}</strong><span>${esc(info.note)}</span></div>
+        <div class="ceil-track"><i style="width:${(info.v*100).toFixed(1)}%"></i><u style="left:${(GATE_MIN.name*100).toFixed(1)}%" title="Pass mark ${pct(GATE_MIN.name)}"></u></div>
+        <div class="ceil-val"><b>${floorPct(info.v)}</b> ${passes?'clears':'below'}<br>${count?`naming ${fmt(count)}`:'naming 0'}</div></div>`;
+    }).join('');
+    document.getElementById('ceilPanel').innerHTML=rows+`<div class="ceil-foot">The mark is the ${pct(GATE_MIN.name)} pass mark. Only a verified first-party website can clear it on its own — by design, so a map aggregator cannot silently rename a venue. ABC and DataSF are absent here on purpose: they publish the licensee or registered business name, which Paloma files as legal-name evidence and never shows as the public name.</div>`;
+  }
+
   function renderSummary(data){
-    const o=data.overall||{},accepted=Number(o.ingestion_backed||0),healthy=Number(o.field_healthy||0),verify=Math.max(0,accepted-healthy),reviews=Number(o.pending_reviews||0),hp=accepted?Math.round(healthy/accepted*100):0;sources=data.sources||[];breakdown=data.review_breakdown||[];
-    document.getElementById('acceptedCount').textContent=compactFmt(accepted);document.getElementById('healthyCount').textContent=compactFmt(healthy);document.getElementById('healthyPct').textContent=`${hp}% of accepted`;document.getElementById('verifyCount').textContent=compactFmt(verify);document.getElementById('reviewCount').textContent=compactFmt(reviews);document.getElementById('updated').textContent=`Updated ${new Date(data.generated_at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}`;
-    const failed=sources.find(s=>s.latest_run?.status==='failed'),running=sources.find(s=>s.latest_run?.status==='running'),dot=document.getElementById('pipelineDot');dot.className='dot';
-    if(failed){dot.classList.add('failed');document.getElementById('pipelineTitle').textContent=`${failed.label} failed`;document.getElementById('pipelineDetail').textContent=failed.latest_run?.error||'Latest run failed'}else if(running){dot.classList.add('running');document.getElementById('pipelineTitle').textContent=`${running.label} is running`;document.getElementById('pipelineDetail').textContent=`${fmt(running.latest_run?.fetched||0)} records processed in the current ${running.latest_run?.mode==='full'?'rebuild':'sync'}`}else{document.getElementById('pipelineTitle').textContent='Pipeline healthy';document.getElementById('pipelineDetail').textContent='No source is currently failing'}
-    document.getElementById('pipelineSummary').textContent=running?'Catalog rebuild in progress':`${sources.filter(s=>s.latest_run?.status==='succeeded').length}/${sources.length} sources healthy`;
-    document.getElementById('sources').innerHTML=sources.map(source=>{const run=source.latest_run,status=run?.status||'idle';let detail='No run yet';if(run?.status==='running')detail=`${fmt(run.fetched)} fetched so far`;else if(run?.status==='succeeded')detail=`${fmt(run.fetched)} fetched · ${fmt(source.linked_record_count)} linked`;else if(run?.status==='failed')detail=run.error||'Run failed';return `<div class="source-row"><div class="source-name">${esc(source.label)}</div><div class="source-detail">${esc(detail)}</div><span class="status ${esc(status)}">${esc(status)}</span></div>`}).join('');
-    const error=document.getElementById('error');if(failed){error.textContent=`${failed.label}: ${failed.latest_run?.error||'Latest run failed'}`;error.style.display='block'}else error.style.display='none';renderSubfilters();
+    lastData=data;const o=data.overall||{};sources=data.sources||[];breakdown=data.review_breakdown||[];
+    const live=num(o.ingestion_backed),healthy=num(o.field_healthy);
+    document.getElementById('liveCount').textContent=fmt(live);
+    document.getElementById('verifyCount').textContent=compactFmt(Math.max(0,live-healthy));
+    document.getElementById('reviewCount').textContent=compactFmt(num(o.pending_reviews));
+    document.getElementById('updated').textContent=`Updated ${new Date(data.generated_at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})}`;
+    renderGates(o);renderFunnel();renderStages(o);renderCeiling(data);
+    const failed=sources.find(s=>s.latest_run?.status==='failed'),running=sources.find(s=>s.latest_run?.status==='running'),dot=document.getElementById('runDot');dot.className='dot';
+    if(failed){dot.classList.add('failed');document.getElementById('runTitle').textContent=`${failed.label} failed`;document.getElementById('runDetail').textContent=failed.latest_run?.error||'Latest run failed'}
+    else if(running){dot.classList.add('running');document.getElementById('runTitle').textContent=`Reading ${running.label}`;document.getElementById('runDetail').textContent=`${fmt(running.latest_run?.fetched||0)} records read so far in this ${running.latest_run?.mode==='full'?'full rebuild':'sync'}`}
+    else{document.getElementById('runTitle').textContent='No source is failing';document.getElementById('runDetail').textContent='Every source finished its last run cleanly'}
+    document.getElementById('runSummary').textContent=running?'Rebuild in progress':`${sources.filter(s=>s.latest_run?.status==='succeeded').length}/${sources.length} sources healthy`;
+    const error=document.getElementById('error');if(failed){error.textContent=`${failed.label}: ${failed.latest_run?.error||'Latest run failed'}`;error.style.display='block'}else error.style.display='none';
+    renderSubfilters();
   }
 
   function evidenceRows(items){if(!items?.length)return '<div class="evidence-row"><span></span><span class="evidence-value">No name evidence yet.</span><span></span></div>';return items.map(e=>`<div class="evidence-row"><span class="evidence-source">${esc(sourceShort[e.source]||human(e.source))}</span><span class="evidence-value">${esc(e.value_text)}</span><span class="${e.selected?'selected':''}">${e.selected?'selected':pct(e.evidence_confidence)}</span></div>`).join('')}
-  function weakFields(i){const f=[];if(i.field_resolution_version!=='v2')f.push(['Resolver','Not run']);if(i.identity_confidence==null||i.identity_confidence<.90)f.push(['Identity',pct(i.identity_confidence)]);if(i.display_name_confidence==null||i.display_name_confidence<.85)f.push(['Name',pct(i.display_name_confidence)]);if(i.type_confidence==null||i.type_confidence<.85)f.push(['Type',pct(i.type_confidence)]);return f}
-  function renderAcceptedItem(i){const flagged=needsVerification(i),issues=weakFields(i),nameSource=sourceShort[i.display_name_source]||human(i.display_name_source||'unresolved');return `<article class="item ${flagged?'attention':''}"><div class="item-head"><div style="min-width:0"><div class="item-name">${esc(i.name)}</div><div class="item-type">${esc(human(i.primary_type_slug||'Establishment'))} · ${esc(i.city||'')}</div></div><span class="badge ${flagged?'warn':'good'}">${flagged?'needs attention':'healthy'}</span></div><div class="item-address">${esc(i.address||'')}${i.region?` · ${esc(i.region)}`:''}</div>${flagged?`<div class="issue-row">${issues.map(([l,v])=>`<span class="issue">${esc(l)} ${esc(v)}</span>`).join('')}</div>`:''}<div class="name-source">Name source: ${esc(nameSource)}${Number(i.source_count||0)>1?` · ${i.source_count} ingestion sources`:''}</div><details><summary>Why is this the selected name?</summary>${evidenceRows(i.name_evidence)}</details></article>`}
+  function weakFields(i){const f=[];if(i.field_resolution_version!=='v2')f.push(['Resolver','Not run']);if(i.identity_confidence==null||i.identity_confidence<GATE_MIN.identity)f.push(['Identity',pct(i.identity_confidence)]);if(i.display_name_confidence==null||i.display_name_confidence<GATE_MIN.name)f.push(['Name',pct(i.display_name_confidence)]);if(i.type_confidence==null||i.type_confidence<GATE_MIN.type)f.push(['Type',pct(i.type_confidence)]);return f}
+  function renderAcceptedItem(i){const flagged=needsVerification(i),issues=weakFields(i),nameSource=sourceShort[i.display_name_source]||human(i.display_name_source||'unresolved');return `<article class="item ${flagged?'attention':''}"><div class="item-head"><div style="min-width:0"><div class="item-name">${esc(i.name)}</div><div class="item-type">${esc(human(i.primary_type_slug||'Establishment'))} · ${esc(i.city||'')}</div></div><span class="badge ${flagged?'warn':'good'}">${flagged?`fails ${issues.length} check${issues.length===1?'':'s'}`:'passes all checks'}</span></div><div class="item-address">${esc(i.address||'')}${i.region?` · ${esc(i.region)}`:''}</div>${flagged?`<div class="issue-row">${issues.map(([l,v])=>`<span class="issue">${esc(l)} ${esc(v)}</span>`).join('')}</div>`:''}<div class="name-source">Name source: ${esc(nameSource)}${num(i.source_count)>1?` · ${i.source_count} ingestion sources`:''}</div><details><summary>Why is this the selected name?</summary>${evidenceRows(i.name_evidence)}</details></article>`}
   function renderReviewItem(i){return `<article class="item attention"><div class="item-head"><div style="min-width:0"><div class="item-name">${esc(i.name)}</div><div class="item-type">${esc(human(i.primary_type_slug||'Unclassified'))} · ${esc(i.city||'')}</div></div><span class="badge warn">${esc(reasonInfo(i.reason))}</span></div><div class="item-address">${esc(i.address||'')}${i.region?` · ${esc(i.region)}`:''}</div><div class="name-source">Source: ${esc(sourceShort[i.source]||i.label||i.source)}</div>${i.candidate_name?`<div class="possible">Possible existing match: <strong>${esc(i.candidate_name)}</strong></div>`:''}</article>`}
-  function renderItems(){const h=document.getElementById('items'),label=state.mode==='review'?`${fmt(state.total)} records require a manual decision`:state.mode==='verify'?`${fmt(state.total)} accepted establishments need attention`:`${fmt(state.total)} accepted establishments`;document.getElementById('listMeta').textContent=label;if(!state.items.length)h.innerHTML='<div class="empty">Nothing to show here.</div>';else h.innerHTML=state.items.map(i=>state.mode==='review'?renderReviewItem(i):renderAcceptedItem(i)).join('');document.getElementById('loadMore').hidden=state.items.length>=state.total}
+  function renderItems(){const h=document.getElementById('items'),label=state.mode==='review'?`${fmt(state.total)} source records need a human decision`:state.mode==='verify'?`${fmt(state.total)} live venues fail at least one check`:`${fmt(state.total)} live venues`;document.getElementById('listMeta').textContent=label;if(!state.items.length)h.innerHTML='<div class="empty">Nothing to show here.</div>';else h.innerHTML=state.items.map(i=>state.mode==='review'?renderReviewItem(i):renderAcceptedItem(i)).join('');document.getElementById('loadMore').hidden=state.items.length>=state.total}
   async function refreshSummary(){try{const r=await fetch(ENDPOINT,{cache:'no-store'});if(!r.ok)throw new Error(`HTTP ${r.status}`);renderSummary(await r.json())}catch(err){const e=document.getElementById('error');e.textContent=`Could not load live data: ${err.message}`;e.style.display='block';document.getElementById('updated').textContent='Disconnected'}}
-  async function loadList(reset=false){if(state.loading)return;if(reset){state.offset=0;state.items=[]}state.loading=true;document.getElementById('loadMore').disabled=true;if(!state.items.length)document.getElementById('items').innerHTML='<div class="empty">Loading…</div>';try{const actualView=state.mode==='review'?'review':'accepted',p=new URLSearchParams({view:actualView,limit:'24',offset:String(state.offset)});if(state.q)p.set('q',state.q);if(state.mode==='review'&&state.reason)p.set('reason',state.reason);if(state.mode==='verify')p.set('quality',state.quality||'needs_verification');const r=await fetch(`${ENDPOINT}?${p}`,{cache:'no-store'});if(!r.ok)throw new Error(`HTTP ${r.status}`);const d=await r.json();state.total=Number(d.list?.total||0);const next=d.list?.items||[];state.items=reset?next:state.items.concat(next);state.offset=state.items.length;renderItems()}catch(err){document.getElementById('items').innerHTML=`<div class="empty">Could not load records: ${esc(err.message)}</div>`}finally{state.loading=false;document.getElementById('loadMore').disabled=false}}
-  document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>switchMode(b.dataset.mode)));document.getElementById('verifyMetric').addEventListener('click',()=>switchMode('verify'));document.getElementById('reviewMetric').addEventListener('click',()=>switchMode('review'));document.getElementById('search').addEventListener('input',e=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{state.q=e.target.value.trim();loadList(true)},250)});document.getElementById('loadMore').addEventListener('click',()=>loadList(false));refreshSummary();loadList(true);setInterval(refreshSummary,15000);
+  async function loadList(reset=false){if(state.loading)return;if(reset){state.offset=0;state.items=[]}state.loading=true;document.getElementById('loadMore').disabled=true;if(!state.items.length)document.getElementById('items').innerHTML='<div class="empty">Loading…</div>';try{const actualView=state.mode==='review'?'review':'accepted',p=new URLSearchParams({view:actualView,limit:'24',offset:String(state.offset)});if(state.q)p.set('q',state.q);if(state.mode==='review'&&state.reason)p.set('reason',state.reason);if(state.mode==='verify')p.set('quality',state.quality||'needs_verification');const r=await fetch(`${ENDPOINT}?${p}`,{cache:'no-store'});if(!r.ok)throw new Error(`HTTP ${r.status}`);const d=await r.json();state.total=num(d.list?.total);const next=d.list?.items||[];state.items=reset?next:state.items.concat(next);state.offset=state.items.length;renderItems()}catch(err){document.getElementById('items').innerHTML=`<div class="empty">Could not load records: ${esc(err.message)}</div>`}finally{state.loading=false;document.getElementById('loadMore').disabled=false}}
+  document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>switchMode(b.dataset.mode)));
+  document.querySelectorAll('.mode').forEach(b=>b.addEventListener('click',()=>{runMode=b.dataset.run;document.querySelectorAll('.mode').forEach(m=>m.classList.toggle('active',m===b));if(lastData)renderStages(lastData.overall||{})}));
+  document.getElementById('verifyMetric').addEventListener('click',()=>switchMode('verify'));document.getElementById('reviewMetric').addEventListener('click',()=>switchMode('review'));
+  document.getElementById('search').addEventListener('input',e=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{state.q=e.target.value.trim();loadList(true)},250)});
+  document.getElementById('loadMore').addEventListener('click',()=>loadList(false));
+  refreshSummary();loadList(true);setInterval(refreshSummary,15000);
 </script>
 </body>
 </html>
