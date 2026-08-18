@@ -8,7 +8,7 @@ on:
         required: true
         default: status
         type: choice
-        options: [status, stage, neighborhoods, discover, trial, verify, reevaluate, publish, cutover]
+        options: [status, audit, stage, neighborhoods, discover, trial, verify, reevaluate, publish, cutover]
       source:
         description: Source for stage
         required: false
@@ -145,6 +145,9 @@ jobs:
           case "$ACTION" in
             status)
               paloma-data catalog-status
+              ;;
+            audit)
+              paloma-data catalog-audit --city "$CITY" --limit "$LIMIT"
               ;;
             stage)
               paloma-data stage-source "$SOURCE" --mode full

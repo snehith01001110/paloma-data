@@ -42,6 +42,7 @@ class CatalogRepository:
             where sr.source = any(%s)
               and sr.retired_at is null
               and sr.source_status = 'open'
+              and not (sr.quality_flags && %s::text[])
               and sr.consumer_facing
               and sr.public_access = 'walk_in'
               and sr.primary_type_slug is not null
@@ -60,7 +61,13 @@ class CatalogRepository:
               sr.source_record_id
             limit %s
             """,
-            (list(anchor_sources), city, city, limit),
+            (
+                list(anchor_sources),
+                sorted(POTENTIAL_SOURCE_EXCLUDED_FLAGS),
+                city,
+                city,
+                limit,
+            ),
         ).fetchall()
         return [_source_record(row) for row in rows]
 

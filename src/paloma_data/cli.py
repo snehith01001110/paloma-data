@@ -551,6 +551,118 @@ def catalog_status() -> None:
     )
 
 
+@app.command("catalog-audit")
+def catalog_audit(
+    city: str | None = typer.Option(None, help="Optional exact city guardrail"),
+    limit: int = typer.Option(500, min=1, max=5_000),
+) -> None:
+    """Export the current private verified set and its decisive evidence for review."""
+    _, db, _, _ = _components()
+    with db.connection() as conn:
+        rows = conn.execute(
+            """
+            select
+              c.id::text as candidate_id,
+              c.name,
+              c.primary_type_slug,
+              c.address,
+              c.city,
+              c.resolved_snapshot->>'neighborhood' as neighborhood,
+              c.identity_confidence::float as identity_confidence,
+              c.verification_tier,
+              c.verified_at,
+              c.verification_expires_at,
+              jsonb_build_object(
+                'phone', nullif(trim(c.resolved_snapshot->>'phone_e164'), '') is not null,
+                'website', nullif(trim(c.resolved_snapshot->>'website_url'), '') is not null,
+                'hours', c.resolved_snapshot->'hours' is not null
+                  and c.resolved_snapshot->'hours' <> 'null'::jsonb
+                  and c.resolved_snapshot->'hours' <> '{}'::jsonb
+                  and c.resolved_snapshot->'hours' <> '[]'::jsonb,
+                'price', jsonb_typeof(c.resolved_snapshot->'price_level') = 'number',
+                'settings', case
+                  when jsonb_typeof(c.resolved_snapshot->'setting_slugs') = 'array'
+                    then jsonb_array_length(c.resolved_snapshot->'setting_slugs') > 0
+                  else false
+                end
+              ) as optional_field_coverage,
+              coalesce((
+                select jsonb_agg(
+                  jsonb_build_object(
+                    'record_id', sr.source_record_id,
+                    'name', sr.name,
+                    'license_type', sr.permitted_metadata->>'license_type',
+                    'type_status', sr.permitted_metadata->>'type_status',
+                    'license_or_application',
+                      sr.permitted_metadata->>'license_or_application',
+                    'identity_confidence', csl.identity_confidence::float
+                  ) order by sr.source_record_id
+                )
+                from ingest.candidate_source_links csl
+                join ingest.source_records sr
+                  on sr.source = csl.source
+                 and sr.source_record_id = csl.source_record_id
+                where csl.candidate_id = c.id and sr.source = 'ca_abc'
+              ), '[]'::jsonb) as abc_licenses,
+              array(
+                select distinct csl.source
+                from ingest.candidate_source_links csl
+                where csl.candidate_id = c.id
+                order by csl.source
+              ) as linked_sources,
+              (
+                select count(*)
+                from ingest.candidate_match_reviews r
+                where r.candidate_id = c.id and r.state = 'pending'
+              ) as pending_review_items,
+              (
+                select count(*)
+                from ingest.candidate_match_reviews r
+                join ingest.source_records sr
+                  on sr.source = r.source and sr.source_record_id = r.source_record_id
+                where r.candidate_id = c.id
+                  and r.state = 'pending'
+                  and sr.retired_at is null
+                  and sr.source_status = 'open'
+                  and not (sr.quality_flags && %s::text[])
+                  and sr.normalized_address = c.normalized_address
+                  and (
+                    r.reason like '%%same_location_name_conflict'
+                    or r.reason like '%%probable_identity_needs_review'
+                  )
+              ) as blocking_exact_address_conflicts
+            from ingest.catalog_candidates c
+            where (%s::text is null or lower(c.city) = lower(%s::text))
+              and c.candidate_state in ('verified', 'published')
+              and c.decision_version = %s
+              and c.verification_expires_at > now()
+            order by c.name, c.address, c.id
+            limit %s
+            """,
+            (
+                sorted(POTENTIAL_SOURCE_EXCLUDED_FLAGS),
+                city,
+                city,
+                CATALOG_DECISION_VERSION,
+                limit,
+            ),
+        ).fetchall()
+    typer.echo(
+        json.dumps(
+            {
+                "decision_version": CATALOG_DECISION_VERSION,
+                "scope": {"city": city, "limit": limit},
+                "publication_mutated": False,
+                "count": len(rows),
+                "candidates": [dict(row) for row in rows],
+            },
+            indent=2,
+            sort_keys=True,
+            default=str,
+        )
+    )
+
+
 @app.command("sync-neighborhoods")
 def sync_neighborhoods() -> None:
     """Refresh civic boundary evidence used for deterministic neighborhood labels."""

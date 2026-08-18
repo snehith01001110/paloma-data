@@ -195,6 +195,7 @@ paloma-data catalog-discover --city "San Francisco" --limit 20
 paloma-data catalog-trial --city "San Francisco" --limit 20
 paloma-data catalog-verify --limit 250
 paloma-data catalog-reevaluate
+paloma-data catalog-audit --city "San Francisco" --limit 500
 paloma-data catalog-publish --confirm PUBLISH_VERIFIED
 paloma-data catalog-sweep
 paloma-data catalog-status
