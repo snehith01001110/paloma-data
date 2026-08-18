@@ -90,7 +90,7 @@ _RESTAURANT_IDENTITIES = frozenset({"restaurant"})
 _PRODUCER_ACCESS_TYPES = frozenset({"brewpub", "taproom", "tasting_room"})
 
 # Retail/manufacturer combinations can represent legitimate tasting rooms and therefore remain
-# private manufacturer candidates subject to the hours/manual-access gate.  Retail mixed with a
+# private candidates subject to explicit access evidence. Retail mixed with a
 # bar category is not safe: supermarkets, bottle shops, and liquor stores commonly receive a
 # secondary wine/beer/bar category even though they are not on-premise drinking destinations.
 _BAR_RETAIL_CONFLICTS = frozenset(

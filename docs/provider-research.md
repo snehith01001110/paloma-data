@@ -22,14 +22,17 @@ Reviewed 2026-08-18. Primary sources:
 
 ## Decision
 
-Automated publication semantics are versioned as `v3`. This revision rejects parent-business
-category conflicts, requires independent lineage agreement for open-source contact fields, and
-suppresses neighborhood labels near polygon edges.
+Automated publication semantics are versioned as `v4`. This revision retains the v3
+parent-category, lineage, and neighborhood protections and additionally prevents generic
+brewery/winery/distillery identities from treating provider business hours as proof of public
+access.
 
 Use California ABC for exact license state/privileges and Apache-2.0 FSQ OS for durable bulk
 discovery/name/address plus phone/website observations. Their complementary facts may verify only direct
 public-premises bars and explicit Type 75 brewpubs. Restaurant-license bars and every manufacturer
-premise require a manual attestation or a data agreement that expressly permits server retention.
+premise require stronger access evidence. A generic manufacturer always requires manual public
+access attestation; a specifically classified tasting room or taproom may use contracted provider
+hours. A data agreement must expressly permit server retention for any persisted provider fields.
 Use municipal polygons, OSM, DataSF, and Overture only as field-specific enrichment or
 corroboration.
 

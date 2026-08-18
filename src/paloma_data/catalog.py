@@ -21,7 +21,7 @@ from paloma_data.taxonomy import (
 )
 
 
-CATALOG_DECISION_VERSION = "v3"
+CATALOG_DECISION_VERSION = "v4"
 FSQ_OS_FRESHNESS_DAYS = 365
 DEFAULT_PROVIDER_LEASE_DAYS = 45
 DEFAULT_MANUAL_LEASE_DAYS = 90
@@ -274,11 +274,20 @@ def decide_candidate(
                 identity=identity_confidence,
             )
     resolved = _resolve_fields(chosen, records, verification)
-    if chosen.primary_type_slug in {
-        *GENERIC_MANUFACTURER_TYPES,
-        "taproom",
-        "tasting_room",
-    }:
+    # A generic producer identity plus posted business hours can still be a bonded warehouse,
+    # production office, or appointment-only facility.  Provider automation may verify an
+    # explicitly classified consumer venue (taproom/tasting room); generic manufacturers need a
+    # human attestation of ordinary public access.
+    if (
+        chosen.primary_type_slug in GENERIC_MANUFACTURER_TYPES
+        and verification.verification_tier != "manual"
+    ):
+        return _decision(
+            "needs_review",
+            "generic_manufacturer_requires_manual_public_access",
+            identity=identity_confidence,
+        )
+    if chosen.primary_type_slug in {"taproom", "tasting_room"}:
         if not _has_hours(resolved.get("hours")) and verification.verification_tier != "manual":
             return _decision(
                 "needs_review",
@@ -334,11 +343,14 @@ def provider_verification(
         set(record.quality_flags) & HARD_NEGATIVE_FLAGS
     )
     explicit_type = record.primary_type_slug in CONSUMER_VENUE_TYPES
-    # The API has no explicit public-access field.  A high-quality consumer category plus a
-    # non-empty current schedule is the minimum automated proxy.  A manual attestation can cover
-    # exceptional venues that intentionally publish no hours.
+    explicit_access_type = (
+        explicit_type and record.primary_type_slug not in GENERIC_MANUFACTURER_TYPES
+    )
+    # The API has no explicit public-access field.  An access-specific consumer category plus a
+    # non-empty current schedule is the minimum automated proxy. Generic manufacturer categories
+    # are deliberately excluded; a manual attestation can cover those and venues without hours.
     access = bool(
-        explicit_type
+        explicit_access_type
         and record.public_access == "walk_in"
         and _has_hours(record.hours)
     )

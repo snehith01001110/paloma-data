@@ -115,7 +115,7 @@ def test_all_hard_gates_publish_a_bar_and_resolve_only_evidenced_fields():
     decision = decide_candidate(_links(_fsq(), _abc()), [_verification()], now=NOW)
 
     assert decision.state == "verified"
-    assert decision.reason == "all_hard_gates_passed:v3"
+    assert decision.reason == "all_hard_gates_passed:v4"
     assert decision.resolved["name"] == "El Lopo"
     assert decision.resolved["hours"] == {"friday": [["16:00", "02:00"]]}
     assert decision.resolved["price_level"] == 2
@@ -208,7 +208,7 @@ def test_eating_place_license_needs_provider_or_manual_access_verification():
     decision = decide_candidate(_links(_fsq(), abc), [], now=NOW)
 
     assert decision.state == "needs_verification"
-    assert decision.reason == "missing_high_quality_verification:v3"
+    assert decision.reason == "missing_high_quality_verification:v4"
 
 
 def test_raw_abc_status_must_be_exactly_active_even_if_canonical_status_is_open():
@@ -216,7 +216,7 @@ def test_raw_abc_status_must_be_exactly_active_even_if_canonical_status_is_open(
     decision = decide_candidate(_links(_fsq(), bad_abc), [_verification()], now=NOW)
 
     assert decision.state == "withdrawn"
-    assert decision.reason == "abc_license_not_active:v3"
+    assert decision.reason == "abc_license_not_active:v4"
 
 
 def test_overture_and_a_license_cannot_replace_the_required_fsq_anchor():
@@ -228,7 +228,7 @@ def test_overture_and_a_license_cannot_replace_the_required_fsq_anchor():
     decision = decide_candidate(_links(overture, _abc()), [_verification()], now=NOW)
 
     assert decision.state == "needs_verification"
-    assert decision.reason == "missing_current_fsq_os_anchor:v3"
+    assert decision.reason == "missing_current_fsq_os_anchor:v4"
 
 
 def test_ephemeral_api_result_can_pass_a_trial_but_never_production():
@@ -251,7 +251,7 @@ def test_ephemeral_api_result_can_pass_a_trial_but_never_production():
 
     assert trial.state == "verified"
     assert production.state == "needs_verification"
-    assert production.reason == "verification_expired_or_not_storable:v3"
+    assert production.reason == "verification_expired_or_not_storable:v4"
 
 
 def test_latest_provider_result_supersedes_an_older_failure():
@@ -283,7 +283,7 @@ def test_provider_pass_for_a_different_foursquare_id_never_carries_over():
     decision = decide_candidate(_links(_fsq(), abc), [stale_pass], now=NOW)
 
     assert decision.state == "needs_verification"
-    assert decision.reason == "missing_high_quality_verification:v3"
+    assert decision.reason == "missing_high_quality_verification:v4"
 
 
 def test_tasting_room_requires_hours_or_manual_attestation():
@@ -371,7 +371,7 @@ def test_provider_category_without_current_hours_does_not_claim_public_access():
     assert verification.checks["public_access"] is False
 
 
-def test_current_consumer_brewery_requires_hours_but_can_publish():
+def test_generic_brewery_requires_manual_public_access_even_with_provider_hours():
     fsq = _fsq(primary_type_slug="brewery")
     abc = _abc(
         source_record_id="123:23",
@@ -382,7 +382,7 @@ def test_current_consumer_brewery_requires_hours_but_can_publish():
             "license_or_application": "LIC",
         },
     )
-    without_hours = _verification(
+    provider = _verification(
         permitted_snapshot={
             "name": "El Lopo Brewing",
             "primary_type_slug": "brewery",
@@ -393,15 +393,68 @@ def test_current_consumer_brewery_requires_hours_but_can_publish():
             "longitude": -122.42,
         }
     )
-    with_hours = _verification(
+    provider_with_hours = _verification(
         permitted_snapshot={
-            **without_hours.permitted_snapshot,
+            **provider.permitted_snapshot,
             "hours": {"friday": [["16:00", "22:00"]]},
         }
     )
+    manual = _verification(
+        verifier="manual",
+        verification_tier="manual",
+        storage_policy="manual",
+        permitted_snapshot=provider.permitted_snapshot,
+    )
 
-    assert decide_candidate(_links(fsq, abc), [without_hours], now=NOW).state == "needs_review"
-    assert decide_candidate(_links(fsq, abc), [with_hours], now=NOW).state == "verified"
+    without_hours = decide_candidate(_links(fsq, abc), [provider], now=NOW)
+    with_hours = decide_candidate(_links(fsq, abc), [provider_with_hours], now=NOW)
+
+    assert without_hours.state == "needs_review"
+    assert "generic_manufacturer_requires_manual_public_access" in without_hours.reason
+    assert with_hours.state == "needs_review"
+    assert "generic_manufacturer_requires_manual_public_access" in with_hours.reason
+    assert decide_candidate(_links(fsq, abc), [manual], now=NOW).state == "verified"
+
+
+def test_provider_hours_do_not_claim_public_access_for_generic_manufacturer():
+    details = _fsq(
+        source="fsq_premium",
+        primary_type_slug="winery",
+        provider_veracity=5,
+        hours={"friday": [["11:00", "17:00"]]},
+        storage_scope="contract",
+    )
+
+    verification = provider_verification(
+        details,
+        candidate_anchor=_fsq(primary_type_slug="winery"),
+        observed_at=NOW,
+        storage_policy="contract",
+    )
+
+    assert verification.outcome == "fail"
+    assert verification.checks["has_hours"] is True
+    assert verification.checks["public_access"] is False
+
+
+def test_provider_can_verify_explicit_tasting_room_with_current_hours():
+    details = _fsq(
+        source="fsq_premium",
+        primary_type_slug="tasting_room",
+        provider_veracity=5,
+        hours={"friday": [["11:00", "17:00"]]},
+        storage_scope="contract",
+    )
+
+    verification = provider_verification(
+        details,
+        candidate_anchor=_fsq(primary_type_slug="tasting_room"),
+        observed_at=NOW,
+        storage_policy="contract",
+    )
+
+    assert verification.outcome == "pass"
+    assert verification.checks["public_access"] is True
 
 
 def test_eating_place_license_can_validate_but_not_classify_a_bar():

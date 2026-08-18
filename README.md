@@ -52,8 +52,9 @@ from Foursquare is never counted as independent Foursquare corroboration. Legacy
 Overture lineage cannot corroborate a contact field at all.
 
 Manufacturer premises remain fail-closed. A Type 02, 23, or 74 license is not tasting-room proof.
-A consumer POI classified as a brewery, winery, distillery, tasting room, or taproom must also
-have current hours from the high-veracity provider check or a manual public-access attestation.
+A generic brewery, winery, or distillery requires a manual public-access attestation; even
+provider business hours can describe a production office or appointment-only facility. An
+explicit tasting-room or taproom POI may use current high-veracity provider hours instead.
 An FSQ winery+wine-bar combination becomes a `tasting_room` candidate; brewery+bar and
 brewery+restaurant combinations become `taproom` and `brewpub` candidates. These mappings improve
 license compatibility but never bypass the access gate.
@@ -235,6 +236,5 @@ ruff check .
 pytest -q
 ```
 
-Decision version: `v3` (hard parent-category conflicts, independently corroborated open-source
-contact fields, and boundary-ambiguity suppression). The additive database architecture remains
-catalog v2.
+Decision version: `v4` (v3 protections plus mandatory manual access evidence for generic
+manufacturer identities). The additive database architecture remains catalog v2.
