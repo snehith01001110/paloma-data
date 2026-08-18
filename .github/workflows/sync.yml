@@ -8,7 +8,7 @@ on:
         required: true
         default: status
         type: choice
-        options: [status, audit, resolve-review, stage, neighborhoods, discover, trial, verify, reevaluate, publish, cutover]
+        options: [status, audit, resolve-review, stage, neighborhoods, discover, trial, trial-verified, verify, reevaluate, publish, cutover]
       source:
         description: Source for stage
         required: false
@@ -181,6 +181,9 @@ jobs:
               ;;
             trial)
               paloma-data catalog-trial --city "$CITY" --limit "$LIMIT"
+              ;;
+            trial-verified)
+              paloma-data catalog-trial --city "$CITY" --limit "$LIMIT" --verified-only
               ;;
             verify)
               paloma-data catalog-verify --city "$CITY" --limit "$LIMIT"

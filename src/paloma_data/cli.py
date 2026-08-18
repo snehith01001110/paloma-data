@@ -154,28 +154,47 @@ def catalog_discover(
 @app.command("catalog-trial")
 def catalog_trial(
     city: str = typer.Option("San Francisco", help="Exact trial city"),
-    limit: int = typer.Option(20, min=1, max=50),
+    limit: int = typer.Option(20, min=1, max=100),
+    verified_only: bool = typer.Option(
+        False,
+        help="Audit only candidates already eligible for publication; do not discover new ones",
+    ),
 ) -> None:
     """Run a bounded FSQ verification trial without mutating the consumer catalog."""
     settings, _, _, catalog = _components()
     if not settings.fsq_places_api_key:
         raise typer.BadParameter("FSQ_PLACES_API_KEY is required for a verification trial")
-    discovery = catalog.discover(
-        city=city,
-        limit=limit,
-        evaluation_mode="trial",
-        anchor_sources=("fsq",),
-    )
-    candidate_ids = list(discovery.get("candidate_ids") or ())
-    if len(candidate_ids) < limit:
+    if verified_only:
+        discovery: dict[str, object] = {
+            "skipped": True,
+            "reason": "verified_only",
+            "candidate_ids": [],
+        }
         with catalog.db.connection() as conn:
-            existing = CatalogRepository(catalog.db).candidate_ids(
+            candidate_ids = CatalogRepository(catalog.db).candidate_ids(
                 conn,
                 city=city,
                 limit=limit,
-                states=("needs_verification", "needs_review", "verified", "published"),
+                states=("verified", "published"),
+                decision_version=CATALOG_DECISION_VERSION,
             )
-        candidate_ids = list(dict.fromkeys([*candidate_ids, *existing]))[:limit]
+    else:
+        discovery = catalog.discover(
+            city=city,
+            limit=limit,
+            evaluation_mode="trial",
+            anchor_sources=("fsq",),
+        )
+        candidate_ids = list(discovery.get("candidate_ids") or ())
+        if len(candidate_ids) < limit:
+            with catalog.db.connection() as conn:
+                existing = CatalogRepository(catalog.db).candidate_ids(
+                    conn,
+                    city=city,
+                    limit=limit,
+                    states=("needs_verification", "needs_review", "verified", "published"),
+                )
+            candidate_ids = list(dict.fromkeys([*candidate_ids, *existing]))[:limit]
     if not candidate_ids:
         raise RuntimeError(
             "No current FSQ OS candidates are staged for this city; run `paloma-data backfill fsq`"
@@ -198,7 +217,11 @@ def catalog_trial(
     typer.echo(
         json.dumps(
             {
-                "scope": {"city": city, "limit": limit},
+                "scope": {
+                    "city": city,
+                    "limit": limit,
+                    "verified_only": verified_only,
+                },
                 "publication_mutated": False,
                 "api_storage_policy": storage_policy,
                 "discovery": discovery,

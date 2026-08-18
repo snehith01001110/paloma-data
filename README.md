@@ -160,6 +160,8 @@ paloma-data catalog-discover --city "San Francisco" --limit 20
 
 # 3. Make at most 20 targeted detail calls. This never mutates the public catalog.
 paloma-data catalog-trial --city "San Francisco" --limit 20
+# Pre-cutover paid audit of only the current publishable set (up to 100).
+paloma-data catalog-trial --city "San Francisco" --limit 100 --verified-only
 
 # 4. Review the JSON results and match-review queue. Direct-public bars may already have an
 #    open-evidence lease. Only with specific server-retention rights, persist a rich provider pass.
