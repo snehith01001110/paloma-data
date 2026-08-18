@@ -319,7 +319,10 @@ class CatalogPipeline:
                     f"Cutover refused: {verified} verified candidates; "
                     f"minimum is {minimum_verified}"
                 )
-            self.repo.reset_public_catalog(conn)
+            legacy_rows_removed = self.repo.reset_public_catalog(
+                conn,
+                minimum_verified=minimum_verified,
+            )
             ids = self.repo.candidate_ids(
                 conn,
                 limit=max(verified, minimum_verified),
@@ -335,6 +338,7 @@ class CatalogPipeline:
             conn.commit()
         return {
             "verified_before_cutover": verified,
+            "legacy_rows_removed": legacy_rows_removed,
             "considered": len(ids),
             "published": published,
             "skipped": len(ids) - published,

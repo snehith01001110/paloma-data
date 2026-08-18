@@ -1145,26 +1145,19 @@ class CatalogRepository:
             )
         return len(rows)
 
-    def reset_public_catalog(self, conn: psycopg.Connection) -> None:
-        """Clear the consumer catalog while preserving source/candidate/verification evidence."""
-        conn.execute("select pg_advisory_xact_lock(hashtext('paloma_catalog_cutover'))")
-        conn.execute(
+    def reset_public_catalog(
+        self, conn: psycopg.Connection, *, minimum_verified: int
+    ) -> int:
+        """Invoke the one-time, privilege-contained legacy catalog reset."""
+        row = conn.execute(
             """
-            truncate table
-              public.visit_experiences,
-              public.visits,
-              public.saved_establishments,
-              public.comparisons,
-              public.plan_members,
-              public.plans,
-              public.establishment_settings,
-              ingest.establishment_field_evidence,
-              ingest.establishment_review_queue,
-              ingest.establishment_sources,
-              public.establishments
-            restart identity
-            """
-        )
+            select ingest.reset_legacy_public_catalog(%s, %s)
+              as legacy_rows_removed
+            """,
+            ("REPLACE_PUBLIC_CATALOG", minimum_verified),
+        ).fetchone()
+        if row is None:
+            raise RuntimeError("Catalog cutover reset returned no result")
         conn.execute(
             """
             update ingest.catalog_candidates
@@ -1176,6 +1169,7 @@ class CatalogRepository:
             where candidate_state = 'published'
             """
         )
+        return int(row["legacy_rows_removed"])
 
 
 def _source_record(row: dict[str, Any]) -> SourceRecord:
