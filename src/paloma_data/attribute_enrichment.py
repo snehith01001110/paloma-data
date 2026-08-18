@@ -15,7 +15,7 @@ from paloma_data.adapters.neighborhoods import (
     OvertureNeighborhoodAdapter,
 )
 from paloma_data.adapters.osm import OSMAttributeAdapter, OSMAttributeObservation
-from paloma_data.db import Database
+from paloma_data.db import Database, execute_many
 from paloma_data.normalizers import (
     haversine_meters,
     normalize_name,
@@ -256,7 +256,8 @@ class OpenAttributeEnricher:
         rows = list(claims)
         if not rows:
             return
-        conn.executemany(
+        execute_many(
+            conn,
             """
             insert into ingest.establishment_field_evidence (
                 establishment_id, field_name, value_text, normalized_value, value_json,

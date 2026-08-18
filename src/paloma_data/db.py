@@ -1,14 +1,25 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from contextlib import contextmanager
 import json
-from typing import Iterator
+from typing import Any, Iterator
 
 import psycopg
 from psycopg.rows import dict_row
 
 from paloma_data.models import CanonicalCandidate, SourceRecord
 from paloma_data.normalizers import normalize_address, normalize_name, normalize_phone, normalize_url
+
+
+def execute_many(
+    conn: psycopg.Connection,
+    query: str,
+    rows: Iterable[tuple[Any, ...]],
+) -> None:
+    """Run a Psycopg batch through a cursor; Connection has no executemany method."""
+    with conn.cursor() as cursor:
+        cursor.executemany(query, rows)
 
 
 class Database:

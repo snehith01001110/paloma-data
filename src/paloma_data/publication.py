@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from paloma_data.db import Database
+from paloma_data.db import Database, execute_many
 from paloma_data.normalizers import normalize_name
 from paloma_data.taxonomy import BAR_TYPES, GENERIC_MANUFACTURER_TYPES
 
@@ -127,7 +127,7 @@ class PublicationResolver:
                 counters["evaluated"] += 1
                 counters[decision.state] += 1
             for offset in range(0, len(updates), 500):
-                conn.executemany(_PUBLICATION_UPDATE_SQL, updates[offset : offset + 500])
+                execute_many(conn, _PUBLICATION_UPDATE_SQL, updates[offset : offset + 500])
                 conn.commit()
         return counters
 

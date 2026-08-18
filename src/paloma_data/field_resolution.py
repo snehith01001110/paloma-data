@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import json
 from typing import Any
 
-from paloma_data.db import Database
+from paloma_data.db import Database, execute_many
 from paloma_data.normalizers import normalize_name
 
 RESOLUTION_VERSION = "v4"
@@ -422,7 +422,8 @@ class FieldResolver:
             )
             metrics["resolved"] += 1
 
-        conn.executemany(
+        execute_many(
+            conn,
             """
             update public.establishments
             set name = %s,
@@ -451,7 +452,8 @@ class FieldResolver:
             updates,
         )
         if selections:
-            conn.executemany(
+            execute_many(
+                conn,
                 """
                 update ingest.establishment_field_evidence
                 set selected = true, resolution_score = %s, updated_at = now()
@@ -460,7 +462,8 @@ class FieldResolver:
                 selections,
             )
         if resolved_settings:
-            conn.executemany(
+            execute_many(
+                conn,
                 """
                 insert into public.establishment_settings (
                   establishment_id, setting_id, source, confidence, last_verified_at
