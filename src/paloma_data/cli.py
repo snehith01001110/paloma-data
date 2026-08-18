@@ -347,6 +347,121 @@ def catalog_status() -> None:
             from ingest.catalog_candidates
             """
         ).fetchone()
+        private_fields = conn.execute(
+            """
+            with current_verified as (
+              select *
+              from ingest.catalog_candidates
+              where candidate_state in ('verified', 'published')
+                and decision_version = %s
+                and verification_expires_at > now()
+            )
+            select
+              count(*) as verified,
+              count(*) filter (
+                where nullif(trim(resolved_snapshot->>'neighborhood'), '') is not null
+              ) as neighborhood,
+              count(*) filter (
+                where nullif(trim(resolved_snapshot->>'phone_e164'), '') is not null
+              ) as phone,
+              count(*) filter (
+                where nullif(trim(resolved_snapshot->>'website_url'), '') is not null
+              ) as website,
+              count(*) filter (
+                where resolved_snapshot->'hours' is not null
+                  and resolved_snapshot->'hours' <> 'null'::jsonb
+                  and resolved_snapshot->'hours' <> '{}'::jsonb
+                  and resolved_snapshot->'hours' <> '[]'::jsonb
+              ) as hours,
+              count(*) filter (
+                where jsonb_typeof(resolved_snapshot->'price_level') = 'number'
+              ) as price,
+              count(*) filter (
+                where case
+                  when jsonb_typeof(resolved_snapshot->'setting_slugs') = 'array'
+                    then jsonb_array_length(resolved_snapshot->'setting_slugs') > 0
+                  else false
+                end
+              ) as settings,
+              count(*) filter (
+                where nullif(trim(resolved_snapshot->>'cover_image_url'), '') is not null
+              ) as cover_image,
+              count(*) filter (
+                where nullif(trim(resolved_snapshot->>'name'), '') is null
+                   or nullif(trim(resolved_snapshot->>'primary_type_slug'), '') is null
+                   or nullif(trim(resolved_snapshot->>'address'), '') is null
+                   or nullif(trim(resolved_snapshot->>'city'), '') is null
+                   or nullif(trim(resolved_snapshot->>'country_code'), '') is null
+                   or resolved_snapshot->'latitude' is null
+                   or resolved_snapshot->'latitude' = 'null'::jsonb
+                   or resolved_snapshot->'longitude' is null
+                   or resolved_snapshot->'longitude' = 'null'::jsonb
+              ) as missing_required
+            from current_verified
+            """,
+            (CATALOG_DECISION_VERSION,),
+        ).fetchone()
+        verified_types = conn.execute(
+            """
+            select resolved_snapshot->>'primary_type_slug' as primary_type,
+                   count(*) as count
+            from ingest.catalog_candidates
+            where candidate_state in ('verified', 'published')
+              and decision_version = %s
+              and verification_expires_at > now()
+            group by resolved_snapshot->>'primary_type_slug'
+            order by count(*) desc, primary_type
+            """,
+            (CATALOG_DECISION_VERSION,),
+        ).fetchall()
+        review_risk = conn.execute(
+            """
+            select
+              count(*) filter (where r.state = 'pending') as pending_items,
+              count(distinct c.id) filter (where r.state = 'pending')
+                as verified_candidates_with_pending_items,
+              count(distinct c.id) filter (
+                where r.state = 'pending'
+                  and sr.normalized_address = c.normalized_address
+                  and (
+                    r.reason like '%%same_location_name_conflict'
+                    or r.reason like '%%probable_identity_needs_review'
+                  )
+              ) as verified_candidates_with_exact_address_conflict
+            from ingest.catalog_candidates c
+            left join ingest.candidate_match_reviews r on r.candidate_id = c.id
+            left join ingest.source_records sr
+              on sr.source = r.source and sr.source_record_id = r.source_record_id
+            where c.candidate_state in ('verified', 'published')
+              and c.decision_version = %s
+              and c.verification_expires_at > now()
+            """,
+            (CATALOG_DECISION_VERSION,),
+        ).fetchone()
+        invariant_risk = conn.execute(
+            """
+            select
+              count(*) filter (
+                where candidate_state in ('verified', 'published')
+                  and decision_version is distinct from %s
+              ) as stale_decision_version,
+              count(*) filter (
+                where candidate_state in ('verified', 'published')
+                  and (
+                    verification_expires_at is null
+                    or verification_expires_at <= now()
+                  )
+              ) as expired_verified_state,
+              count(*) filter (
+                where candidate_state in ('verified', 'published')
+                  and resolved_snapshot->>'primary_type_slug'
+                    in ('brewery', 'winery', 'distillery')
+                  and verification_tier is distinct from 'manual'
+              ) as automated_generic_manufacturers
+            from ingest.catalog_candidates
+            """,
+            (CATALOG_DECISION_VERSION,),
+        ).fetchone()
         publication = conn.execute(
             """
             select count(*) as rows_total,
@@ -388,6 +503,10 @@ def catalog_status() -> None:
                 "candidates": [dict(row) for row in decisions],
                 "top_blockers": [dict(row) for row in blockers],
                 "work_queue": dict(work),
+                "private_verified_field_coverage": dict(private_fields),
+                "private_verified_types": [dict(row) for row in verified_types],
+                "private_review_risk": dict(review_risk),
+                "private_invariant_risk": dict(invariant_risk),
                 "public": dict(publication),
             },
             indent=2,
