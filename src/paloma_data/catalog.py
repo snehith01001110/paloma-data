@@ -461,8 +461,9 @@ def _corroborated_phone(
     observations: list[tuple[str, SourceRecord, frozenset[str]]] = []
     for record in records:
         normalized = normalize_phone(record.phone, country_code)
-        if normalized:
-            observations.append((normalized, record, _origins(record)))
+        origins = _origins(record)
+        if normalized and origins:
+            observations.append((normalized, record, origins))
     return _independently_agreed_value(observations)
 
 
@@ -474,8 +475,9 @@ def _corroborated_website(
     for record in records:
         normalized = normalize_url(record.website_url)
         host = website_host(normalized)
-        if normalized and host:
-            observations.append((host, record, _origins(record)))
+        origins = _origins(record)
+        if normalized and host and origins:
+            observations.append((host, record, origins))
             display_values[(host, record.source)] = normalized
     value, source = _independently_agreed_value(observations)
     if not value or not source:
@@ -502,7 +504,15 @@ def _independently_agreed_value(
 
 
 def _origins(record: SourceRecord) -> frozenset[str]:
-    return frozenset(record.origin_keys or (record.source,))
+    origins = frozenset(record.origin_keys or (record.source,))
+    if record.source == "overture" and any(
+        origin == "overture" or origin.startswith("overture:")
+        for origin in origins
+    ):
+        # A generic/unknown Overture lineage may conceal a copy of FSQ or another observation.
+        # It remains useful for identity review but cannot count as independent field evidence.
+        return frozenset()
+    return origins
 
 
 def _open_evidence_verification(

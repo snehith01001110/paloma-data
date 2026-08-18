@@ -175,6 +175,26 @@ def test_shared_foursquare_lineage_does_not_corroborate_contact_fields():
     assert decision.resolved["website_url"] is None
 
 
+def test_unknown_legacy_overture_lineage_does_not_corroborate_contact_fields():
+    fsq = _fsq()
+    copied = _fsq(
+        source="overture",
+        source_record_id="legacy-overture-copy",
+        origin_keys=("overture",),
+    )
+    links = [
+        LinkedSource(fsq, 1.0, "anchor_source_id"),
+        LinkedSource(_abc(), 0.985, "exact_address_strong_name"),
+        LinkedSource(copied, 0.985, "exact_address_strong_name"),
+    ]
+
+    decision = decide_candidate(links, [], now=NOW)
+
+    assert decision.state == "verified"
+    assert decision.resolved["phone_e164"] is None
+    assert decision.resolved["website_url"] is None
+
+
 def test_eating_place_license_needs_provider_or_manual_access_verification():
     abc = _abc(
         source_record_id="123:47",

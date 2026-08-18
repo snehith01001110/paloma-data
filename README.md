@@ -48,7 +48,8 @@ CLI no longer calls that path, and code pushes no longer trigger data rebuilds.
 
 Overture, DataSF, and OpenStreetMap may discover, corroborate, or enrich. None can publish a place
 on its own. Overture provenance is decomposed into upstream origin keys, so an Overture row copied
-from Foursquare is never counted as independent Foursquare corroboration.
+from Foursquare is never counted as independent Foursquare corroboration. Legacy or unknown
+Overture lineage cannot corroborate a contact field at all.
 
 Manufacturer premises remain fail-closed. A Type 02, 23, or 74 license is not tasting-room proof.
 A consumer POI classified as a brewery, winery, distillery, tasting room, or taproom must also
