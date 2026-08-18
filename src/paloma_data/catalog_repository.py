@@ -7,6 +7,7 @@ import psycopg
 
 from paloma_data.catalog import (
     CATALOG_DECISION_VERSION,
+    HARD_NEGATIVE_FLAGS,
     CatalogDecision,
     LinkedSource,
     VerificationEvidence,
@@ -17,6 +18,9 @@ from paloma_data.normalizers import normalize_address, normalize_name
 
 
 NEIGHBORHOOD_BOUNDARY_GUARD_METERS = 10
+POTENTIAL_SOURCE_EXCLUDED_FLAGS = HARD_NEGATIVE_FLAGS | frozenset(
+    {"consumer_identity_conflict", "stale"}
+)
 
 
 class CatalogRepository:
@@ -280,6 +284,8 @@ class CatalogRepository:
             select sr.*
             from ingest.source_records sr
             where sr.retired_at is null
+              and sr.source_status = 'open'
+              and not (sr.quality_flags && %s::text[])
               and not (sr.source = %s and sr.source_record_id = %s)
               and lower(sr.city) = lower(%s)
               and trim(sr.country_code) = %s
@@ -302,6 +308,7 @@ class CatalogRepository:
             limit %s
             """,
             (
+                sorted(POTENTIAL_SOURCE_EXCLUDED_FLAGS),
                 anchor.source,
                 anchor.source_record_id,
                 anchor.city,
