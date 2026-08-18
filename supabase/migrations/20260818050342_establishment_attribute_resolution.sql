@@ -15,8 +15,9 @@ alter table ingest.establishment_field_evidence
   add column if not exists value_json jsonb;
 
 alter table ingest.establishment_field_evidence
+  drop constraint if exists establishment_field_evidence_field_check,
   drop constraint if exists establishment_field_evidence_field_name_check,
-  add constraint establishment_field_evidence_field_name_check check (
+  add constraint establishment_field_evidence_field_check check (
     field_name = any (array[
       'display_name', 'legal_name', 'address', 'phone_e164', 'website_url',
       'primary_type_slug', 'status', 'latitude', 'longitude', 'neighborhood',
@@ -77,6 +78,10 @@ create index if not exists establishments_primary_type_idx
 
 create index if not exists establishment_settings_setting_idx
   on public.establishment_settings (setting_id);
+
+grant delete on ingest.establishment_field_evidence to paloma_ingest;
+grant select on public.settings to paloma_ingest;
+grant select, insert, update, delete on public.establishment_settings to paloma_ingest;
 
 comment on column public.establishments.price_level is
   'Resolved 1-4 price claim. Null means Paloma has no trustworthy current claim.';
