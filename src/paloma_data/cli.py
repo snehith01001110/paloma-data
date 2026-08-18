@@ -438,6 +438,29 @@ def catalog_status() -> None:
             """,
             (CATALOG_DECISION_VERSION,),
         ).fetchone()
+        exact_address_conflicts = conn.execute(
+            """
+            select c.id::text as candidate_id, c.name as candidate_name,
+                   r.source, sr.name as conflicting_name, c.address,
+                   r.reason, r.score::float
+            from ingest.catalog_candidates c
+            join ingest.candidate_match_reviews r on r.candidate_id = c.id
+            join ingest.source_records sr
+              on sr.source = r.source and sr.source_record_id = r.source_record_id
+            where c.candidate_state in ('verified', 'published')
+              and c.decision_version = %s
+              and c.verification_expires_at > now()
+              and r.state = 'pending'
+              and sr.normalized_address = c.normalized_address
+              and (
+                r.reason like '%%same_location_name_conflict'
+                or r.reason like '%%probable_identity_needs_review'
+              )
+            order by c.name, r.score desc, r.source
+            limit 50
+            """,
+            (CATALOG_DECISION_VERSION,),
+        ).fetchall()
         invariant_risk = conn.execute(
             """
             select
@@ -506,6 +529,9 @@ def catalog_status() -> None:
                 "private_verified_field_coverage": dict(private_fields),
                 "private_verified_types": [dict(row) for row in verified_types],
                 "private_review_risk": dict(review_risk),
+                "private_exact_address_conflicts": [
+                    dict(row) for row in exact_address_conflicts
+                ],
                 "private_invariant_risk": dict(invariant_risk),
                 "public": dict(publication),
             },
