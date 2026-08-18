@@ -65,7 +65,7 @@ def bootstrap() -> None:
     results["geocode"] = _geocode_only(catalog.db)
     results["discovery"] = catalog.discover(city=None, limit=25_000, evaluation_mode="production")
     if not _fsq_bulk_configured(settings):
-        results["blocked"] = "FSQ OS is not configured; no candidate can pass v2"
+        results["blocked"] = "FSQ OS is not configured; no candidate can pass the catalog gate"
     typer.echo(json.dumps(results, indent=2, sort_keys=True))
 
 

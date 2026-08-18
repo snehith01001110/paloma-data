@@ -231,4 +231,6 @@ ruff check .
 pytest -q
 ```
 
-Decision version: `v2`.
+Decision version: `v3` (hard parent-category conflicts, independently corroborated open-source
+contact fields, and boundary-ambiguity suppression). The additive database architecture remains
+catalog v2.

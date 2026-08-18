@@ -22,6 +22,10 @@ Reviewed 2026-08-18. Primary sources:
 
 ## Decision
 
+Automated publication semantics are versioned as `v3`. This revision rejects parent-business
+category conflicts, requires independent lineage agreement for open-source contact fields, and
+suppresses neighborhood labels near polygon edges.
+
 Use California ABC for exact license state/privileges and Apache-2.0 FSQ OS for durable bulk
 discovery/name/address plus phone/website observations. Their complementary facts may verify only direct
 public-premises bars and explicit Type 75 brewpubs. Restaurant-license bars and every manufacturer
