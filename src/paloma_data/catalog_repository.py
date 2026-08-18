@@ -204,6 +204,46 @@ class CatalogRepository:
             ),
         )
 
+    def refresh_candidate_anchor(
+        self, conn: psycopg.Connection, candidate_id: str, anchor: SourceRecord
+    ) -> None:
+        """Keep the candidate's denormalized identity aligned with its current anchor row."""
+        conn.execute(
+            """
+            update ingest.catalog_candidates
+            set name = %s,
+                normalized_name = %s,
+                primary_type_slug = %s,
+                address = %s,
+                normalized_address = %s,
+                city = %s,
+                region = %s,
+                postal_code = %s,
+                country_code = %s,
+                location = ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography,
+                updated_at = now()
+            where id = %s::uuid
+              and anchor_source = %s
+              and anchor_source_record_id = %s
+            """,
+            (
+                anchor.name,
+                normalize_name(anchor.name),
+                anchor.primary_type_slug,
+                anchor.address,
+                normalize_address(anchor.address),
+                anchor.city,
+                anchor.region,
+                anchor.postal_code,
+                anchor.country_code,
+                anchor.longitude,
+                anchor.latitude,
+                candidate_id,
+                anchor.source,
+                anchor.source_record_id,
+            ),
+        )
+
     def link_source(
         self,
         conn: psycopg.Connection,

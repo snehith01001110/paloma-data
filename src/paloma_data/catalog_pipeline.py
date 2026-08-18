@@ -318,6 +318,7 @@ class CatalogPipeline:
     ) -> CatalogDecision:
         anchor = self.repo.fsq_anchor(conn, candidate_id)
         if anchor is not None:
+            self.repo.refresh_candidate_anchor(conn, candidate_id, anchor)
             self._correlate(conn, candidate_id, anchor)
             links = self._validated_links(conn, candidate_id, anchor)
         else:
