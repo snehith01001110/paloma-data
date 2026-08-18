@@ -11,6 +11,7 @@ from paloma_data.adapters import (
     OvertureAdapter,
 )
 from paloma_data.config import Settings
+from paloma_data.attribute_enrichment import OpenAttributeEnricher
 from paloma_data.db import Database
 from paloma_data.field_resolution import FieldResolver, RESOLUTION_VERSION
 from paloma_data.geocoding import AddressGeocoder
@@ -88,6 +89,7 @@ def bootstrap() -> None:
         results[source] = pipeline.run(adapter.source, "full", adapter.backfill())
 
     results["geocode"] = _geocode_and_reconcile(pipeline)
+    results["attributes"] = _enrich_attributes(settings, pipeline)
     results.update(_resolve_catalog(pipeline))
     typer.echo(json.dumps(results, indent=2, sort_keys=True))
 
@@ -111,6 +113,7 @@ def rebuild_catalog() -> None:
         adapter = _adapter(source, settings)
         results[source] = pipeline.run(adapter.source, "full", adapter.backfill())
     results["geocode"] = _geocode_and_reconcile(pipeline)
+    results["attributes"] = _enrich_attributes(settings, pipeline)
     results.update(_resolve_catalog(pipeline))
     typer.echo(json.dumps(results, indent=2, sort_keys=True))
 
@@ -147,6 +150,7 @@ def sync_all() -> None:
         adapter = _adapter(source, settings)
         results[source] = pipeline.run(adapter.source, "incremental", adapter.incremental())
     results["geocode"] = _geocode_and_reconcile(pipeline)
+    results["attributes"] = _enrich_attributes(settings, pipeline)
     results.update(_resolve_catalog(pipeline))
     typer.echo(json.dumps(results, indent=2, sort_keys=True))
 
@@ -156,6 +160,15 @@ def enrich_web() -> None:
     """Optionally inspect first-party sites; this is not part of scheduled catalog ingestion."""
     _, pipeline = _components()
     result = {"official_web": OfficialWebEnricher(pipeline.db).run()}
+    result.update(_resolve_catalog(pipeline))
+    typer.echo(json.dumps(result, indent=2, sort_keys=True))
+
+
+@app.command("enrich-attributes")
+def enrich_attributes() -> None:
+    """Refresh open phone, neighborhood, hours, price, and objective setting claims."""
+    settings, pipeline = _components()
+    result = {"attributes": _enrich_attributes(settings, pipeline)}
     result.update(_resolve_catalog(pipeline))
     typer.echo(json.dumps(result, indent=2, sort_keys=True))
 
@@ -172,6 +185,18 @@ def resolve_publication() -> None:
     """Recompute only the consumer-catalog publication gate."""
     _, pipeline = _components()
     typer.echo(json.dumps(PublicationResolver(pipeline.db).resolve(), indent=2, sort_keys=True))
+
+
+@app.command("reset-catalog")
+def reset_catalog(
+    confirm: str = typer.Option("", help="Must be exactly RESET_CATALOG"),
+) -> None:
+    """Destructively clear rebuildable catalog and test interactions, preserving auth/taxonomy."""
+    if confirm != "RESET_CATALOG":
+        raise typer.BadParameter("Pass --confirm RESET_CATALOG to acknowledge the destructive reset")
+    settings = Settings.from_env()
+    Database(settings.database_url).reset_catalog()
+    typer.echo(json.dumps({"status": "reset", "preserved": ["auth", "profiles", "taxonomy"]}))
 
 
 def _field_resolution_current(pipeline: Pipeline) -> bool:
@@ -244,6 +269,14 @@ def _configured_sources(settings: Settings) -> tuple[str, ...]:
 
 def _fsq_configured(settings: Settings) -> bool:
     return bool(settings.fsq_catalog_uri and settings.fsq_catalog_token and settings.fsq_places_table)
+
+
+def _enrich_attributes(settings: Settings, pipeline: Pipeline) -> dict[str, dict[str, object]]:
+    return OpenAttributeEnricher(
+        pipeline.db,
+        bbox=settings.overture_bbox,
+        overpass_url=settings.osm_overpass_url,
+    ).run()
 
 
 def _resolve_catalog(pipeline: Pipeline) -> dict[str, object]:

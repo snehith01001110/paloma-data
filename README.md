@@ -2,7 +2,7 @@
 
 Accuracy-first establishment ingestion for Paloma.
 
-This repository owns **source adapters, normalization, entity matching, field-level provenance, reconciliation, review routing, batch workers, schedules, and the internal ingestion dashboard**. The canonical Supabase schema migrations remain in the `paloma` app repository.
+This repository owns **source adapters, normalization, entity matching, field-level provenance, reconciliation, review routing, batch workers, schedules, and the internal ingestion dashboard**. Pipeline-owned Supabase migrations live here; the base product schema remains in the `paloma` app repository.
 
 ## Data philosophy
 
@@ -93,7 +93,24 @@ The canonical establishment exposes:
 - `field_resolution_version`
 - `data_quality_score`
 
-Current resolver version: `v3`.
+Current resolver version: `v4`.
+
+Phone, neighborhood, hours, price level, and objective setting tags use the same evidence model.
+The resolver stores the winning source, confidence, and verification time beside each canonical
+attribute. It does not infer price from venue type or neighborhood, and it does not turn subjective
+labels such as "cozy" into facts.
+
+Scheduled attribute coverage comes from bulk, updateable sources rather than per-venue crawling:
+
+- Overture Places supplies phone and website claims.
+- DataSF supplies San Francisco neighborhood names.
+- Overture division polygons supply a conservative Bay Area neighborhood fallback where a named
+  neighborhood polygon exists.
+- OpenStreetMap supplies phone, `opening_hours`, and objective setting tags only after a strict match
+  to an existing canonical candidate. It can never create a Paloma venue.
+- Foursquare rich fields may supply hours, price, and outdoor seating when the configured licensed
+  table includes those columns. The open-source FSQ table does not provide price coverage, so price
+  remains `NULL` rather than being guessed.
 
 A changed display name may replace the canonical name automatically only when first-party verification is strong, or multiple independent public-facing sources strongly agree. A lone aggregator can surface a conflict but cannot silently rename a venue.
 
@@ -129,6 +146,9 @@ paloma-data sync-all
 # Optional operator-only website inspection
 paloma-data enrich-web
 
+# Refresh bulk open attributes and resolve their field evidence
+paloma-data enrich-attributes
+
 # Recompute field evidence/resolution without source network fetches
 paloma-data resolve-fields
 paloma-data resolve-publication
@@ -136,6 +156,10 @@ paloma-data resolve-publication
 # Place records whose source published an address but no coordinates
 paloma-data geocode
 paloma-data geocode ca_abc
+
+# Destructively clear only rebuildable catalog/test interaction data
+# (preserves Auth identities, profiles, and taxonomy/reference tables)
+paloma-data reset-catalog --confirm RESET_CATALOG
 ```
 
 Linking a staged record also supersedes any pending review for it, because linking is the answer to whatever question put it in the queue.
@@ -188,6 +212,7 @@ Never place database credentials in the iOS app or commit them. The `ingest` sch
 
 - runs government reconciliation on weekdays;
 - runs Overture and configured FSQ OS reconciliation monthly;
+- refreshes bulk phone, neighborhood, hours, and objective setting evidence weekly;
 - recomputes field resolution and publication after every source run;
 - never crawls venue websites on a schedule;
 - supports manual source/full rebuilds;

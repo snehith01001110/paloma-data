@@ -1,6 +1,10 @@
 from datetime import datetime, timezone
 
-from paloma_data.publication import LinkedObservation, decide_publication
+from paloma_data.publication import (
+    LinkedObservation,
+    _PUBLICATION_UPDATE_SQL,
+    decide_publication,
+)
 
 
 NOW = datetime(2026, 8, 17, tzinfo=timezone.utc)
@@ -96,3 +100,8 @@ def test_consumer_poi_without_abc_remains_hidden():
     decision = decide_publication(_establishment(), [_consumer()], now=NOW)
     assert decision.state == "candidate"
     assert decision.reason == "missing_active_abc_license:v1"
+
+
+def test_publication_update_types_nullable_primary_type_parameters():
+    assert "when %s::text is null" in _PUBLICATION_UPDATE_SQL
+    assert "slug = %s::text" in _PUBLICATION_UPDATE_SQL

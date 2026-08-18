@@ -96,6 +96,7 @@ class OvertureAdapter:
         websites = properties.get("websites") or []
         phones = properties.get("phones") or []
         status = _canonical_status(properties.get("operating_status"))
+        setting_slugs = _objective_settings(category_tokens)
 
         return SourceRecord(
             source=self.source,
@@ -110,6 +111,7 @@ class OvertureAdapter:
             longitude=longitude,
             phone=_first_string(phones),
             website_url=_first_string(websites),
+            setting_slugs=setting_slugs,
             source_status=status,
             source_updated_at=_latest_update_time(sources),
             primary_type_slug=classification.primary_type_slug,
@@ -175,8 +177,12 @@ def _latest_release_from_index(document: str) -> str:
 
 
 def _download_release(output: Path, bbox: str, release: str) -> None:
+    _download_feature(output, bbox, release, "place")
+
+
+def _download_feature(output: Path, bbox: str, release: str, feature_type: str) -> None:
     reader = record_batch_reader(
-        "place",
+        feature_type,
         bbox=[float(value) for value in bbox.split(",")],
         release=release,
         stac=False,
@@ -272,3 +278,14 @@ def _float_or_none(value: Any) -> float | None:
         return float(value) if value is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def _objective_settings(category_tokens: set[str]) -> tuple[str, ...]:
+    settings: set[str] = set()
+    if category_tokens & {"hotel_bar", "hotel_lounge"}:
+        settings.add("hotel")
+    if category_tokens & {"rooftop_bar", "rooftop_lounge"}:
+        settings.add("rooftop")
+    if "brewpub" in category_tokens:
+        settings.update({"production_premises", "restaurant_attached"})
+    return tuple(sorted(settings))

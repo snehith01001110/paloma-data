@@ -57,3 +57,29 @@ def test_fsq_private_venue_flag_is_a_hard_negative():
     assert record is not None
     assert "privatevenue" in record.quality_flags
     assert record.public_access == "members_or_private"
+
+
+def test_fsq_rich_fields_are_used_only_when_delivered():
+    record = _adapter()._to_record(
+        {
+            "fsq_place_id": "rich123",
+            "name": "Roof Garden",
+            "latitude": 37.79,
+            "longitude": -122.39,
+            "address": "3 Market St",
+            "locality": "San Francisco",
+            "region": "CA",
+            "country": "US",
+            "date_refreshed": "2026-08-01T00:00:00Z",
+            "fsq_category_labels": ["Dining and Drinking > Bar > Rooftop Bar"],
+            "unresolved_flags": [],
+            "hours": '{"friday":[["16:00","02:00"]]}',
+            "price": "Expensive",
+            "outdoorseating": True,
+        }
+    )
+
+    assert record is not None
+    assert record.hours == {"friday": [["16:00", "02:00"]]}
+    assert record.price_level == 3
+    assert record.setting_slugs == ("outdoor_patio", "rooftop")

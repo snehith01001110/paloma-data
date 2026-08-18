@@ -71,6 +71,7 @@ class DataSFAdapter:
             "location_start_date": row.get("location_start_date"),
             "location_end_date": row.get("location_end_date"),
             "administratively_closed": row.get("administratively_closed"),
+            "data_as_of": row.get("data_as_of"),
         }
 
         return SourceRecord(
@@ -84,8 +85,16 @@ class DataSFAdapter:
             country_code="US",
             latitude=latitude,
             longitude=longitude,
+            neighborhood=_first(
+                row,
+                "neighborhoods_analysis_boundaries",
+                "analysis_neighborhood",
+                "sf_find_neighborhoods",
+            ),
             source_status=status,
-            source_updated_at=_parse_date(_first(row, "location_end_date", "location_start_date")),
+            source_updated_at=_parse_date(
+                _first(row, "data_as_of", "location_end_date", "location_start_date")
+            ),
             primary_type_slug=classification.primary_type_slug,
             classification_confidence=classification.confidence,
             source_family="government_registry",

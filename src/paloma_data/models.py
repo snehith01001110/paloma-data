@@ -37,6 +37,10 @@ class SourceRecord:
     longitude: float | None = None
     phone: str | None = None
     website_url: str | None = None
+    neighborhood: str | None = None
+    hours: dict[str, Any] | list[Any] | str | None = None
+    price_level: int | None = None
+    setting_slugs: tuple[str, ...] = ()
     source_status: str | None = None
     source_updated_at: datetime | None = None
     primary_type_slug: str | None = None
@@ -63,6 +67,10 @@ class SourceRecord:
                 "longitude": float(self.longitude) if self.longitude is not None else None,
                 "phone": self.phone,
                 "website_url": self.website_url,
+                "neighborhood": self.neighborhood,
+                "hours": self.hours,
+                "price_level": self.price_level,
+                "setting_slugs": sorted(set(self.setting_slugs)),
                 "source_status": self.source_status,
                 "source_updated_at": self.source_updated_at,
                 "primary_type_slug": self.primary_type_slug,

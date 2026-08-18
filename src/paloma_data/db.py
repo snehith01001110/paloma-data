@@ -33,6 +33,30 @@ class Database:
         ).fetchone()
         return row["id"]
 
+    def reset_catalog(self) -> None:
+        """Delete only rebuildable catalog data; preserve auth, profiles, and vocabularies."""
+        with self.connection() as conn:
+            conn.execute(
+                """
+                truncate table
+                  public.visit_experiences,
+                  public.visits,
+                  public.saved_establishments,
+                  public.comparisons,
+                  public.plan_members,
+                  public.plans,
+                  public.establishment_settings,
+                  ingest.establishment_field_evidence,
+                  ingest.establishment_review_queue,
+                  ingest.establishment_sources,
+                  ingest.source_records,
+                  ingest.ingestion_runs,
+                  public.establishments
+                restart identity
+                """
+            )
+            conn.commit()
+
     def finish_run(
         self,
         conn: psycopg.Connection,
@@ -84,6 +108,7 @@ class Database:
                 name, normalized_name, address, normalized_address,
                 city, region, postal_code, country_code,
                 latitude, longitude, phone_e164, website_url,
+                neighborhood, hours, price_level, setting_slugs,
                 primary_type_slug, classification_confidence,
                 source_family, consumer_facing, public_access, quality_flags,
                 category_evidence, permitted_metadata
@@ -93,6 +118,7 @@ class Database:
                 %(name)s, %(normalized_name)s, %(address)s, %(normalized_address)s,
                 %(city)s, %(region)s, %(postal_code)s, %(country_code)s,
                 %(latitude)s, %(longitude)s, %(phone_e164)s, %(website_url)s,
+                %(neighborhood)s, %(hours)s::jsonb, %(price_level)s, %(setting_slugs)s,
                 %(primary_type_slug)s, %(classification_confidence)s,
                 %(source_family)s, %(consumer_facing)s, %(public_access)s, %(quality_flags)s,
                 %(category_evidence)s::jsonb, %(permitted_metadata)s::jsonb
@@ -114,6 +140,10 @@ class Database:
                 longitude = coalesce(excluded.longitude, source_records.longitude),
                 phone_e164 = excluded.phone_e164,
                 website_url = excluded.website_url,
+                neighborhood = excluded.neighborhood,
+                hours = excluded.hours,
+                price_level = excluded.price_level,
+                setting_slugs = excluded.setting_slugs,
                 primary_type_slug = excluded.primary_type_slug,
                 classification_confidence = excluded.classification_confidence,
                 source_family = excluded.source_family,
@@ -142,6 +172,10 @@ class Database:
                 "longitude": record.longitude,
                 "phone_e164": normalize_phone(record.phone, record.country_code),
                 "website_url": normalize_url(record.website_url),
+                "neighborhood": record.neighborhood,
+                "hours": json.dumps(record.hours, sort_keys=True) if record.hours is not None else None,
+                "price_level": record.price_level,
+                "setting_slugs": sorted(set(record.setting_slugs)),
                 "primary_type_slug": record.primary_type_slug,
                 "classification_confidence": record.classification_confidence,
                 "source_family": record.source_family,
@@ -448,6 +482,10 @@ class Database:
                 longitude=row["longitude"],
                 phone=row["phone_e164"],
                 website_url=row["website_url"],
+                neighborhood=row["neighborhood"],
+                hours=row["hours"],
+                price_level=row["price_level"],
+                setting_slugs=tuple(row["setting_slugs"] or ()),
                 source_status=row["source_status"],
                 source_updated_at=row["source_updated_at"],
                 primary_type_slug=row["primary_type_slug"],

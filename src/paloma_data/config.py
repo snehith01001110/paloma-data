@@ -10,6 +10,7 @@ class Settings:
     datasf_dataset_id: str
     abc_reports_url: str
     overture_bbox: str
+    osm_overpass_url: str
     fsq_catalog_uri: str | None
     fsq_catalog_token: str | None
     fsq_places_table: str | None
@@ -31,6 +32,9 @@ class Settings:
             ),
             overture_bbox=os.getenv(
                 "PALOMA_OVERTURE_BBOX", "-123.2,36.8,-121.1,38.9"
+            ),
+            osm_overpass_url=os.getenv(
+                "OSM_OVERPASS_URL", "https://overpass-api.de/api/interpreter"
             ),
             fsq_catalog_uri=os.getenv("FSQ_CATALOG_URI"),
             fsq_catalog_token=os.getenv("FSQ_CATALOG_TOKEN"),

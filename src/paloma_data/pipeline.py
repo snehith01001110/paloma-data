@@ -272,7 +272,8 @@ def _safe_to_create(record: SourceRecord, quality: float) -> bool:
         "private_venue",
     }
     return bool(
-        record.source_status == "open"
+        record.source_family == "consumer_poi"
+        and record.source_status == "open"
         and record.latitude is not None
         and record.longitude is not None
         and record.primary_type_slug in ACCESS_SPECIFIC_TYPES

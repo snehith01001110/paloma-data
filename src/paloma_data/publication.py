@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -72,13 +73,62 @@ class PublicationResolver:
                 """
             ).fetchall()
 
+            observation_rows = conn.execute(
+                """
+                select es.establishment_id::text, sr.source, sr.source_family, sr.name,
+                       sr.source_status, sr.source_updated_at, sr.primary_type_slug,
+                       sr.consumer_facing, sr.public_access, sr.quality_flags,
+                       es.match_confidence::float, sr.permitted_metadata
+                from ingest.establishment_sources es
+                join ingest.source_records sr
+                  on sr.source = es.source and sr.source_record_id = es.source_record_id
+                order by es.establishment_id, sr.source, sr.source_record_id
+                """
+            ).fetchall()
+            grouped: dict[str, list[LinkedObservation]] = defaultdict(list)
+            for row in observation_rows:
+                grouped[str(row["establishment_id"])].append(_linked_observation(row))
+
+            # Accuracy-first refresh: no stale published row remains visible while a new decision
+            # is being computed. The following batched update then promotes only passing rows.
+            conn.execute(
+                """
+                update public.establishments e
+                set publication_state = 'candidate',
+                    publication_reason = %s,
+                    publication_evaluated_at = now(),
+                    updated_at = now()
+                where exists (
+                  select 1 from ingest.establishment_sources es where es.establishment_id = e.id
+                )
+                """,
+                (f"publication_resolution_in_progress:{PUBLICATION_VERSION}",),
+            )
+            conn.commit()
+
+            updates: list[tuple[Any, ...]] = []
             for establishment in establishments:
-                observations = self._observations(conn, establishment["id"])
-                decision = decide_publication(dict(establishment), observations)
-                self._save(conn, establishment["id"], decision)
+                establishment_id = str(establishment["id"])
+                decision = decide_publication(
+                    dict(establishment), grouped.get(establishment_id, [])
+                )
+                updates.append(
+                    (
+                        decision.state,
+                        decision.reason,
+                        decision.access_mode,
+                        decision.state,
+                        decision.state,
+                        decision.primary_type_slug,
+                        decision.primary_type_slug,
+                        establishment_id,
+                    )
+                )
                 counters["evaluated"] += 1
                 counters[decision.state] += 1
-            conn.commit()
+            for offset in range(0, len(updates), 500):
+                conn.executemany(_PUBLICATION_UPDATE_SQL, updates[offset : offset + 500])
+                conn.commit()
         return counters
 
     def _observations(self, conn, establishment_id: str) -> list[LinkedObservation]:
@@ -115,30 +165,7 @@ class PublicationResolver:
 
     def _save(self, conn, establishment_id: str, decision: PublicationDecision) -> None:
         conn.execute(
-            """
-            update public.establishments
-            set publication_state = %s,
-                publication_reason = %s,
-                access_mode = %s,
-                public_access_verified_at = case
-                    when %s = 'published' then now()
-                    else public_access_verified_at
-                end,
-                published_at = case
-                    when %s = 'published' then coalesce(published_at, now())
-                    else published_at
-                end,
-                publication_evaluated_at = now(),
-                primary_type_id = case
-                    when %s is null then primary_type_id
-                    else coalesce(
-                        (select id from public.primary_types where slug = %s),
-                        primary_type_id
-                    )
-                end,
-                updated_at = now()
-            where id = %s::uuid
-            """,
+            _PUBLICATION_UPDATE_SQL,
             (
                 decision.state,
                 decision.reason,
@@ -150,6 +177,48 @@ class PublicationResolver:
                 establishment_id,
             ),
         )
+
+
+_PUBLICATION_UPDATE_SQL = """
+update public.establishments
+set publication_state = %s,
+    publication_reason = %s,
+    access_mode = %s,
+    public_access_verified_at = case
+        when %s = 'published' then now()
+        else public_access_verified_at
+    end,
+    published_at = case
+        when %s = 'published' then coalesce(published_at, now())
+        else published_at
+    end,
+    publication_evaluated_at = now(),
+    primary_type_id = case
+        when %s::text is null then primary_type_id
+        else coalesce(
+            (select id from public.primary_types where slug = %s::text),
+            primary_type_id
+        )
+    end,
+    updated_at = now()
+where id = %s::uuid
+"""
+
+
+def _linked_observation(row: dict[str, Any]) -> LinkedObservation:
+    return LinkedObservation(
+        source=str(row["source"]),
+        source_family=str(row["source_family"]),
+        name=str(row["name"]),
+        source_status=row["source_status"],
+        source_updated_at=row["source_updated_at"],
+        primary_type_slug=row["primary_type_slug"],
+        consumer_facing=bool(row["consumer_facing"]),
+        public_access=str(row["public_access"]),
+        quality_flags=tuple(row["quality_flags"] or ()),
+        match_confidence=float(row["match_confidence"] or 0.0),
+        permitted_metadata=row["permitted_metadata"] or {},
+    )
 
 
 def decide_publication(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from datetime import date, datetime, timezone
+import json
 import re
 from typing import Any
 
@@ -28,6 +29,12 @@ _FSQ_FIELDS = (
     "fsq_category_ids",
     "fsq_category_labels",
     "unresolved_flags",
+)
+
+_FSQ_RICH_FIELDS = (
+    "hours",
+    "price",
+    "outdoorseating",
 )
 
 
@@ -86,11 +93,15 @@ class FoursquareAdapter:
 
         catalog = load_catalog("fsq", **catalog_options)
         table = catalog.load_table(self.table_name)
+        available = {field.name for field in table.schema().fields}
+        selected_fields = tuple(
+            field for field in (*_FSQ_FIELDS, *_FSQ_RICH_FIELDS) if field in available
+        )
         row_filter = And(
             And(GreaterThanOrEqual("longitude", west), LessThanOrEqual("longitude", east)),
             And(GreaterThanOrEqual("latitude", south), LessThanOrEqual("latitude", north)),
         )
-        scan = table.scan(row_filter=row_filter, selected_fields=_FSQ_FIELDS)
+        scan = table.scan(row_filter=row_filter, selected_fields=selected_fields)
         for batch in scan.to_arrow_batch_reader():
             for row in batch.to_pylist():
                 record = self._to_record(row)
@@ -123,6 +134,9 @@ class FoursquareAdapter:
         status = "closed" if closed_at or hard_closed else "open"
         consumer_facing = is_consumer_facing_type(classification.primary_type_slug)
         private = "privatevenue" in quality_flags or "private_venue" in quality_flags
+        hours = _hours(row.get("hours"))
+        price_level = _price_level(row.get("price"))
+        setting_slugs = _objective_settings(row, category_labels)
 
         return SourceRecord(
             source=self.source,
@@ -137,6 +151,9 @@ class FoursquareAdapter:
             longitude=longitude,
             phone=_first_text(row.get("tel")),
             website_url=_first_text(row.get("website")),
+            hours=hours,
+            price_level=price_level,
+            setting_slugs=setting_slugs,
             source_status=status,
             source_updated_at=_datetime_or_none(row.get("date_refreshed")),
             primary_type_slug=classification.primary_type_slug,
@@ -218,6 +235,47 @@ def _float_or_none(value: Any) -> float | None:
         return float(value) if value is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def _hours(value: Any) -> dict[str, Any] | list[Any] | str | None:
+    if value is None:
+        return None
+    if isinstance(value, (dict, list)):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return text
+    return parsed if isinstance(parsed, (dict, list, str)) else text
+
+
+def _price_level(value: Any) -> int | None:
+    aliases = {
+        "cheap": 1,
+        "moderate": 2,
+        "expensive": 3,
+        "very expensive": 4,
+    }
+    if value is None:
+        return None
+    if isinstance(value, (int, float)) and int(value) in range(1, 5):
+        return int(value)
+    return aliases.get(str(value).strip().casefold())
+
+
+def _objective_settings(row: dict[str, Any], category_labels: list[str]) -> tuple[str, ...]:
+    settings: set[str] = set()
+    if row.get("outdoorseating") is True:
+        settings.add("outdoor_patio")
+    labels = " ".join(category_labels).casefold()
+    if "hotel bar" in labels:
+        settings.add("hotel")
+    if "rooftop" in labels:
+        settings.add("rooftop")
+    return tuple(sorted(settings))
 
 
 def _datetime_or_none(value: Any) -> datetime | None:

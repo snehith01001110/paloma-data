@@ -42,6 +42,12 @@ def test_consumer_bar_can_create_only_a_hidden_canonical_candidate():
     assert _safe_to_create(_record(), 0.94) is True
 
 
+def test_community_enrichment_can_never_create_a_canonical_establishment():
+    osm = _record(source="osm", source_family="community_enrichment")
+
+    assert _safe_to_create(osm, 0.99) is False
+
+
 def test_public_license_and_consumer_subtype_combine_under_consumer_name():
     abc = _record(
         source="ca_abc",

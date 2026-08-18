@@ -20,12 +20,14 @@ on:
         required: true
         default: all
         type: choice
-        options: [all, ca_abc, datasf, overture, fsq, web]
+        options: [all, ca_abc, datasf, overture, fsq, attributes, web]
   schedule:
     # Government sources refresh frequently.
     - cron: '30 16 * * 1-5'
     # Overture and FSQ OS publish bulk releases monthly.
     - cron: '0 11 25 * *'
+    # Community hours/phone tags and neighborhood boundaries change independently.
+    - cron: '0 15 * * 0'
 
 permissions:
   contents: read
@@ -99,11 +101,17 @@ jobs:
           else
             echo "FSQ OS skipped: configure the Places Portal catalog variables and token"
           fi
+          paloma-data enrich-attributes
+      - name: Refresh open venue attributes weekly
+        if: github.event_name == 'schedule' && github.event.schedule == '0 15 * * 0'
+        run: paloma-data enrich-attributes
       - name: Run manual command
         if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
-          if [ "${{ inputs.source }}" = "web" ]; then
+          if [ "${{ inputs.source }}" = "attributes" ]; then
+            paloma-data enrich-attributes
+          elif [ "${{ inputs.source }}" = "web" ]; then
             paloma-data enrich-web
           elif [ "${{ inputs.mode }}" = "backfill" ]; then
             if [ "${{ inputs.source }}" = "all" ]; then
