@@ -22,8 +22,9 @@
 
     /* funnel */
     .legend{display:flex;gap:14px;flex-wrap:wrap;padding:13px 16px;border-bottom:1px solid var(--line);color:var(--muted);font-size:10.5px}.legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:-1px;background:#8a8a83}.key-linked{background:var(--ok)}.key-review{background:var(--warn)}.key-held{background:#c9c9c1}.key-drop{background:var(--drop)}
-    .flow{padding:16px 18px 20px}.flow-stage{padding:2px 0}.flow-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}.flow-name{font-weight:650;font-size:13px}.flow-n{font-size:19px;font-weight:650;letter-spacing:-.03em}.flow-bar{display:flex;height:17px;border-radius:5px;overflow:hidden;background:#f2f2ee;margin:7px 0 5px}.flow-bar i{display:block;height:100%;min-width:2px;transition:width .5s}.flow-sub{color:var(--muted);font-size:10.5px}.flow-sub b{color:var(--text);font-weight:600}
-    .flow-merge{display:flex;align-items:center;gap:10px;margin:11px 0;padding:10px 12px;background:var(--run-soft);border:1px solid #d5e0f4;border-radius:10px;color:var(--run);font-size:11.5px}.flow-merge span:first-child{font-size:14px;line-height:1}.flow-merge b{font-weight:700}
+    .flow{padding:16px 18px 20px}.flow-stage{padding:2px 0}.flow-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}.flow-name{font-weight:650;font-size:13px}.flow-n{font-size:19px;font-weight:650;letter-spacing:-.03em}.flow-bar{display:flex;height:19px;border-radius:5px;overflow:hidden;background:#f2f2ee;margin:7px 0 5px;min-width:3px;transition:width .5s}.flow-bar i{display:block;height:100%;min-width:2px}
+    .flow-band{margin:4px 0 10px;color:var(--faint);font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase}.flow-stage+.flow-band{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}.flow-sub{color:var(--muted);font-size:10.5px}.flow-sub b{color:var(--text);font-weight:600}
+    .flow-merge{display:flex;align-items:flex-start;gap:10px;margin:12px 0 4px;padding:11px 13px;background:var(--run-soft);border:1px solid #d5e0f4;border-radius:10px;color:var(--run);font-size:11.5px}.flow-merge>span{font-size:15px;line-height:1.2}.flow-merge b{font-weight:700}.flow-merge div span{display:block;margin-top:3px;color:#5a76a8;font-size:10.5px}
     .flow-unit{font-size:10.5px;font-weight:500;color:var(--muted);margin-left:5px}
     .flow-drop{display:flex;align-items:center;gap:8px;margin:9px 0 9px 3px;padding-left:15px;border-left:2px solid #e8dcc2;color:var(--warn);font-size:11px}.flow-drop.merge{border-left-color:#d9d9d2;color:var(--muted)}.flow-drop b{font-weight:650}
     .funnel-row{padding:14px 16px;border-bottom:1px solid var(--line)}.funnel-row:last-child{border-bottom:0}.funnel-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:8px}.funnel-name{font-weight:650}.funnel-fetched{color:var(--muted);font-size:11px}.stack{display:flex;height:15px;border-radius:6px;overflow:hidden;background:var(--drop)}.stack i{display:block;height:100%;transition:width .5s}.seg-linked{background:var(--ok)}.seg-review{background:var(--warn)}.seg-held{background:#c9c9c1}.funnel-foot{display:flex;gap:13px;flex-wrap:wrap;margin-top:7px;color:var(--muted);font-size:10.5px}.funnel-foot b{color:var(--text);font-weight:600}
@@ -152,27 +153,33 @@
     const read=by(x=>x.latest_run?.fetched),kept=by(x=>x.staged_count),linked=by(x=>x.linked_record_count);
     const readN=sum(read),keptN=sum(kept),linkedN=sum(linked);
     const reviewN=sum(by(x=>x.pending_review_record_count)),heldN=Math.max(0,keptN-linkedN-reviewN);
-    const live=num(o.ingestion_backed),healthy=num(o.field_healthy);
-    const scale=Math.max(1,readN);
-    const share=n=>readN?`${n/readN*100<0.1&&n>0?'<0.1':(n/readN*100).toFixed(n/readN*100<10?1:0)}%`:'';
-    const bar=rs=>`<div class="flow-bar">${rs.map(r=>`<i style="width:${(r.n/scale*100).toFixed(3)}%;background:${SRC_COLOR[r.src]||'#8a8a83'}" title="${esc(r.label)} ${fmt(r.n)}"></i>`).join('')}</div>`;
-    const solid=(n,c)=>`<div class="flow-bar"><i style="width:${(n/scale*100).toFixed(3)}%;background:${c}"></i></div>`;
-    const split=rs=>rs.map(r=>`<b>${fmt(r.n)}</b> ${esc(r.label)}`).join(' · ');
-    const drop=(n,why,cls)=>n>0?`<div class="flow-drop ${cls||''}"><span>&darr;</span><span><b>${fmt(n)}</b> ${esc(why)}</span></div>`:'';
-    const stage=(name,n,barHtml,sub,unit)=>`<div class="flow-stage"><div class="flow-head"><span class="flow-name">${esc(name)}</span><span class="flow-n">${fmt(n)}<span class="flow-unit">${esc(unit)}</span></span></div>${barHtml}<div class="flow-sub">${sub}</div></div>`;
-    const merge=(from,to,dupes)=>`<div class="flow-merge"><span>&#8681;&#8681;</span><span>Deduped &middot; <b>${fmt(from)}</b> records become <b>${fmt(to)}</b> venues &middot; <b>${fmt(dupes)}</b> were the same place in more than one source</span></div>`;
+    const live=num(o.ingestion_backed),healthy=num(o.field_healthy),dupes=Math.max(0,linkedN-live);
+    const per=(a,b)=>b?`${(a/b*100).toFixed(a/b*100<10?1:0)}%`:'';
+    // Each bar is drawn against the stage above it, so every step keeps a readable size.
+    const split=rs=>rs.map(r=>`<b>${fmt(r.n)}</b> ${esc(r.label)}`).join(' &middot; ');
+    const drop=(n,why)=>n>0?`<div class="flow-drop"><span>&darr;</span><span><b>${fmt(n)}</b> ${esc(why)}</span></div>`:'';
+    function stage(name,n,unit,rs,prev,color){
+      const w=prev?Math.max(1.5,n/prev*100):100;
+      const bars=rs?rs.map(r=>`<i style="width:${(r.n/n*100).toFixed(2)}%;background:${SRC_COLOR[r.src]||'#8a8a83'}" title="${esc(r.label)} ${fmt(r.n)}"></i>`).join('')
+                   :`<i style="width:100%;background:${color}"></i>`;
+      const sub=[rs?split(rs):'',prev?`${per(n,prev)} of the step above`:''].filter(Boolean).join(' &middot; ');
+      return `<div class="flow-stage"><div class="flow-head"><span class="flow-name">${esc(name)}</span><span class="flow-n">${fmt(n)}<span class="flow-unit">${esc(unit)}</span></span></div>
+        <div class="flow-bar" style="width:${w.toFixed(2)}%">${bars}</div><div class="flow-sub">${sub}</div></div>`;
+    }
     document.getElementById('flowLegend').innerHTML=sources.map(x=>`<span><i style="background:${SRC_COLOR[x.source]||'#8a8a83'}"></i>${esc(x.label)}</span>`).join('');
     document.getElementById('funnel').innerHTML=[
-      stage('From sources',readN,bar(read),split(read),'records'),
+      `<div class="flow-band">Source records</div>`,
+      stage('From sources',readN,'records',read,0),
       drop(readN-keptN,'outside the Bay Area'),
-      stage('In the Bay Area',keptN,bar(kept),`${split(kept)} &middot; ${share(keptN)}`,'records'),
+      stage('In the Bay Area',keptN,'records',kept,readN),
       drop(reviewN,'need a human'),
       drop(heldN,'undecided'),
-      stage('Matched',linkedN,bar(linked),`${split(linked)} &middot; ${share(linkedN)}`,'records'),
-      merge(linkedN,live,Math.max(0,linkedN-live)),
-      stage('Live in Paloma',live,solid(live,'#171716'),`${fmt(num(o.multi_source))} from 2+ sources &middot; ${share(live)}`,'venues'),
+      stage('Matched to a venue',linkedN,'records',linked,keptN),
+      `<div class="flow-merge"><span>&#8681;</span><div><b>Deduped here</b> &middot; ${fmt(linkedN)} records become ${fmt(live)} venues<span>${fmt(dupes)} were a venue already counted, seen again by another source &middot; ${(linkedN/(live||1)).toFixed(1)} sources per venue</span></div></div>`,
+      `<div class="flow-band">Venues</div>`,
+      stage('Live in Paloma',live,'venues',null,0,'#171716'),
       drop(Math.max(0,live-healthy),'name or type unconfirmed'),
-      stage('Fully verified',healthy,solid(healthy,'#2f7752'),share(healthy),'venues'),
+      stage('Fully verified',healthy,'venues',null,live,'#2f7752'),
     ].join('');
   }
 
