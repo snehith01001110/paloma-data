@@ -41,6 +41,10 @@ DEFAULT_FIELDS = (
 )
 
 
+class FoursquarePlaceUnusableError(RuntimeError):
+    """A successful provider response that cannot identify a consumer place."""
+
+
 class FoursquarePlacesAPI:
     """Targeted current-place verifier, never a bulk discovery crawler.
 
@@ -103,7 +107,7 @@ class FoursquarePlacesAPI:
         _raise_for_status(response)
         record = self._to_record(_unwrap_place(response.json()))
         if record is None:
-            raise ValueError(
+            raise FoursquarePlaceUnusableError(
                 f"Foursquare details for {fsq_place_id} lacked required identity fields"
             )
         return record

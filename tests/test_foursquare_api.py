@@ -1,7 +1,10 @@
 import httpx
 import pytest
 
-from paloma_data.adapters.foursquare_api import FoursquarePlacesAPI
+from paloma_data.adapters.foursquare_api import (
+    FoursquarePlacesAPI,
+    FoursquarePlaceUnusableError,
+)
 
 
 def test_places_api_parser_handles_current_flat_and_nested_fields():
@@ -154,7 +157,7 @@ def test_places_api_rejects_a_success_response_without_identity_fields():
     )
     adapter = FoursquarePlacesAPI("test-key", client=client)
 
-    with pytest.raises(ValueError, match="lacked required identity fields"):
+    with pytest.raises(FoursquarePlaceUnusableError, match="lacked required identity fields"):
         adapter.details("broken")
 
 

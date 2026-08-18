@@ -4,7 +4,10 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from paloma_data.adapters.foursquare_api import FoursquarePlacesAPI
+from paloma_data.adapters.foursquare_api import (
+    FoursquarePlacesAPI,
+    FoursquarePlaceUnusableError,
+)
 from paloma_data.catalog import (
     CATALOG_DECISION_VERSION,
     CatalogDecision,
@@ -122,6 +125,7 @@ class CatalogPipeline:
             "api_calls": 0,
             "missing_fsq_anchor": 0,
             "api_not_found": 0,
+            "api_unusable": 0,
             "passed": 0,
             "failed": 0,
             "decisions": defaultdict(int),
@@ -144,21 +148,33 @@ class CatalogPipeline:
                 continue
 
             counters["api_calls"] += 1
-            details = api.details(anchor.source_record_id)
-            if details is None:
-                counters["api_not_found"] += 1
-                verification = _not_found_verification(
+            try:
+                details = api.details(anchor.source_record_id)
+            except FoursquarePlaceUnusableError:
+                # A 2xx response without enough identity data is a place-level hard failure,
+                # not a batch-level outage. Record it and keep auditing the remaining venues.
+                counters["api_unusable"] += 1
+                details = None
+                verification = _unusable_verification(
                     anchor.source_record_id,
                     api.storage_policy,
                     lease_days,
                 )
             else:
-                verification = provider_verification(
-                    details,
-                    candidate_anchor=anchor,
-                    storage_policy=api.storage_policy,
-                    lease_days=lease_days,
-                )
+                if details is None:
+                    counters["api_not_found"] += 1
+                    verification = _not_found_verification(
+                        anchor.source_record_id,
+                        api.storage_policy,
+                        lease_days,
+                    )
+                else:
+                    verification = provider_verification(
+                        details,
+                        candidate_anchor=anchor,
+                        storage_policy=api.storage_policy,
+                        lease_days=lease_days,
+                    )
 
             counters["passed" if verification.outcome == "pass" else "failed"] += 1
             with self.db.connection() as conn:
@@ -560,6 +576,12 @@ def _not_found_verification(
         verified_at=now,
         expires_at=now + timedelta(days=lease_days),
     )
+
+
+def _unusable_verification(
+    fsq_place_id: str, storage_policy: str, lease_days: int
+) -> VerificationEvidence:
+    return _not_found_verification(fsq_place_id, storage_policy, lease_days)
 
 
 def _review_evidence(

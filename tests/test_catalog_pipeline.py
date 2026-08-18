@@ -2,6 +2,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
 from paloma_data.catalog import CATALOG_DECISION_VERSION, CatalogDecision
+from paloma_data.adapters.foursquare_api import FoursquarePlaceUnusableError
 from paloma_data.catalog_pipeline import CatalogPipeline
 from paloma_data.models import SourceRecord
 
@@ -89,6 +90,40 @@ class _AlreadyLinkedDiscoveryRepository:
     def candidate_id_for_source(self, _, record):
         assert record is self.anchor
         return "candidate-that-already-owns-source"
+
+
+class _UnusableVerificationRepository:
+    def __init__(self, anchor):
+        self.anchor = anchor
+        self.evaluations = []
+
+    def fsq_anchor(self, _, candidate_id):
+        assert candidate_id == "candidate-1"
+        return self.anchor
+
+    def verifications(self, _, candidate_id):
+        assert candidate_id == "candidate-1"
+        return []
+
+    def save_evaluation(self, _, candidate_id, decision, **kwargs):
+        self.evaluations.append((candidate_id, decision.state, kwargs))
+
+
+class _UnusableAPI:
+    storage_policy = "ephemeral"
+
+    def details(self, fsq_place_id):
+        raise FoursquarePlaceUnusableError(f"unusable {fsq_place_id}")
+
+
+class _VerificationConnection(_Connection):
+    def execute(self, *_args, **_kwargs):
+        return None
+
+
+class _VerificationDatabase(_Database):
+    def __init__(self):
+        self.conn = _VerificationConnection()
 
 
 def _decision(state: str) -> CatalogDecision:
@@ -229,3 +264,44 @@ def test_discovery_skips_anchor_claimed_after_batch_was_selected():
         "candidate_ids": [],
     }
     assert database.conn.commits == 1
+
+
+def test_verification_records_unusable_place_and_continues(monkeypatch):
+    anchor = SourceRecord(
+        source="fsq",
+        source_record_id="fsq-broken",
+        name="Example Bar",
+        address="123 Main St",
+        city="San Francisco",
+        latitude=37.78,
+        longitude=-122.42,
+        primary_type_slug="bar",
+    )
+    pipeline = CatalogPipeline(_VerificationDatabase())
+    repository = _UnusableVerificationRepository(anchor)
+    pipeline.repo = repository
+    monkeypatch.setattr(pipeline, "_correlate", lambda *_args: (0, 0))
+    monkeypatch.setattr(pipeline, "_validated_links", lambda *_args: [])
+    monkeypatch.setattr(
+        pipeline,
+        "_decide_candidate",
+        lambda *_args, **_kwargs: _decision("withdrawn"),
+    )
+
+    result = pipeline.verify_with_foursquare(
+        _UnusableAPI(),
+        city="San Francisco",
+        limit=1,
+        mode="trial",
+        lease_days=45,
+        candidate_ids=["candidate-1"],
+    )
+
+    assert result["considered"] == 1
+    assert result["api_calls"] == 1
+    assert result["api_unusable"] == 1
+    assert result["api_not_found"] == 0
+    assert result["failed"] == 1
+    assert result["decisions"] == {"withdrawn": 1}
+    assert result["results"][0]["verification"] == "fail"
+    assert repository.evaluations[0][0:2] == ("candidate-1", "withdrawn")
