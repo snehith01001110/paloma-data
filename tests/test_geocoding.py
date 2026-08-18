@@ -16,6 +16,7 @@ def test_only_an_exact_match_places_a_venue():
             '"1","1 Main St","Match","Exact","1 MAIN ST, NAPA, CA, 94559","-122.28,38.29","1","L"',
             '"2","2 Main St","No_Match"',
             '"3","3 Main St","Tie"',
+            '"4","4 Main St","Match","Non_Exact","40 MAIN ST, NAPA, CA, 94559","-122.29,38.30","1","L"',
         ]
     )
     results = parse_response(response)
@@ -51,8 +52,19 @@ class FakeDB:
     def records_needing_geocode(self, conn, source):
         return self.rows
 
-    def save_geocode(self, conn, source, source_record_id, latitude, longitude, geocoder):
-        self.saved.append((source_record_id, latitude, longitude, geocoder))
+    def save_geocode(
+        self,
+        conn,
+        source,
+        source_record_id,
+        latitude,
+        longitude,
+        geocoder,
+        matched_address,
+    ):
+        self.saved.append(
+            (source_record_id, latitude, longitude, geocoder, matched_address)
+        )
 
     def mark_geocode_attempted(self, conn, source, source_record_ids):
         self.attempted.extend(source_record_ids)
@@ -80,7 +92,9 @@ def test_addresses_that_do_not_match_are_still_marked_attempted(monkeypatch):
     metrics = AddressGeocoder(db).run("ca_abc")
 
     assert metrics == {"considered": 2, "matched": 1, "unmatched": 1, "failed_batches": 0}
-    assert db.saved == [("a", 38.29, -122.28, "census")]
+    assert db.saved == [
+        ("a", 38.29, -122.28, "census", "1 MAIN ST")
+    ]
     assert db.attempted == ["a", "b"]
 
 

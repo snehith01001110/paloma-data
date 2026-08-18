@@ -391,9 +391,12 @@ class CaliforniaABCAdapter:
             consumer_facing=False,
             public_access=(
                 "walk_in"
-                if (license_type.strip().lstrip("0") or "0") in {"40", "42", "48", "61", "75"}
+                if (license_type.strip().lstrip("0") or "0")
+                in {"40", "41", "42", "47", "48", "61", "75", "87"}
                 else "unknown"
             ),
+            origin_keys=("ca_abc",),
+            data_license="California-public-record",
             category_evidence={"reason": classification.reason, "license_type": license_type},
             permitted_metadata=permitted,
         )
@@ -416,14 +419,43 @@ def _join_address(street_1: str | None, street_2: str | None) -> str | None:
     return " ".join(parts) if parts else None
 
 
+_ABC_ACTIVE_STATUSES = frozenset({"ACTIVE"})
+_ABC_PENDING_STATUSES = frozenset({"PEND", "PENDING", "RNST"})
+_ABC_CLOSED_STATUSES = frozenset(
+    {
+        "A/REV",
+        "AREV",
+        "AUTO REV",
+        "AUTO-REV",
+        "CAN",
+        "CANCEL",
+        "CANCELLED",
+        "INACT",
+        "INACTIVE",
+        "ISSUPD",
+        "NREN",
+        "R65",
+        "REV",
+        "REVP",
+        "REVPEN",
+        "SUSPEND",
+        "SUSPEN",
+        "SUREND",
+    }
+)
+
+
 def _canonical_status(value: str, license_or_application: str | None = None) -> str:
-    text = value.casefold()
-    record_kind = (license_or_application or "").casefold()
-    if any(token in text for token in ("cancel", "revok", "surrender", "closed", "inactive")):
-        return "closed"
-    if "pend" in text or "app" in record_kind:
+    """Map documented ABC codes exactly; unknown codes must never become active."""
+    text = re.sub(r"\s+", " ", value.strip().upper())
+    record_kind = (license_or_application or "").strip().upper()
+    if record_kind.startswith("APP") or text in _ABC_PENDING_STATUSES:
         return "pending"
-    return "open"
+    if text in _ABC_ACTIVE_STATUSES:
+        return "open"
+    if text in _ABC_CLOSED_STATUSES:
+        return "closed"
+    return "unknown"
 
 
 def _parse_date(value: str | None) -> datetime | None:

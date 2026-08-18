@@ -104,7 +104,7 @@ class Pipeline:
                 raise
 
     def _process_record(self, conn, record: SourceRecord, counters: dict[str, int]) -> None:
-        changed = self.db.stage_source_record(conn, record)
+        changed = self.db.stage_source_record(conn, record) != "unchanged"
         linked_id = self.db.linked_establishment_id(conn, record.source, record.source_record_id)
 
         if not changed and linked_id:

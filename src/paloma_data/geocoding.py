@@ -76,7 +76,11 @@ def parse_response(text: str) -> dict[str, GeocodeResult]:
     """
     results: dict[str, GeocodeResult] = {}
     for row in csv.reader(io.StringIO(text)):
-        if len(row) < 6 or row[2].strip() != "Match":
+        if (
+            len(row) < 6
+            or row[2].strip().casefold() != "match"
+            or row[3].strip().casefold() != "exact"
+        ):
             continue
         longitude, _, latitude = row[5].partition(",")
         try:
@@ -158,6 +162,7 @@ class AddressGeocoder:
                             hit.latitude,
                             hit.longitude,
                             self.GEOCODER,
+                            hit.matched_address,
                         )
                         metrics["matched"] += 1
                     self.db.mark_geocode_attempted(conn, source, [item.key for item in batch])

@@ -51,6 +51,12 @@ class SourceRecord:
     consumer_facing: bool = False
     public_access: str = "unknown"
     quality_flags: tuple[str, ...] = ()
+    # `origin_keys` describes upstream lineage, not the adapter name.  It prevents two
+    # aggregators that copied the same provider from being counted as independent evidence.
+    origin_keys: tuple[str, ...] = ()
+    data_license: str = "unknown"
+    storage_scope: str = "durable"
+    provider_veracity: int | None = None
     category_evidence: dict[str, Any] = field(default_factory=dict)
     permitted_metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -83,6 +89,10 @@ class SourceRecord:
                 "consumer_facing": self.consumer_facing,
                 "public_access": self.public_access,
                 "quality_flags": sorted(set(self.quality_flags)),
+                "origin_keys": sorted(set(self.origin_keys)),
+                "data_license": self.data_license,
+                "storage_scope": self.storage_scope,
+                "provider_veracity": self.provider_veracity,
                 "category_evidence": self.category_evidence,
                 "permitted_metadata": self.permitted_metadata,
             }

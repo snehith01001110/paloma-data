@@ -1,226 +1,220 @@
 # paloma-data
 
-Accuracy-first establishment ingestion for Paloma.
+Accuracy-first establishment catalog for Paloma.
 
-This repository owns **source adapters, normalization, entity matching, field-level provenance, reconciliation, review routing, batch workers, schedules, and the internal ingestion dashboard**. Pipeline-owned Supabase migrations live here; the base product schema remains in the `paloma` app repository.
+The core invariant is simple: **a discovery record is not an establishment**. Provider and
+government records stay in the private `ingest` schema. `public.establishments` receives a row
+only after the place passes a versioned, time-bounded verification decision.
 
-## Data philosophy
-
-Paloma's `public.establishments.id` is the permanent product identity. Provider IDs never replace it. Each provider record is stored in the private `ingest` schema and linked to a Paloma UUID only after identity resolution.
-
-The pipeline is conservative by design:
-
-- authoritative/open data before paid per-place APIs;
-- fewer high-confidence establishments over broad noisy coverage;
-- exact source ID -> deterministic signals -> weighted fuzzy/geospatial match -> review;
-- consumer POIs may create hidden canonical candidates; publication is a separate hard gate;
-- never delete a canonical establishment because a source disappears;
-- permanent closure requires corroboration from at least two linked sources and no linked source reporting open;
-- raw/persisted source fields are limited to data whose source terms permit durable storage;
-- **entity identity confidence is separate from confidence in each canonical field**.
-
-A venue can be confidently identified while its current public-facing name is uncertain. That is not a 0.99-quality venue. `data_quality_score` is therefore the weakest critical resolved field across identity, display name, and primary type.
-
-Publication is intentionally not another weighted score. An ingestion-backed venue is visible only
-when all of these facts are present: resolved identity, a reliable consumer-facing name, an explicit
-Paloma venue type, walk-in access evidence, current operating evidence, a compatible active ABC
-license, and no hard-negative flag. Missing any fact keeps the row as a candidate.
-
-## Sources
-
-### California ABC
-
-The statewide alcohol-license export is the authoritative California license backbone. It is strongest for license identity/status, address, and licensed privileges. ABC business/licensee names are stored as **legal-name evidence** and do not automatically become the consumer-facing display name.
-
-ABC never proves that a current walk-in venue exists by itself:
-
-- Types 40/42/48/61 are generic public-bar license evidence. A current consumer POI supplies the
-  display name and subtype.
-- Types 02/23/74 describe manufacturers. A generic winery/brewery/distillery POI is still not
-  tasting-room evidence; the consumer source must explicitly identify a tasting room, taproom, or
-  brewpub.
-- Type 75 can validate an explicit consumer brewpub, but cannot create or publish one alone.
-
-GitHub-hosted runners may be rejected by ABC. The worker therefore uses the Supabase OIDC relay only to retrieve the exact official ABC-hosted export; ABC remains the source of truth.
-
-The export carries a full street address but no coordinates, and ingestion will not create an establishment it cannot place on a map. Unplaced ABC records are therefore geocoded before they are reconsidered; see **Geocoding** below.
-
-### DataSF Registered Business Locations
-
-San Francisco business registrations provide stable local IDs, address/location evidence, and closure signals. Registered names are treated as **legal/registry-name evidence**, not assumed to be the current venue brand.
-
-### Overture Maps Places
-
-Overture provides open consumer-place evidence for names, coordinates, phone, website, and category. It is useful for corroboration and discovery, but a single Overture display name is intentionally below Paloma's strong-name threshold.
-
-### Foursquare Open Source Places
-
-FSQ OS Places is the preferred bulk consumer-place feed. The adapter reads a column- and
-geography-bounded Iceberg scan using Places Portal credentials; it does not issue one request per
-venue. Stable `fsq_place_id` values and Paloma payload hashes make each monthly release
-idempotent. `unresolved_flags`, including private, duplicate, delete, and does-not-exist signals,
-feed the publication hard gate.
-
-Configure `FSQ_CATALOG_URI`, `FSQ_CATALOG_TOKEN`, and `FSQ_PLACES_TABLE` from the connection
-snippet in the FSQ Places Portal. Set `FSQ_CATALOG_WAREHOUSE` only when the snippet includes it,
-then install `paloma-data[fsq]`.
-
-### Optional first-party web inspection
-
-For exceptional review work, Paloma can verify a linked candidate website against address/phone/location signals. This is not a primary identity source and is not run by scheduled ingestion.
-
-This source is called `official_web` in field provenance. It is an enrichment source, not an establishment identity provider.
-
-## Field-level provenance and confidence
-
-`ingest.establishment_field_evidence` stores competing claims instead of overwriting canonical fields blindly. Important fields include:
-
-- `display_name`
-- `legal_name`
-- `primary_type_slug`
-- address/location
-- phone/website
-- status
-
-Each evidence row carries source, source record, evidence confidence, entity identity confidence, field-specific source authority, source freshness, and whether it was selected.
-
-The canonical establishment exposes:
-
-- `identity_confidence`
-- `display_name_confidence`
-- `display_name_source`
-- `type_confidence`
-- `field_resolution_version`
-- `data_quality_score`
-
-Current resolver version: `v4`.
-
-Phone, neighborhood, hours, price level, and objective setting tags use the same evidence model.
-The resolver stores the winning source, confidence, and verification time beside each canonical
-attribute. It does not infer price from venue type or neighborhood, and it does not turn subjective
-labels such as "cozy" into facts.
-
-Scheduled attribute coverage comes from bulk, updateable sources rather than per-venue crawling:
-
-- Overture Places supplies phone and website claims.
-- DataSF supplies San Francisco neighborhood names.
-- Overture division polygons supply a conservative Bay Area neighborhood fallback where a named
-  neighborhood polygon exists.
-- OpenStreetMap supplies phone, `opening_hours`, and objective setting tags only after a strict match
-  to an existing canonical candidate. It can never create a Paloma venue. The weekly bulk query
-  fails over between the public global Overpass instances listed by the OSM project so one transient
-  provider error does not erase the snapshot.
-- Foursquare rich fields may supply hours, price, and outdoor seating when the configured licensed
-  table includes those columns. The open-source FSQ table does not provide price coverage, so price
-  remains `NULL` rather than being guessed.
-
-A changed display name may replace the canonical name automatically only when first-party verification is strong, or multiple independent public-facing sources strongly agree. A lone aggregator can surface a conflict but cannot silently rename a venue.
-
-## Rebrands and operator changes
-
-Matching is deliberately tolerant of brand changes:
-
-- same phone + strong physical location can auto-match even if the name is very different;
-- same website + strong address can auto-match;
-- same physical location + divergent name is routed to `same_location_name_conflict` rather than automatically creating a duplicate establishment.
-
-The permanent Paloma UUID survives a validated rename.
-
-## Backfill vs incremental
-
-```bash
-# Explicit full rebuild of configured bulk sources
-paloma-data rebuild-catalog
-
-# One source full backfill
-paloma-data backfill ca_abc
-paloma-data backfill datasf
-paloma-data backfill overture
-paloma-data backfill fsq
-
-# Routine reconciliation
-paloma-data sync ca_abc
-paloma-data sync datasf
-paloma-data sync overture
-paloma-data sync fsq
-paloma-data sync-all
-
-# Optional operator-only website inspection
-paloma-data enrich-web
-
-# Refresh bulk open attributes and resolve their field evidence
-paloma-data enrich-attributes
-
-# Recompute field evidence/resolution without source network fetches
-paloma-data resolve-fields
-paloma-data resolve-publication
-
-# Place records whose source published an address but no coordinates
-paloma-data geocode
-paloma-data geocode ca_abc
-
-# Destructively clear only rebuildable catalog/test interaction data
-# (preserves Auth identities, profiles, and taxonomy/reference tables)
-paloma-data reset-catalog --confirm RESET_CATALOG
-```
-
-Linking a staged record also supersedes any pending review for it, because linking is the answer to whatever question put it in the queue.
-
-`bootstrap` is migration-aware. Normal deployments skip already-complete initial backfills, but if ingestion-backed rows do not have the current resolver version it forces one complete configured-source rebuild before resolving fields. Once all rows are current, normal skip behavior resumes.
-
-## Geocoding
-
-`_safe_to_create` requires a geocoded, open, walk-in consumer observation with an explicit venue type. Geocoding an ABC address can improve matching, but it can never turn a license into a consumer establishment.
-
-Unplaced records are geocoded with the **US Census Bureau batch geocoder**, which is public, US-address specific, free, and needs no account or API key, so it adds no credential to manage and no per-call cost.
-
-- only an exact Census `Match` is accepted; a tie means several addresses fit and is not good enough to place a venue;
-- coordinates are stored beside the source data with `geocode_source`/`geocoded_at`, never presented as something the source published;
-- a re-ingest coalesces coordinates, so re-reading a source that publishes none does not erase what geocoding resolved;
-- failed attempts are recorded so an unresolvable address is not retried every run;
-- after geocoding, `reconcile_staged` re-decides only the affected staged records rather than re-reading the upstream source.
-
-Geocoding runs inside `bootstrap`, `rebuild-catalog`, `sync-government`, and `sync-all`.
-
-## Matching
-
-The baseline weighted identity score remains:
+## Production model
 
 ```text
-0.40 normalized name
-0.30 normalized address
-0.10 phone
-0.10 website host
-0.10 geospatial proximity
+complete source snapshots
+  -> ingest.source_records                    raw normalized evidence
+  -> ingest.catalog_candidates                private discovery/conflation entities
+  -> ingest.candidate_source_links             conservative identity links
+  -> ingest.candidate_verifications            licensed-provider/manual checks + expiry
+  -> ingest.catalog_evaluations                immutable decision history
+  -> public.establishments                     only verified product entities
 ```
 
-Important deterministic rules take precedence when stronger identity evidence exists, including exact source identity, exact address/strong name, exact phone/strong location, and exact website/strong location.
+Candidate and establishment IDs are deliberately separate concepts. In v2 the candidate UUID is
+reused when it is first materialized, giving Paloma a stable product ID without exposing rejected
+or ambiguous candidates.
 
-Initial fuzzy bands remain conservative:
+The legacy pipeline wrote hidden candidates into `public.establishments`. Do not use it. The v2
+CLI no longer calls that path, and code pushes no longer trigger data rebuilds.
 
-- >= 0.92 with a clear lead: auto-match;
-- 0.80-0.92: review queue;
-- < 0.80: distinct unless stronger physical/identity evidence indicates a possible rebrand.
+## Publication hard gates
 
-## Database boundary
+`catalog.py` uses hard gates, not a composite quality score. A candidate is publishable only when:
 
-The worker requires a server-side Postgres URL. Production GitHub Actions does **not** store a long-lived database password in GitHub. It exchanges a GitHub OIDC token with the `paloma-data-credentials` Supabase Edge Function for a scoped `paloma_ingest` database credential.
+1. A current FSQ OS record identifies a Paloma consumer POI. Generic manufacturer categories
+   remain private until the richer access checks below pass.
+2. Its FSQ `date_refreshed` is no more than 365 days old and no closure/private/duplicate flag is
+   present.
+3. A conservatively linked California ABC record has raw status exactly `ACTIVE` and is a license,
+   not an application.
+4. The ABC license type is compatible with the consumer venue type.
+5. The FSQ and ABC identity links each meet the 0.96 publication threshold.
+6. Public access is proven by one of three narrow paths: (a) current FSQ OS consumer evidence plus
+   an exact direct-public-premises ABC type (40/42/48/61), (b) an explicit brewpub plus Type 75,
+   or (c) a licensed provider/manual attestation passing identity, operation, access, name, and
+   type checks. Restaurant and manufacturer licenses cannot use path (a).
+7. The resulting verification lease is unexpired and every persisted field has storage rights.
+8. Every required materialization field is present.
 
-Never place database credentials in the iOS app or commit them. The `ingest` schema is not exposed to normal product roles.
+Overture, DataSF, and OpenStreetMap may discover, corroborate, or enrich. None can publish a place
+on its own. Overture provenance is decomposed into upstream origin keys, so an Overture row copied
+from Foursquare is never counted as independent Foursquare corroboration.
 
-## Automation
+Manufacturer premises remain fail-closed. A Type 02, 23, or 74 license is not tasting-room proof.
+A consumer POI classified as a brewery, winery, distillery, tasting room, or taproom must also
+have current hours from the high-veracity provider check or a manual public-access attestation.
 
-`.github/workflows/sync.yml`:
+## ABC semantics
 
-- runs government reconciliation on weekdays;
-- runs Overture and configured FSQ OS reconciliation monthly;
-- refreshes bulk phone, neighborhood, hours, and objective setting evidence weekly;
-- recomputes field resolution and publication after every source run;
-- never crawls venue websites on a schedule;
-- supports manual source/full rebuilds;
-- forces one full rebuild automatically when the field resolver version advances.
+ABC is the legal backbone, not a venue directory.
 
-The internal dashboard in `site/` is deployed by `.github/workflows/pages.yml`. Its backing `paloma-data-progress` Edge Function exposes only operational/public-business metadata, including field-confidence health and limited name evidence.
+- `DBA Name` is used when the export provides it; `Primary Name` is retained as legal evidence.
+- Raw status is mapped by an exact allowlist. Only `ACTIVE` becomes open. `SUREND`, `SUSPEN`,
+  `REVPEN`, `NREN`, `R65`, and unknown future codes all fail closed.
+- Types 40, 42, 48, and 61 validate bars/taverns but do not choose a consumer subtype. Types 41,
+  47, and 87 may validate an independently identified bar at a bona fide eating place; they do
+  not turn restaurants into Paloma venues.
+- Type 75 may validate an explicit brewpub.
+- Types 01/23, 02, and 74 validate compatible manufacturer facets only after consumer-access
+  verification.
+
+ABC publishes a complete snapshot. A source row is marked missing only after the replacement
+snapshot was fully consumed successfully; a download failure can never cause mass withdrawals.
+
+## Consumer data and licensing
+
+FSQ Open Source Places is the preferred discovery layer. It is Apache-2.0, has stable place IDs,
+phone and website fields, quality flags, refresh/closure dates, and monthly add/update/remove/merge
+deltas. The current implementation performs a geography-bounded complete snapshot; stable hashes
+and `last_seen_run_id` provide idempotency and safe absence detection.
+
+Hours, price, provider veracity, and richer attributes require Foursquare Premium/API access. The
+current Foursquare Usage Guidelines allow self-service pay-as-you-go/sandbox customers to retain
+place IDs but prohibit caching all other API attributes; even the documented default enterprise
+rule allows only 24-hour local-device caching, not server caching. A normal API key therefore does
+**not** authorize Paloma to put API name/phone/hours/price into Postgres. `catalog-trial` keeps those
+responses in memory and persists only an attribute-coverage/decision audit with no returned field
+values. Production persistence is disabled unless `FSQ_SERVER_STORAGE_LICENSED=true`, which is
+reserved for a written agreement that expressly grants server retention and display rights.
+
+The durable no-contract path is still useful: direct-public bars can pass using complementary
+Apache-2.0 FSQ OS and California ABC evidence, and FSQ OS phone/website fields may be stored. Rich
+optional fields stay null unless an open, manual, or specifically licensed source supports them.
+
+Google Places is intentionally not a catalog source: its policies restrict prefetching, caching,
+and use with a non-Google map. A data source that cannot legally back Paloma's persistent database
+is not part of this pipeline.
+
+The current Places API does not expose neighborhoods. San Francisco labels therefore come from
+the public-domain SF Find polygon feed and a deterministic point-in-polygon join. Other cities
+remain `NULL` until a reviewed civic boundary feed is configured; the pipeline never guesses a
+neighborhood from an address.
+
+## Field contract
+
+Required for publication:
+
+- consumer-facing name;
+- Paloma primary type;
+- street address, city, country;
+- latitude and longitude;
+- current operating/public-access verification;
+- exact active compatible ABC license;
+- verification timestamps and provenance.
+
+Optional fields remain `NULL` when trustworthy evidence is unavailable:
+
+| Field | Preferred source | Fallback | Never do |
+|---|---|---|---|
+| phone | FSQ OS / specifically licensed provider | manual owner attestation | infer or copy a nearby business |
+| website | FSQ OS / specifically licensed provider | manual owner attestation | accept an aggregator profile as official |
+| neighborhood | reviewed civic polygon | reviewed division polygon | free-text guess from address |
+| hours | contracted FSQ | manual owner attestation | fabricate a schedule |
+| price | contracted FSQ/manual | none | infer from type or neighborhood |
+| setting | objective provider attributes | manual | infer subjective vibe |
+| cover image | licensed/owner-supplied asset | none | reuse a URL without display rights |
+
+Completeness and truth are separate. A correct row with null price is publishable; a guessed price
+is not.
+
+## Initial backfill rollout
+
+Apply the additive v2 migration first. It does not change the current public catalog.
+
+```bash
+# 1. Load authoritative and preferred consumer evidence privately.
+paloma-data backfill ca_abc
+paloma-data backfill datasf
+paloma-data backfill fsq
+paloma-data sync-neighborhoods
+
+# 2. Build only a small private trial set.
+paloma-data catalog-discover --city "San Francisco" --limit 20
+
+# 3. Make at most 20 targeted detail calls. This never mutates the public catalog.
+paloma-data catalog-trial --city "San Francisco" --limit 20
+
+# 4. Review the JSON results and match-review queue. Direct-public bars may already have an
+#    open-evidence lease. Only with specific server-retention rights, persist a rich provider pass.
+# paloma-data catalog-verify --city "San Francisco" --limit 20
+paloma-data catalog-status
+
+# 5. After the trial is manually accepted, replace the pre-launch junk table once.
+paloma-data catalog-cutover \
+  --confirm REPLACE_PUBLIC_CATALOG \
+  --minimum-verified 20
+```
+
+The cutover truncates rebuildable product interactions and the old public catalog, but preserves
+Auth identities, profiles, source snapshots, private candidates, verifications, and evaluation
+history. It refuses to run unless the requested number of unexpired verified candidates exists.
+
+After launch, use `catalog-publish --confirm PUBLISH_VERIFIED`; do not truncate user-linked data.
+
+## Incremental operation
+
+The workflow has three independent paths:
+
+- Weekdays: replace ABC/DataSF snapshots, geocode private legal evidence, reevaluate candidates,
+  immediately suppress hard negatives, and sweep expired verification leases.
+- Monthly: replace the bounded FSQ OS snapshot, refresh civic neighborhood polygons, and create
+  private candidates for newly discovered places. Overture is optional corroboration and cannot
+  block the core job.
+- Weekly: reevaluate open evidence; optionally refresh a bounded set through a specifically
+  licensed provider; materialize passing candidates only when `PALOMA_CATALOG_AUTO_PUBLISH=true`;
+  and suppress expired rows. Auto-publish remains off until the initial cutover is approved.
+
+No GitHub push runs ingestion. Deployment and data mutation are deliberately separate.
+
+## Commands
+
+```bash
+paloma-data stage-source ca_abc --mode full
+paloma-data backfill fsq
+paloma-data sync ca_abc
+paloma-data sync-government
+paloma-data catalog-discover --city "San Francisco" --limit 20
+paloma-data catalog-trial --city "San Francisco" --limit 20
+paloma-data catalog-verify --limit 250
+paloma-data catalog-reevaluate
+paloma-data catalog-publish --confirm PUBLISH_VERIFIED
+paloma-data catalog-sweep
+paloma-data catalog-status
+paloma-data sync-neighborhoods
+```
+
+## Configuration
+
+See `.env.example`. Required server-side values are:
+
+- `SUPABASE_DB_URL` or `DATABASE_URL`;
+- FSQ Places Portal Iceberg connection values for FSQ OS discovery;
+- optional `FSQ_PLACES_API_KEY` for a bounded, non-caching trial;
+- `FSQ_SERVER_STORAGE_LICENSED=true` only under written server-retention/display rights;
+- `PALOMA_CATALOG_AUTO_PUBLISH=true` only after the initial cutover is approved;
+- `SF_NEIGHBORHOODS_URL` defaults to DataSF's public-domain SF Find GeoJSON feed.
+
+Generate an optional API service key in the Foursquare Developer Console and store it as a local or
+GitHub Actions secret—never in this repository. The free OS bulk token is generated separately in
+the Foursquare Places Portal. An API key alone does not permit server-side attribute caching.
+
+Production GitHub Actions exchanges GitHub OIDC for the scoped `paloma_ingest` Postgres credential.
+No database password belongs in GitHub or the iOS app.
+
+## Database security
+
+New v2 tables enable RLS, revoke `anon`/`authenticated` privileges, and grant one explicit
+`paloma_ingest` policy. Existing legacy ingest tables predate v2 and should receive the same RLS
+hardening in a separately approved migration after confirming every operational role; enabling RLS
+without the ingest policy would stop scheduled jobs.
 
 ## Development
 
@@ -231,3 +225,5 @@ pip install -e '.[dev]'
 ruff check .
 pytest -q
 ```
+
+Decision version: `v2`.

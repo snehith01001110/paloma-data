@@ -1,44 +1,53 @@
-name: Establishment sync
+name: Verified establishment catalog
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'src/**'
-      - 'pyproject.toml'
-      - '.github/workflows/sync.yml'
   workflow_dispatch:
     inputs:
-      mode:
-        description: backfill or sync
+      action:
+        description: Safe catalog action
         required: true
-        default: sync
+        default: status
         type: choice
-        options: [sync, backfill]
+        options: [status, stage, neighborhoods, discover, trial, verify, publish, cutover]
       source:
-        description: Source to run
-        required: true
-        default: all
+        description: Source for stage
+        required: false
+        default: ca_abc
         type: choice
-        options: [all, ca_abc, datasf, overture, fsq, attributes, web]
+        options: [ca_abc, datasf, fsq, overture]
+      city:
+        description: Exact city for discover/trial/verify
+        required: false
+        default: San Francisco
+        type: string
+      limit:
+        description: Candidate/API call limit
+        required: false
+        default: '20'
+        type: string
+      confirmation:
+        description: PUBLISH_VERIFIED or REPLACE_PUBLIC_CATALOG when required
+        required: false
+        default: ''
+        type: string
   schedule:
-    # Government sources refresh frequently.
+    # ABC/DataSF are complete snapshots. A missing row is acted on only after a successful run.
     - cron: '30 16 * * 1-5'
-    # Overture and FSQ OS publish bulk releases monthly.
-    - cron: '0 11 25 * *'
-    # Community hours/phone tags and neighborhood boundaries change independently.
-    - cron: '0 15 * * 0'
+    # FSQ OS publishes monthly; this discovers candidates but cannot publish them.
+    - cron: '0 11 15 * *'
+    # Refresh a bounded set of due/new candidates, then materialize only passing verifications.
+    - cron: '0 15 * * 1'
 
 permissions:
   contents: read
   id-token: write
 
 concurrency:
-  group: paloma-establishment-sync
+  group: paloma-verified-catalog
   cancel-in-progress: false
 
 jobs:
-  sync:
+  catalog:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -50,6 +59,10 @@ jobs:
       FSQ_CATALOG_TOKEN: ${{ secrets.FSQ_CATALOG_TOKEN }}
       FSQ_PLACES_TABLE: ${{ vars.FSQ_PLACES_TABLE }}
       FSQ_CATALOG_WAREHOUSE: ${{ vars.FSQ_CATALOG_WAREHOUSE }}
+      FSQ_PLACES_API_KEY: ${{ secrets.FSQ_PLACES_API_KEY }}
+      FSQ_SERVER_STORAGE_LICENSED: ${{ vars.FSQ_SERVER_STORAGE_LICENSED }}
+      PALOMA_CATALOG_AUTO_PUBLISH: ${{ vars.PALOMA_CATALOG_AUTO_PUBLISH }}
+      CATALOG_PROVIDER_LEASE_DAYS: '45'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -83,46 +96,77 @@ jobs:
           echo "::add-mask::$SUPABASE_DB_URL"
           printf 'SUPABASE_DB_URL=%s\n' "$SUPABASE_DB_URL" >> "$GITHUB_ENV"
       - run: pip install '.[fsq]'
-      # Deliberate no-op workflow touch: both GitHub-OIDC-gated Supabase functions are repaired;
-      # this main push retriggers bootstrap when the resolver version advances.
-      - name: Run initial sources and refresh field truth after deployment
-        if: github.event_name == 'push'
-        run: paloma-data bootstrap
-      - name: Run weekday government reconciliation
+
+      - name: Weekday regulatory reconciliation
         if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 1-5'
-        run: paloma-data sync-government
-      - name: Run monthly consumer-place reconciliation
-        if: github.event_name == 'schedule' && github.event.schedule == '0 11 25 * *'
+        run: |
+          paloma-data sync-government
+          paloma-data catalog-sweep
+
+      - name: Monthly open-source discovery snapshot
+        if: github.event_name == 'schedule' && github.event.schedule == '0 11 15 * *'
         shell: bash
         run: |
-          paloma-data sync overture
-          if [ -n "$FSQ_CATALOG_URI" ] && [ -n "$FSQ_CATALOG_TOKEN" ] && [ -n "$FSQ_PLACES_TABLE" ]; then
-            paloma-data sync fsq
+          if [ -z "$FSQ_CATALOG_URI" ] || [ -z "$FSQ_CATALOG_TOKEN" ] || [ -z "$FSQ_PLACES_TABLE" ]; then
+            echo "FSQ OS is not configured; discovery intentionally skipped"
           else
-            echo "FSQ OS skipped: configure the Places Portal catalog variables and token"
+            paloma-data sync fsq
           fi
-          paloma-data enrich-attributes
-      - name: Refresh open venue attributes weekly
-        if: github.event_name == 'schedule' && github.event.schedule == '0 15 * * 0'
-        run: paloma-data enrich-attributes
-      - name: Run manual command
+          paloma-data sync-neighborhoods
+
+      - name: Weekly verification refresh and guarded publication
+        if: github.event_name == 'schedule' && github.event.schedule == '0 15 * * 1'
+        shell: bash
+        run: |
+          if [ -n "$FSQ_PLACES_API_KEY" ] && [ "$FSQ_SERVER_STORAGE_LICENSED" = "true" ]; then
+            paloma-data catalog-verify --limit 250
+          else
+            echo "Licensed server retention is not configured; proprietary verification skipped"
+          fi
+          paloma-data catalog-reevaluate
+          if [ "$PALOMA_CATALOG_AUTO_PUBLISH" = "true" ]; then
+            paloma-data catalog-publish --confirm PUBLISH_VERIFIED --limit 2000
+          else
+            echo "Automatic publication is disabled until the initial cutover is approved"
+          fi
+          paloma-data catalog-sweep
+
+      - name: Manual action
         if: github.event_name == 'workflow_dispatch'
         shell: bash
+        env:
+          ACTION: ${{ inputs.action }}
+          SOURCE: ${{ inputs.source }}
+          CITY: ${{ inputs.city }}
+          LIMIT: ${{ inputs.limit }}
+          CONFIRMATION: ${{ inputs.confirmation }}
         run: |
-          if [ "${{ inputs.source }}" = "attributes" ]; then
-            paloma-data enrich-attributes
-          elif [ "${{ inputs.source }}" = "web" ]; then
-            paloma-data enrich-web
-          elif [ "${{ inputs.mode }}" = "backfill" ]; then
-            if [ "${{ inputs.source }}" = "all" ]; then
-              paloma-data rebuild-catalog
-            else
-              paloma-data backfill "${{ inputs.source }}"
-            fi
-          else
-            if [ "${{ inputs.source }}" = "all" ]; then
-              paloma-data sync-all
-            else
-              paloma-data sync "${{ inputs.source }}"
-            fi
-          fi
+          set -euo pipefail
+          case "$ACTION" in
+            status)
+              paloma-data catalog-status
+              ;;
+            stage)
+              paloma-data stage-source "$SOURCE" --mode full
+              ;;
+            neighborhoods)
+              paloma-data sync-neighborhoods
+              ;;
+            discover)
+              paloma-data catalog-discover --city "$CITY" --limit "$LIMIT"
+              ;;
+            trial)
+              paloma-data catalog-trial --city "$CITY" --limit "$LIMIT"
+              ;;
+            verify)
+              paloma-data catalog-verify --city "$CITY" --limit "$LIMIT"
+              ;;
+            publish)
+              test "$CONFIRMATION" = "PUBLISH_VERIFIED"
+              paloma-data catalog-publish --confirm "$CONFIRMATION" --limit "$LIMIT"
+              ;;
+            cutover)
+              test "$CONFIRMATION" = "REPLACE_PUBLIC_CATALOG"
+              paloma-data catalog-cutover --confirm "$CONFIRMATION" --minimum-verified "$LIMIT"
+              ;;
+          esac

@@ -15,6 +15,11 @@ class Settings:
     fsq_catalog_token: str | None
     fsq_places_table: str | None
     fsq_catalog_warehouse: str | None
+    fsq_places_api_key: str | None
+    fsq_server_storage_licensed: bool
+    catalog_provider_lease_days: int
+    allow_snapshot_shrink: bool
+    sf_neighborhoods_url: str
     allowed_countries: frozenset[str]
     allowed_regions: frozenset[str]
     allowed_cities: frozenset[str]
@@ -40,6 +45,21 @@ class Settings:
             fsq_catalog_token=os.getenv("FSQ_CATALOG_TOKEN"),
             fsq_places_table=os.getenv("FSQ_PLACES_TABLE"),
             fsq_catalog_warehouse=os.getenv("FSQ_CATALOG_WAREHOUSE"),
+            fsq_places_api_key=os.getenv("FSQ_PLACES_API_KEY"),
+            fsq_server_storage_licensed=_boolean(
+                os.getenv("FSQ_SERVER_STORAGE_LICENSED", "false")
+            ),
+            catalog_provider_lease_days=_positive_int(
+                os.getenv("CATALOG_PROVIDER_LEASE_DAYS", "45"),
+                "CATALOG_PROVIDER_LEASE_DAYS",
+            ),
+            allow_snapshot_shrink=_boolean(
+                os.getenv("PALOMA_ALLOW_SNAPSHOT_SHRINK", "false")
+            ),
+            sf_neighborhoods_url=os.getenv(
+                "SF_NEIGHBORHOODS_URL",
+                "https://data.sfgov.org/resource/gfpk-269f.geojson?$limit=5000",
+            ),
             allowed_countries=_csv_set(os.getenv("PALOMA_COUNTRIES", "US")),
             allowed_regions=_csv_set(os.getenv("PALOMA_REGIONS", "CA")),
             allowed_cities=_csv_set(os.getenv("PALOMA_CITIES", "San Francisco")),
@@ -48,3 +68,17 @@ class Settings:
 
 def _csv_set(value: str) -> frozenset[str]:
     return frozenset(part.strip() for part in value.split(",") if part.strip())
+
+
+def _boolean(value: str) -> bool:
+    return value.strip().casefold() in {"1", "true", "yes", "on"}
+
+
+def _positive_int(value: str, name: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise RuntimeError(f"{name} must be an integer") from exc
+    if parsed <= 0:
+        raise RuntimeError(f"{name} must be positive")
+    return parsed

@@ -21,7 +21,9 @@ ABC_STRONG_TYPES = {
     "23": "brewery",
     "74": "distillery",
 }
-ABC_BAR_CANDIDATE_TYPES = {"40", "42", "48", "61"}
+# Eating-place licenses cannot classify a bar, but they can validate lawful on-premise service
+# after a high-quality consumer source independently identifies the place as a Paloma venue.
+ABC_BAR_CANDIDATE_TYPES = {"40", "41", "42", "47", "48", "61", "87"}
 ABC_BREWPUB_CANDIDATE_TYPES = {"75"}
 
 DATASF_STRONG_NAICS = {
@@ -73,6 +75,7 @@ BAR_TYPES = frozenset(
 )
 ACCESS_SPECIFIC_TYPES = frozenset({*BAR_TYPES, "taproom", "tasting_room", "brewpub"})
 GENERIC_MANUFACTURER_TYPES = frozenset({"brewery", "winery", "distillery"})
+CONSUMER_VENUE_TYPES = frozenset({*ACCESS_SPECIFIC_TYPES, *GENERIC_MANUFACTURER_TYPES})
 
 _NAME_PATTERNS: list[tuple[re.Pattern[str], str, float]] = [
     (re.compile(r"\bcocktail\s+bar\b", re.I), "cocktail_bar", 0.98),
@@ -89,6 +92,8 @@ _NAME_PATTERNS: list[tuple[re.Pattern[str], str, float]] = [
     (re.compile(r"\bnight\s*club\b", re.I), "nightclub", 0.97),
     (re.compile(r"\blounge\b", re.I), "lounge", 0.91),
     (re.compile(r"\bpub\b", re.I), "pub", 0.93),
+    (re.compile(r"\bsaloon\b", re.I), "bar", 0.92),
+    (re.compile(r"\bbar\b", re.I), "bar", 0.88),
 ]
 
 
@@ -150,5 +155,9 @@ def classify_name(name: str) -> Classification:
 
 
 def is_consumer_facing_type(primary_type_slug: str | None) -> bool:
-    """True only when a category explicitly describes a visitable drinking venue."""
-    return primary_type_slug in ACCESS_SPECIFIC_TYPES
+    """True for consumer POI categories Paloma can verify, never for ABC by itself.
+
+    A consumer-source ``brewery``/``winery``/``distillery`` remains only a candidate. It still
+    needs current hours (or a manual public-access attestation) before publication.
+    """
+    return primary_type_slug in CONSUMER_VENUE_TYPES

@@ -59,7 +59,7 @@ def test_fsq_private_venue_flag_is_a_hard_negative():
     assert record.public_access == "members_or_private"
 
 
-def test_fsq_rich_fields_are_used_only_when_delivered():
+def test_fsq_os_adapter_never_mislabels_rich_fields_as_apache_data():
     record = _adapter()._to_record(
         {
             "fsq_place_id": "rich123",
@@ -80,6 +80,104 @@ def test_fsq_rich_fields_are_used_only_when_delivered():
     )
 
     assert record is not None
-    assert record.hours == {"friday": [["16:00", "02:00"]]}
-    assert record.price_level == 3
-    assert record.setting_slugs == ("outdoor_patio", "rooftop")
+    assert record.hours is None
+    assert record.price_level is None
+    assert record.setting_slugs == ("rooftop",)
+
+
+def test_fsq_stale_or_missing_refresh_date_is_not_open():
+    record = _adapter()._to_record(
+        {
+            "fsq_place_id": "stale123",
+            "name": "Old Bar",
+            "latitude": 37.79,
+            "longitude": -122.39,
+            "address": "4 Market St",
+            "locality": "San Francisco",
+            "region": "CA",
+            "country": "US",
+            "date_refreshed": "2020-01-01T00:00:00Z",
+            "fsq_category_labels": ["Dining and Drinking > Bar"],
+            "unresolved_flags": [],
+        }
+    )
+
+    assert record is not None
+    assert record.source_status == "unknown"
+    assert "stale" in record.quality_flags
+
+
+def test_fsq_secondary_bar_category_does_not_turn_restaurant_into_candidate():
+    record = _adapter()._to_record(
+        {
+            "fsq_place_id": "restaurant123",
+            "name": "Kokkari Estiatorio",
+            "latitude": 37.79,
+            "longitude": -122.39,
+            "address": "200 Jackson St",
+            "locality": "San Francisco",
+            "region": "CA",
+            "country": "US",
+            "date_refreshed": "2026-08-10T00:00:00Z",
+            "fsq_category_labels": [
+                "Dining and Drinking > Restaurant > Greek Restaurant",
+                "Dining and Drinking > Bar > Cocktail Bar",
+            ],
+            "unresolved_flags": [],
+        }
+    )
+
+    assert record is not None
+    assert record.consumer_facing is False
+    assert record.public_access == "unknown"
+    assert "consumer_identity_conflict" in record.quality_flags
+
+
+def test_fsq_generic_bar_category_requires_consumer_name_signal():
+    record = _adapter()._to_record(
+        {
+            "fsq_place_id": "coffee123",
+            "name": "Bluestone Lane",
+            "latitude": 37.79,
+            "longitude": -122.39,
+            "address": "227 Front St",
+            "locality": "San Francisco",
+            "region": "CA",
+            "country": "US",
+            "date_refreshed": "2026-08-07T00:00:00Z",
+            "fsq_category_labels": [
+                "Dining and Drinking > Cafe, Coffee, and Tea House > Coffee Shop",
+                "Dining and Drinking > Bar",
+            ],
+            "unresolved_flags": [],
+        }
+    )
+
+    assert record is not None
+    assert record.consumer_facing is False
+    assert "consumer_identity_conflict" in record.quality_flags
+
+
+def test_fsq_bar_name_can_resolve_restaurant_category_conflict():
+    record = _adapter()._to_record(
+        {
+            "fsq_place_id": "bar123",
+            "name": "Eclipse Kitchen & Bar",
+            "latitude": 37.79,
+            "longitude": -122.39,
+            "address": "5 Embarcadero Ctr",
+            "locality": "San Francisco",
+            "region": "CA",
+            "country": "US",
+            "date_refreshed": "2026-08-05T00:00:00Z",
+            "fsq_category_labels": [
+                "Dining and Drinking > Bar > Hotel Bar",
+                "Dining and Drinking > Restaurant > American Restaurant",
+            ],
+            "unresolved_flags": [],
+        }
+    )
+
+    assert record is not None
+    assert record.consumer_facing is True
+    assert record.public_access == "walk_in"

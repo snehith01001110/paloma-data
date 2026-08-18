@@ -14,7 +14,7 @@ from overturemaps.core import record_batch_reader
 from overturemaps.writers import copy, get_writer
 
 from paloma_data.models import SourceRecord
-from paloma_data.taxonomy import classify_overture, is_consumer_facing_type
+from paloma_data.taxonomy import ACCESS_SPECIFIC_TYPES, classify_overture
 
 
 _RELEASE_INDEX_URL = (
@@ -93,6 +93,7 @@ class OvertureAdapter:
                 if isinstance(item, dict) and item.get("dataset")
             }
         )
+        origin_keys = _origin_keys(source_datasets)
         websites = properties.get("websites") or []
         phones = properties.get("phones") or []
         status = _canonical_status(properties.get("operating_status"))
@@ -117,12 +118,14 @@ class OvertureAdapter:
             primary_type_slug=classification.primary_type_slug,
             classification_confidence=classification.confidence,
             source_family="consumer_poi",
-            consumer_facing=is_consumer_facing_type(classification.primary_type_slug),
+            consumer_facing=classification.primary_type_slug in ACCESS_SPECIFIC_TYPES,
             public_access=(
                 "walk_in"
-                if is_consumer_facing_type(classification.primary_type_slug)
+                if classification.primary_type_slug in ACCESS_SPECIFIC_TYPES
                 else "unknown"
             ),
+            origin_keys=origin_keys,
+            data_license="Overture-source-licenses",
             category_evidence={
                 "reason": classification.reason,
                 "basic_category": properties.get("basic_category"),
@@ -289,3 +292,21 @@ def _objective_settings(category_tokens: set[str]) -> tuple[str, ...]:
     if "brewpub" in category_tokens:
         settings.update({"production_premises", "restaurant_attached"})
     return tuple(sorted(settings))
+
+
+def _origin_keys(source_datasets: list[str]) -> tuple[str, ...]:
+    """Normalize Overture lineage so copied providers are not independent evidence."""
+    origins: set[str] = set()
+    for dataset in source_datasets:
+        token = dataset.casefold()
+        if "foursquare" in token or token.startswith("fsq"):
+            origins.add("foursquare")
+        elif "facebook" in token or "meta" in token:
+            origins.add("meta")
+        elif "microsoft" in token or "bing" in token:
+            origins.add("microsoft")
+        elif "openstreetmap" in token or token == "osm":
+            origins.add("openstreetmap")
+        else:
+            origins.add(f"overture:{token}")
+    return tuple(sorted(origins or {"overture:unknown"}))

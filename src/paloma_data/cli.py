@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import typer
 
@@ -10,235 +11,410 @@ from paloma_data.adapters import (
     FoursquareAdapter,
     OvertureAdapter,
 )
+from paloma_data.adapters.foursquare_api import FoursquarePlacesAPI
+from paloma_data.catalog import CATALOG_DECISION_VERSION
+from paloma_data.catalog_pipeline import CatalogPipeline
+from paloma_data.catalog_repository import CatalogRepository
 from paloma_data.config import Settings
-from paloma_data.attribute_enrichment import OpenAttributeEnricher
 from paloma_data.db import Database
-from paloma_data.field_resolution import FieldResolver, RESOLUTION_VERSION
 from paloma_data.geocoding import AddressGeocoder
-from paloma_data.pipeline import Pipeline
-from paloma_data.publication import PublicationResolver
-from paloma_data.web_identity import OfficialWebEnricher
-
-app = typer.Typer(no_args_is_help=True, help="Paloma establishment ingestion")
-CORE_SOURCES = ("ca_abc", "datasf", "overture")
-# Keep bootstrap version-aware so resolver upgrades force exactly one fresh catalog rebuild.
+from paloma_data.neighborhoods import DataSFNeighborhoodAdapter, NeighborhoodStager
+from paloma_data.staging import SourceStager
 
 
-def _components() -> tuple[Settings, Pipeline]:
+app = typer.Typer(no_args_is_help=True, help="Paloma accuracy-first establishment catalog")
+SNAPSHOT_SOURCES = ("ca_abc", "datasf", "fsq", "overture")
+
+
+def _components() -> tuple[Settings, Database, SourceStager, CatalogPipeline]:
     settings = Settings.from_env()
-    pipeline = Pipeline(
-        Database(settings.database_url),
+    db = Database(settings.database_url)
+    stager = SourceStager(
+        db,
         allowed_cities=settings.allowed_cities,
         allowed_regions=settings.allowed_regions,
         allowed_countries=settings.allowed_countries,
+        allow_snapshot_shrink=settings.allow_snapshot_shrink,
     )
-    return settings, pipeline
+    return settings, db, stager, CatalogPipeline(db)
 
 
-def _geocode_and_reconcile(pipeline: Pipeline) -> dict[str, object]:
-    """Resolve addresses the sources left unplaced, then act on what that unlocked.
-
-    A record with no coordinates cannot become an establishment, so geocoding is the step that
-    lets an authoritative but unplaced source contribute a venue instead of a review item.
-    """
-    results: dict[str, object] = {}
-    for source in CORE_SOURCES:
-        geocoded = AddressGeocoder(pipeline.db).run(source)
-        if not geocoded["considered"]:
-            continue
-        results[source] = {"geocoded": geocoded}
-        if geocoded["matched"]:
-            results[source]["reconciled"] = pipeline.reconcile_staged(source)
-    return results
-
-
-@app.command()
-def geocode(
-    source: str = typer.Argument("", help="One source, or empty for every source"),
+@app.command("stage-source")
+def stage_source(
+    source: str = typer.Argument(..., help="ca_abc, datasf, fsq, or overture"),
+    mode: str = typer.Option("incremental", help="incremental or full"),
 ) -> None:
-    """Geocode staged records missing coordinates, then re-decide the ones that were waiting."""
-    _, pipeline = _components()
-    if source:
-        geocoded = AddressGeocoder(pipeline.db).run(source)
-        results: dict[str, object] = {source: {"geocoded": geocoded}}
-        if geocoded["matched"]:
-            results[source]["reconciled"] = pipeline.reconcile_staged(source)
-    else:
-        results = _geocode_and_reconcile(pipeline)
-    results.update(_resolve_catalog(pipeline))
-    typer.echo(json.dumps(results, indent=2, sort_keys=True))
+    """Refresh private source evidence only; never create a product establishment."""
+    settings, _, stager, _ = _components()
+    if mode not in {"incremental", "full"}:
+        raise typer.BadParameter("mode must be incremental or full")
+    adapter = _adapter(source, settings)
+    records = adapter.backfill() if mode == "full" else adapter.incremental()
+    result = stager.run_snapshot(adapter.source, mode, records)
+    typer.echo(json.dumps({source: result}, indent=2, sort_keys=True))
 
 
 @app.command()
 def bootstrap() -> None:
-    """Backfill missing sources and force one full rebuild when the resolver schema advances."""
-    settings, pipeline = _components()
-    results: dict[str, object] = {}
-
-    # A new resolver version changes the semantics of canonical fields, not just presentation.
-    # Re-read every upstream source once so stale staged records cannot survive a resolver upgrade.
-    force_rebuild = not _field_resolution_current(pipeline)
-    results["forced_rebuild"] = force_rebuild
-    results["resolution_version"] = RESOLUTION_VERSION
-
+    """Stage configured bulk sources and build private candidates; do not publish."""
+    settings, _, stager, catalog = _components()
+    results: dict[str, Any] = {"publication_mutated": False}
     for source in _configured_sources(settings):
-        if not force_rebuild and _successful_backfill_exists(pipeline, source):
-            results[source] = {"skipped": "already_backfilled"}
-            continue
         adapter = _adapter(source, settings)
-        results[source] = pipeline.run(adapter.source, "full", adapter.backfill())
-
-    results["geocode"] = _geocode_and_reconcile(pipeline)
-    results["attributes"] = _enrich_attributes(settings, pipeline)
-    results.update(_resolve_catalog(pipeline))
+        results[source] = stager.run_snapshot(source, "full", adapter.backfill())
+    results["geocode"] = _geocode_only(catalog.db)
+    results["discovery"] = catalog.discover(city=None, limit=25_000, evaluation_mode="production")
+    if not _fsq_bulk_configured(settings):
+        results["blocked"] = "FSQ OS is not configured; no candidate can pass v2"
     typer.echo(json.dumps(results, indent=2, sort_keys=True))
 
 
 @app.command()
-def backfill(source: str = typer.Argument(..., help="ca_abc, datasf, overture, or fsq")) -> None:
-    """Run one source backfill, then recompute field-level provenance/confidence."""
-    settings, pipeline = _components()
+def backfill(
+    source: str = typer.Argument(..., help="ca_abc, datasf, fsq, or overture"),
+) -> None:
+    """Full private source snapshot followed by private candidate discovery."""
+    settings, _, stager, catalog = _components()
     adapter = _adapter(source, settings)
-    result = {source: pipeline.run(adapter.source, "full", adapter.backfill())}
-    result.update(_resolve_catalog(pipeline))
+    result: dict[str, Any] = {
+        source: stager.run_snapshot(source, "full", adapter.backfill()),
+        "publication_mutated": False,
+    }
+    if source == "ca_abc":
+        result["geocode"] = AddressGeocoder(catalog.db).run("ca_abc")
+    result["discovery"] = catalog.discover(
+        city=None,
+        limit=25_000,
+        evaluation_mode="production",
+        anchor_sources=("fsq",),
+    )
     typer.echo(json.dumps(result, indent=2, sort_keys=True))
 
 
-@app.command("rebuild-catalog")
-def rebuild_catalog() -> None:
-    """Re-read configured bulk sources, then resolve fields and publication state."""
-    settings, pipeline = _components()
-    results: dict[str, object] = {}
-    for source in _configured_sources(settings):
-        adapter = _adapter(source, settings)
-        results[source] = pipeline.run(adapter.source, "full", adapter.backfill())
-    results["geocode"] = _geocode_and_reconcile(pipeline)
-    results["attributes"] = _enrich_attributes(settings, pipeline)
-    results.update(_resolve_catalog(pipeline))
-    typer.echo(json.dumps(results, indent=2, sort_keys=True))
-
-
 @app.command()
-def sync(source: str = typer.Argument(..., help="ca_abc, datasf, overture, or fsq")) -> None:
-    """Run one incremental source and recompute canonical field confidence."""
-    settings, pipeline = _components()
+def sync(
+    source: str = typer.Argument(..., help="ca_abc, datasf, fsq, or overture"),
+) -> None:
+    """Refresh one complete source snapshot and reevaluate private candidates."""
+    settings, _, stager, catalog = _components()
     adapter = _adapter(source, settings)
-    result = {source: pipeline.run(adapter.source, "incremental", adapter.incremental())}
-    result.update(_resolve_catalog(pipeline))
+    result: dict[str, Any] = {
+        source: stager.run_snapshot(source, "incremental", adapter.incremental()),
+        "publication_mutated": False,
+    }
+    if source == "ca_abc":
+        result["geocode"] = AddressGeocoder(catalog.db).run("ca_abc")
+    if source == "fsq":
+        result["discovery"] = catalog.discover(
+            city=None,
+            limit=25_000,
+            evaluation_mode="production",
+            anchor_sources=("fsq",),
+        )
+    result["reevaluation"] = catalog.reevaluate(city=None, limit=50_000)
     typer.echo(json.dumps(result, indent=2, sort_keys=True))
 
 
 @app.command("sync-government")
 def sync_government() -> None:
-    """Run high-frequency government reconciliation, retaining names as legal evidence."""
-    settings, pipeline = _components()
-    results: dict[str, object] = {}
+    """Refresh ABC/DataSF evidence; negative changes withdraw but never create public rows."""
+    settings, _, stager, catalog = _components()
+    results: dict[str, Any] = {"publication_created": False}
     for source in ("ca_abc", "datasf"):
         adapter = _adapter(source, settings)
-        results[source] = pipeline.run(adapter.source, "incremental", adapter.incremental())
-    results["geocode"] = _geocode_and_reconcile(pipeline)
-    results.update(_resolve_catalog(pipeline))
+        results[source] = stager.run_snapshot(source, "incremental", adapter.incremental())
+    results["geocode"] = _geocode_only(catalog.db)
+    results["reevaluation"] = catalog.reevaluate(city=None, limit=50_000)
     typer.echo(json.dumps(results, indent=2, sort_keys=True))
 
 
-@app.command("sync-all")
-def sync_all() -> None:
-    """Run configured bulk sources, then resolve fields and publication state."""
-    settings, pipeline = _components()
-    results: dict[str, object] = {}
-    for source in _configured_sources(settings):
-        adapter = _adapter(source, settings)
-        results[source] = pipeline.run(adapter.source, "incremental", adapter.incremental())
-    results["geocode"] = _geocode_and_reconcile(pipeline)
-    results["attributes"] = _enrich_attributes(settings, pipeline)
-    results.update(_resolve_catalog(pipeline))
-    typer.echo(json.dumps(results, indent=2, sort_keys=True))
-
-
-@app.command("enrich-web")
-def enrich_web() -> None:
-    """Optionally inspect first-party sites; this is not part of scheduled catalog ingestion."""
-    _, pipeline = _components()
-    result = {"official_web": OfficialWebEnricher(pipeline.db).run()}
-    result.update(_resolve_catalog(pipeline))
-    typer.echo(json.dumps(result, indent=2, sort_keys=True))
-
-
-@app.command("enrich-attributes")
-def enrich_attributes() -> None:
-    """Refresh open phone, neighborhood, hours, price, and objective setting claims."""
-    settings, pipeline = _components()
-    result = {"attributes": _enrich_attributes(settings, pipeline)}
-    result.update(_resolve_catalog(pipeline))
-    typer.echo(json.dumps(result, indent=2, sort_keys=True))
-
-
-@app.command("resolve-fields")
-def resolve_fields() -> None:
-    """Rebuild field evidence, then recompute publication without fetching sources."""
-    _, pipeline = _components()
-    typer.echo(json.dumps(_resolve_catalog(pipeline), indent=2, sort_keys=True))
-
-
-@app.command("resolve-publication")
-def resolve_publication() -> None:
-    """Recompute only the consumer-catalog publication gate."""
-    _, pipeline = _components()
-    typer.echo(json.dumps(PublicationResolver(pipeline.db).resolve(), indent=2, sort_keys=True))
-
-
-@app.command("reset-catalog")
-def reset_catalog(
-    confirm: str = typer.Option("", help="Must be exactly RESET_CATALOG"),
+@app.command("catalog-discover")
+def catalog_discover(
+    city: str | None = typer.Option(None, help="Optional exact city guardrail"),
+    limit: int = typer.Option(500, min=1, max=25_000),
 ) -> None:
-    """Destructively clear rebuildable catalog and test interactions, preserving auth/taxonomy."""
-    if confirm != "RESET_CATALOG":
-        raise typer.BadParameter("Pass --confirm RESET_CATALOG to acknowledge the destructive reset")
-    settings = Settings.from_env()
-    Database(settings.database_url).reset_catalog()
-    typer.echo(json.dumps({"status": "reset", "preserved": ["auth", "profiles", "taxonomy"]}))
+    """Turn current FSQ OS rows into private candidates and correlate legal evidence."""
+    settings, _, _, catalog = _components()
+    if not _fsq_bulk_configured(settings):
+        raise typer.BadParameter(
+            "Configure FSQ_CATALOG_URI, FSQ_CATALOG_TOKEN, and FSQ_PLACES_TABLE first"
+        )
+    result = catalog.discover(
+        city=city,
+        limit=limit,
+        evaluation_mode="production",
+        anchor_sources=("fsq",),
+    )
+    typer.echo(json.dumps(result, indent=2, sort_keys=True))
 
 
-def _field_resolution_current(pipeline: Pipeline) -> bool:
-    """True only when every ingestion-backed canonical row has the current resolver version."""
-    with pipeline.db.connection() as conn:
-        row = conn.execute(
+@app.command("catalog-trial")
+def catalog_trial(
+    city: str = typer.Option("San Francisco", help="Exact trial city"),
+    limit: int = typer.Option(20, min=1, max=50),
+) -> None:
+    """Run a bounded FSQ verification trial without mutating the consumer catalog."""
+    settings, _, _, catalog = _components()
+    if not settings.fsq_places_api_key:
+        raise typer.BadParameter("FSQ_PLACES_API_KEY is required for a verification trial")
+    discovery = catalog.discover(
+        city=city,
+        limit=limit,
+        evaluation_mode="trial",
+        anchor_sources=("fsq",),
+    )
+    candidate_ids = list(discovery.get("candidate_ids") or ())
+    if len(candidate_ids) < limit:
+        with catalog.db.connection() as conn:
+            existing = CatalogRepository(catalog.db).candidate_ids(
+                conn,
+                city=city,
+                limit=limit,
+                states=("needs_verification", "needs_review", "verified", "published"),
+            )
+        candidate_ids = list(dict.fromkeys([*candidate_ids, *existing]))[:limit]
+    if not candidate_ids:
+        raise RuntimeError(
+            "No current FSQ OS candidates are staged for this city; run `paloma-data backfill fsq`"
+        )
+    storage_policy = (
+        "contract" if settings.fsq_server_storage_licensed else "ephemeral"
+    )
+    with FoursquarePlacesAPI(
+        settings.fsq_places_api_key,
+        storage_policy=storage_policy,
+    ) as api:
+        verification = catalog.verify_with_foursquare(
+            api,
+            city=city,
+            limit=limit,
+            mode="trial",
+            lease_days=settings.catalog_provider_lease_days,
+            candidate_ids=candidate_ids,
+        )
+    typer.echo(
+        json.dumps(
+            {
+                "scope": {"city": city, "limit": limit},
+                "publication_mutated": False,
+                "api_storage_policy": storage_policy,
+                "discovery": discovery,
+                "verification": verification,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
+@app.command("catalog-verify")
+def catalog_verify(
+    city: str | None = typer.Option(None, help="Optional exact city guardrail"),
+    limit: int = typer.Option(250, min=1, max=2_000),
+) -> None:
+    """Persist specifically licensed verification evidence; still does not publish."""
+    settings, _, _, catalog = _components()
+    if not settings.fsq_places_api_key:
+        raise typer.BadParameter("FSQ_PLACES_API_KEY is required")
+    if not settings.fsq_server_storage_licensed:
+        raise typer.BadParameter(
+            "FSQ_SERVER_STORAGE_LICENSED must be true only when a written agreement "
+            "overrides the API's no-server-caching rule"
+        )
+    with FoursquarePlacesAPI(
+        settings.fsq_places_api_key,
+        storage_policy="contract",
+    ) as api:
+        result = catalog.verify_with_foursquare(
+            api,
+            city=city,
+            limit=limit,
+            mode="production",
+            lease_days=settings.catalog_provider_lease_days,
+        )
+    typer.echo(json.dumps(result, indent=2, sort_keys=True))
+
+
+@app.command("catalog-reevaluate")
+def catalog_reevaluate(
+    city: str | None = typer.Option(None),
+    limit: int = typer.Option(50_000, min=1),
+) -> None:
+    """Re-run hard gates from stored evidence and withdraw hard negatives."""
+    _, _, _, catalog = _components()
+    typer.echo(json.dumps(catalog.reevaluate(city=city, limit=limit), indent=2, sort_keys=True))
+
+
+@app.command("catalog-publish")
+def catalog_publish(
+    confirm: str = typer.Option("", help="Must be exactly PUBLISH_VERIFIED"),
+    limit: int = typer.Option(2_000, min=1),
+) -> None:
+    """Materialize only unexpired verified candidates into the consumer catalog."""
+    if confirm != "PUBLISH_VERIFIED":
+        raise typer.BadParameter("Pass --confirm PUBLISH_VERIFIED")
+    _, _, _, catalog = _components()
+    typer.echo(json.dumps(catalog.publish(limit=limit), indent=2, sort_keys=True))
+
+
+@app.command("catalog-cutover")
+def catalog_cutover(
+    confirm: str = typer.Option("", help="Must be exactly REPLACE_PUBLIC_CATALOG"),
+    minimum_verified: int = typer.Option(1, min=1),
+) -> None:
+    """Replace the pre-launch junk catalog with the verified v2 set."""
+    if confirm != "REPLACE_PUBLIC_CATALOG":
+        raise typer.BadParameter("Pass --confirm REPLACE_PUBLIC_CATALOG")
+    _, _, _, catalog = _components()
+    typer.echo(
+        json.dumps(
+            catalog.cutover(minimum_verified=minimum_verified),
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
+@app.command("catalog-sweep")
+def catalog_sweep() -> None:
+    """Immediately hide published rows whose verification lease expired."""
+    _, db, _, _ = _components()
+    repo = CatalogRepository(db)
+    with db.connection() as conn:
+        withdrawn = repo.withdraw_expired(conn)
+        conn.commit()
+    typer.echo(json.dumps({"expired_withdrawn": withdrawn}, indent=2))
+
+
+@app.command("catalog-status")
+def catalog_status() -> None:
+    """Report source readiness, private decisions, publication, and field coverage."""
+    settings, db, _, _ = _components()
+    with db.connection() as conn:
+        schema = conn.execute(
+            "select to_regclass('ingest.catalog_candidates')::text as table_name"
+        ).fetchone()
+        if not schema["table_name"]:
+            raise RuntimeError("catalog v2 migration is not applied")
+        sources = conn.execute(
+            """
+            select source, count(*) filter (where retired_at is null) as current_records,
+                   max(last_seen_at) as last_seen_at,
+                   count(*) filter (where source_status = 'open' and retired_at is null) as open_records
+            from ingest.source_records
+            group by source order by source
+            """
+        ).fetchall()
+        sync_state = conn.execute(
+            """
+            select source, completed_at, record_count, release_id, cursor_after
+            from ingest.source_sync_state order by source
+            """
+        ).fetchall()
+        decisions = conn.execute(
+            """
+            select candidate_state, count(*) as count
+            from ingest.catalog_candidates group by candidate_state order by candidate_state
+            """
+        ).fetchall()
+        blockers = conn.execute(
+            """
+            select decision_reason, count(*) as count
+            from ingest.catalog_candidates
+            where candidate_state not in ('verified', 'published')
+            group by decision_reason
+            order by count(*) desc, decision_reason
+            limit 15
+            """
+        ).fetchall()
+        work = conn.execute(
             """
             select
-              count(*) filter (where exists (
-                select 1 from ingest.establishment_sources es where es.establishment_id = e.id
-              )) as ingestion_backed,
+              (select count(*) from ingest.candidate_match_reviews where state = 'pending')
+                as pending_match_reviews,
               count(*) filter (
-                where exists (
-                  select 1 from ingest.establishment_sources es where es.establishment_id = e.id
-                )
-                and e.field_resolution_version = %s
-              ) as current_rows
-            from public.establishments e
-            """,
-            (RESOLUTION_VERSION,),
-        ).fetchone()
-    ingestion_backed = int(row["ingestion_backed"] or 0)
-    current_rows = int(row["current_rows"] or 0)
-    return ingestion_backed > 0 and ingestion_backed == current_rows
-
-
-def _successful_backfill_exists(pipeline: Pipeline, source: str) -> bool:
-    with pipeline.db.connection() as conn:
-        row = conn.execute(
+                where candidate_state in ('needs_verification', 'needs_review')
+                   or (
+                     candidate_state in ('verified', 'published')
+                     and (verification_expires_at is null
+                          or verification_expires_at <= now() + interval '14 days')
+                   )
+              ) as provider_calls_due,
+              count(*) filter (
+                where candidate_state in ('verified', 'published')
+                  and verification_expires_at > now()
+              ) as currently_verified
+            from ingest.catalog_candidates
             """
-            select exists (
-              select 1
-              from ingest.ingestion_runs
-              where source = %s
-                and mode = 'full'
-                and status = 'succeeded'
-                and fetched_count > 0
-            ) as complete
-            """,
-            (source,),
         ).fetchone()
-    return bool(row["complete"])
+        publication = conn.execute(
+            """
+            select count(*) as rows_total,
+                   count(*) filter (where publication_state = 'published' and status = 'open') as live,
+                   count(*) filter (
+                     where publication_state = 'published' and catalog_candidate_id is not null
+                   ) as v2_live,
+                   count(*) filter (
+                     where publication_state = 'published' and catalog_candidate_id is null
+                   ) as unsafe_legacy_live,
+                   count(*) filter (
+                     where publication_state = 'published'
+                       and verification_expires_at > now()
+                   ) as unexpired,
+                   count(*) filter (
+                     where publication_state = 'published'
+                       and (verification_expires_at is null or verification_expires_at <= now())
+                   ) as unsafe_expired_live,
+                   count(*) filter (where publication_state = 'published' and phone_e164 is not null) as phone,
+                   count(*) filter (where publication_state = 'published' and neighborhood is not null) as neighborhood,
+                   count(*) filter (where publication_state = 'published' and hours is not null) as hours,
+                   count(*) filter (where publication_state = 'published' and price_level is not null) as price,
+                   count(*) filter (where publication_state = 'published' and cover_image_url is not null) as cover_image
+            from public.establishments
+            """
+        ).fetchone()
+    typer.echo(
+        json.dumps(
+            {
+                "decision_version": CATALOG_DECISION_VERSION,
+                "configuration": {
+                    "fsq_os": _fsq_bulk_configured(settings),
+                    "fsq_api": bool(settings.fsq_places_api_key),
+                    "fsq_server_storage_licensed": settings.fsq_server_storage_licensed,
+                    "sf_neighborhoods": bool(settings.sf_neighborhoods_url),
+                },
+                "sources": [dict(row) for row in sources],
+                "source_snapshots": [dict(row) for row in sync_state],
+                "candidates": [dict(row) for row in decisions],
+                "top_blockers": [dict(row) for row in blockers],
+                "work_queue": dict(work),
+                "public": dict(publication),
+            },
+            indent=2,
+            sort_keys=True,
+            default=str,
+        )
+    )
+
+
+@app.command("sync-neighborhoods")
+def sync_neighborhoods() -> None:
+    """Refresh civic boundary evidence used for deterministic neighborhood labels."""
+    settings, db, _, _ = _components()
+    stager = NeighborhoodStager(
+        db,
+        allow_snapshot_shrink=settings.allow_snapshot_shrink,
+    )
+    with DataSFNeighborhoodAdapter(settings.sf_neighborhoods_url) as adapter:
+        result = stager.run(adapter)
+    typer.echo(json.dumps(result, indent=2, sort_keys=True))
+
+
+@app.command()
+def geocode(source: str = typer.Argument("ca_abc")) -> None:
+    """Geocode private source evidence; never reconcile directly into public rows."""
+    _, db, _, _ = _components()
+    typer.echo(json.dumps(AddressGeocoder(db).run(source), indent=2, sort_keys=True))
 
 
 def _adapter(source: str, settings: Settings):
@@ -249,9 +425,9 @@ def _adapter(source: str, settings: Settings):
     if source == "overture":
         return OvertureAdapter(settings.overture_bbox)
     if source == "fsq":
-        if not _fsq_configured(settings):
+        if not _fsq_bulk_configured(settings):
             raise typer.BadParameter(
-                "FSQ_CATALOG_URI, FSQ_CATALOG_TOKEN, and FSQ_PLACES_TABLE are required for fsq"
+                "FSQ_CATALOG_URI, FSQ_CATALOG_TOKEN, and FSQ_PLACES_TABLE are required"
             )
         return FoursquareAdapter(
             catalog_uri=settings.fsq_catalog_uri or "",
@@ -264,25 +440,26 @@ def _adapter(source: str, settings: Settings):
 
 
 def _configured_sources(settings: Settings) -> tuple[str, ...]:
-    return (*CORE_SOURCES, "fsq") if _fsq_configured(settings) else CORE_SOURCES
+    # Overture is optional corroboration. It must never take down the ABC + FSQ truth path.
+    values = ["ca_abc", "datasf"]
+    if _fsq_bulk_configured(settings):
+        values.append("fsq")
+    return tuple(values)
 
 
-def _fsq_configured(settings: Settings) -> bool:
-    return bool(settings.fsq_catalog_uri and settings.fsq_catalog_token and settings.fsq_places_table)
+def _fsq_bulk_configured(settings: Settings) -> bool:
+    return bool(
+        settings.fsq_catalog_uri
+        and settings.fsq_catalog_token
+        and settings.fsq_places_table
+    )
 
 
-def _enrich_attributes(settings: Settings, pipeline: Pipeline) -> dict[str, dict[str, object]]:
-    return OpenAttributeEnricher(
-        pipeline.db,
-        bbox=settings.overture_bbox,
-        overpass_url=settings.osm_overpass_url,
-    ).run()
-
-
-def _resolve_catalog(pipeline: Pipeline) -> dict[str, object]:
+def _geocode_only(db: Database) -> dict[str, Any]:
     return {
-        "field_resolution": FieldResolver(pipeline.db).refresh_and_resolve(),
-        "publication": PublicationResolver(pipeline.db).resolve(),
+        source: result
+        for source in ("ca_abc", "datasf")
+        if (result := AddressGeocoder(db).run(source))["considered"]
     }
 
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from contextlib import contextmanager
 import json
-from typing import Any, Iterator
+from typing import Any, Iterator, Literal
 
 import psycopg
 from psycopg.rows import dict_row
@@ -34,6 +34,22 @@ class Database:
     def start_run(
         self, conn: psycopg.Connection, source: str, mode: str, cursor: str | None = None
     ) -> str:
+        # Source jobs hold a session advisory lock before calling this method. Any older
+        # `running` row for that source therefore belongs to a worker that died before it could
+        # finalize its audit record.
+        conn.execute(
+            """
+            update ingest.ingestion_runs
+            set status = 'failed',
+                finished_at = now(),
+                error_summary = coalesce(
+                  nullif(error_summary, ''),
+                  'superseded by a later run after worker interruption'
+                )
+            where source = %s and status = 'running'
+            """,
+            (source,),
+        )
         row = conn.execute(
             """
             insert into ingest.ingestion_runs (source, mode, cursor_before)
@@ -99,7 +115,12 @@ class Database:
             ),
         )
 
-    def stage_source_record(self, conn: psycopg.Connection, record: SourceRecord) -> bool:
+    def stage_source_record(
+        self,
+        conn: psycopg.Connection,
+        record: SourceRecord,
+        run_id: str | None = None,
+    ) -> Literal["created", "updated", "unchanged"]:
         payload_hash = record.payload_hash()
         existing = conn.execute(
             """
@@ -109,7 +130,13 @@ class Database:
             """,
             (record.source, record.source_record_id),
         ).fetchone()
-        changed = existing is None or existing["payload_hash"] != payload_hash
+        outcome: Literal["created", "updated", "unchanged"] = (
+            "created"
+            if existing is None
+            else "updated"
+            if existing["payload_hash"] != payload_hash
+            else "unchanged"
+        )
 
         conn.execute(
             """
@@ -122,6 +149,8 @@ class Database:
                 neighborhood, hours, price_level, setting_slugs,
                 primary_type_slug, classification_confidence,
                 source_family, consumer_facing, public_access, quality_flags,
+                origin_keys, data_license, storage_scope, provider_veracity,
+                last_seen_run_id, retired_at,
                 category_evidence, permitted_metadata
             ) values (
                 %(source)s, %(source_record_id)s, %(source_status)s, %(source_updated_at)s,
@@ -132,6 +161,8 @@ class Database:
                 %(neighborhood)s, %(hours)s::jsonb, %(price_level)s, %(setting_slugs)s,
                 %(primary_type_slug)s, %(classification_confidence)s,
                 %(source_family)s, %(consumer_facing)s, %(public_access)s, %(quality_flags)s,
+                %(origin_keys)s, %(data_license)s, %(storage_scope)s, %(provider_veracity)s,
+                %(last_seen_run_id)s::uuid, null,
                 %(category_evidence)s::jsonb, %(permitted_metadata)s::jsonb
             )
             on conflict (source, source_record_id) do update set
@@ -147,8 +178,68 @@ class Database:
                 region = excluded.region,
                 postal_code = excluded.postal_code,
                 country_code = excluded.country_code,
-                latitude = coalesce(excluded.latitude, source_records.latitude),
-                longitude = coalesce(excluded.longitude, source_records.longitude),
+                latitude = case
+                  when excluded.latitude is not null and excluded.longitude is not null
+                    then excluded.latitude
+                  when source_records.normalized_address is distinct from excluded.normalized_address
+                    or lower(source_records.city) is distinct from lower(excluded.city)
+                    or source_records.region is distinct from excluded.region
+                    or source_records.postal_code is distinct from excluded.postal_code
+                    or source_records.country_code is distinct from excluded.country_code
+                    then null
+                  else source_records.latitude
+                end,
+                longitude = case
+                  when excluded.latitude is not null and excluded.longitude is not null
+                    then excluded.longitude
+                  when source_records.normalized_address is distinct from excluded.normalized_address
+                    or lower(source_records.city) is distinct from lower(excluded.city)
+                    or source_records.region is distinct from excluded.region
+                    or source_records.postal_code is distinct from excluded.postal_code
+                    or source_records.country_code is distinct from excluded.country_code
+                    then null
+                  else source_records.longitude
+                end,
+                geocode_source = case
+                  when excluded.latitude is not null and excluded.longitude is not null
+                    or source_records.normalized_address is distinct from excluded.normalized_address
+                    or lower(source_records.city) is distinct from lower(excluded.city)
+                    or source_records.region is distinct from excluded.region
+                    or source_records.postal_code is distinct from excluded.postal_code
+                    or source_records.country_code is distinct from excluded.country_code
+                    then null
+                  else source_records.geocode_source
+                end,
+                geocoded_at = case
+                  when excluded.latitude is not null and excluded.longitude is not null
+                    or source_records.normalized_address is distinct from excluded.normalized_address
+                    or lower(source_records.city) is distinct from lower(excluded.city)
+                    or source_records.region is distinct from excluded.region
+                    or source_records.postal_code is distinct from excluded.postal_code
+                    or source_records.country_code is distinct from excluded.country_code
+                    then null
+                  else source_records.geocoded_at
+                end,
+                geocode_attempted_at = case
+                  when excluded.latitude is not null and excluded.longitude is not null
+                    or source_records.normalized_address is distinct from excluded.normalized_address
+                    or lower(source_records.city) is distinct from lower(excluded.city)
+                    or source_records.region is distinct from excluded.region
+                    or source_records.postal_code is distinct from excluded.postal_code
+                    or source_records.country_code is distinct from excluded.country_code
+                    then null
+                  else source_records.geocode_attempted_at
+                end,
+                geocode_matched_address = case
+                  when excluded.latitude is not null and excluded.longitude is not null
+                    or source_records.normalized_address is distinct from excluded.normalized_address
+                    or lower(source_records.city) is distinct from lower(excluded.city)
+                    or source_records.region is distinct from excluded.region
+                    or source_records.postal_code is distinct from excluded.postal_code
+                    or source_records.country_code is distinct from excluded.country_code
+                    then null
+                  else source_records.geocode_matched_address
+                end,
                 phone_e164 = excluded.phone_e164,
                 website_url = excluded.website_url,
                 neighborhood = excluded.neighborhood,
@@ -161,6 +252,12 @@ class Database:
                 consumer_facing = excluded.consumer_facing,
                 public_access = excluded.public_access,
                 quality_flags = excluded.quality_flags,
+                origin_keys = excluded.origin_keys,
+                data_license = excluded.data_license,
+                storage_scope = excluded.storage_scope,
+                provider_veracity = excluded.provider_veracity,
+                last_seen_run_id = excluded.last_seen_run_id,
+                retired_at = null,
                 category_evidence = excluded.category_evidence,
                 permitted_metadata = excluded.permitted_metadata,
                 updated_at = now()
@@ -193,11 +290,60 @@ class Database:
                 "consumer_facing": record.consumer_facing,
                 "public_access": record.public_access,
                 "quality_flags": list(record.quality_flags),
+                "origin_keys": sorted(set(record.origin_keys or (record.source,))),
+                "data_license": record.data_license,
+                "storage_scope": record.storage_scope,
+                "provider_veracity": record.provider_veracity,
+                "last_seen_run_id": run_id,
                 "category_evidence": json.dumps(record.category_evidence, sort_keys=True),
                 "permitted_metadata": json.dumps(record.permitted_metadata, sort_keys=True),
             },
         )
-        return changed
+        return outcome
+
+    def complete_source_snapshot(
+        self,
+        conn: psycopg.Connection,
+        *,
+        source: str,
+        run_id: str,
+        record_count: int,
+        release_id: str | None = None,
+        cursor_after: str | None = None,
+    ) -> int:
+        """Retire rows absent from one fully-consumed source snapshot.
+
+        This is intentionally called only after the adapter iterator completed successfully.
+        A failed or partial download therefore cannot turn an upstream outage into mass closures.
+        """
+        retired = conn.execute(
+            """
+            update ingest.source_records
+            set source_status = 'missing', retired_at = now(), updated_at = now()
+            where source = %s
+              and retired_at is null
+              and last_seen_run_id is distinct from %s::uuid
+            returning 1
+            """,
+            (source, run_id),
+        ).fetchall()
+        conn.execute(
+            """
+            insert into ingest.source_sync_state (
+              source, last_complete_run_id, release_id, cursor_after,
+              completed_at, record_count, updated_at
+            ) values (%s, %s::uuid, %s, %s, now(), %s, now())
+            on conflict (source) do update set
+              last_complete_run_id = excluded.last_complete_run_id,
+              release_id = excluded.release_id,
+              cursor_after = excluded.cursor_after,
+              completed_at = excluded.completed_at,
+              record_count = excluded.record_count,
+              updated_at = now()
+            """,
+            (source, run_id, release_id, cursor_after, record_count),
+        )
+        return len(retired)
 
     def linked_establishment_id(
         self, conn: psycopg.Connection, source: str, source_record_id: str
@@ -267,6 +413,7 @@ class Database:
                    phone_e164, website_url, source_status, source_updated_at,
                    primary_type_slug, classification_confidence,
                    source_family, consumer_facing, public_access, quality_flags,
+                   origin_keys, data_license, storage_scope, provider_veracity,
                    category_evidence, permitted_metadata,
                    extensions.similarity(normalized_name, %s) as name_similarity,
                    extensions.similarity(normalized_address, %s) as address_similarity
@@ -327,6 +474,10 @@ class Database:
             consumer_facing=row["consumer_facing"],
             public_access=row["public_access"],
             quality_flags=tuple(row["quality_flags"] or ()),
+            origin_keys=tuple(row["origin_keys"] or (row["source"],)),
+            data_license=row["data_license"] or "unknown",
+            storage_scope=row["storage_scope"] or "durable",
+            provider_veracity=row["provider_veracity"],
             category_evidence=row["category_evidence"] or {},
             permitted_metadata=row["permitted_metadata"] or {},
         )
@@ -433,6 +584,7 @@ class Database:
         latitude: float,
         longitude: float,
         geocoder: str,
+        matched_address: str,
     ) -> None:
         conn.execute(
             """
@@ -440,12 +592,20 @@ class Database:
             set latitude = %s,
                 longitude = %s,
                 geocode_source = %s,
+                geocode_matched_address = %s,
                 geocoded_at = now(),
                 geocode_attempted_at = now(),
                 updated_at = now()
             where source = %s and source_record_id = %s and latitude is null
             """,
-            (latitude, longitude, geocoder, source, source_record_id),
+            (
+                latitude,
+                longitude,
+                geocoder,
+                matched_address,
+                source,
+                source_record_id,
+            ),
         )
 
     def mark_geocode_attempted(
@@ -509,6 +669,10 @@ class Database:
                 consumer_facing=row["consumer_facing"],
                 public_access=row["public_access"],
                 quality_flags=tuple(row["quality_flags"] or ()),
+                origin_keys=tuple(row["origin_keys"] or (row["source"],)),
+                data_license=row["data_license"] or "unknown",
+                storage_scope=row["storage_scope"] or "durable",
+                provider_veracity=row["provider_veracity"],
                 category_evidence=row["category_evidence"] or {},
                 permitted_metadata=row["permitted_metadata"] or {},
             )

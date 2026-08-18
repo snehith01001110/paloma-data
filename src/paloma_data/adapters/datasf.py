@@ -100,6 +100,8 @@ class DataSFAdapter:
             source_family="government_registry",
             consumer_facing=False,
             public_access="unknown",
+            origin_keys=("datasf",),
+            data_license="DataSF-open-data",
             category_evidence={"reason": classification.reason, "naics_code": naics},
             permitted_metadata=permitted,
         )

@@ -3,28 +3,28 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Paloma catalog operations</title>
-  <meta name="description" content="Live operational health for Paloma's Bay Area venue catalog." />
+  <title>Paloma catalog control room</title>
+  <meta name="description" content="Operational truth for Paloma's verified Bay Area drinking-place catalog." />
   <style>
     :root {
       color-scheme: light;
-      --ink: #1f211d;
-      --muted: #6d7068;
-      --faint: #969990;
-      --canvas: #f4f2ec;
-      --card: #fffefa;
+      --ink: #191b18;
+      --muted: #686d65;
+      --faint: #91968d;
+      --canvas: #f4f3ee;
+      --paper: #fffefa;
       --line: #deddd5;
-      --green: #28704d;
-      --green-bg: #e7f2eb;
-      --amber: #93631d;
-      --amber-bg: #f8edd9;
-      --red: #a2443e;
-      --red-bg: #f9e9e7;
-      --blue: #405f9e;
-      --blue-bg: #e8eef9;
-      --slate: #535a66;
-      --slate-bg: #eceef1;
-      --shadow: 0 1px 1px rgba(22, 24, 20, .03), 0 12px 35px rgba(32, 33, 28, .04);
+      --green: #226747;
+      --green-soft: #e6f1e9;
+      --amber: #8a5d1f;
+      --amber-soft: #f7edd9;
+      --red: #9a3f39;
+      --red-soft: #f8e8e5;
+      --blue: #3f5f9c;
+      --blue-soft: #e8edf7;
+      --slate: #59605b;
+      --slate-soft: #eceeeb;
+      --shadow: 0 1px 2px rgba(20,22,18,.025), 0 16px 42px rgba(29,31,25,.04);
     }
     * { box-sizing: border-box; }
     body {
@@ -33,165 +33,158 @@
       background: var(--canvas);
       font: 14px/1.45 Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
-    button, input, select { color: inherit; font: inherit; }
+    button, input { color: inherit; font: inherit; }
     button { cursor: pointer; }
-    .shell { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 34px 0 70px; }
-    header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 18px; }
-    .eyebrow { color: var(--green); font-size: 11px; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
-    h1 { margin: 3px 0 0; font-size: clamp(29px, 5vw, 44px); line-height: 1; letter-spacing: -.048em; }
-    .header-meta { color: var(--muted); font-size: 12px; text-align: right; }
-    .header-meta strong { display: block; color: var(--ink); font-size: 13px; }
-    .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); }
-    .statusbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 13px 16px; margin-bottom: 10px; }
-    .status-copy { display: flex; align-items: center; gap: 11px; min-width: 0; }
-    .status-dot { width: 10px; height: 10px; flex: 0 0 auto; border-radius: 999px; background: var(--green); }
-    .status-dot.running { background: var(--blue); animation: pulse 1.35s ease-in-out infinite; }
-    .status-dot.failed { background: var(--red); }
-    @keyframes pulse { 50% { opacity: .28; } }
-    .status-copy strong, .status-copy span { display: block; }
-    .status-copy span { margin-top: 1px; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .status-aside { flex: 0 0 auto; color: var(--muted); font-size: 11px; }
-    .error { display: none; margin-bottom: 10px; padding: 12px 15px; color: var(--red); background: var(--red-bg); border: 1px solid #eac8c4; border-radius: 12px; }
+    .shell { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 34px 0 68px; }
+    header { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 15px; }
+    .eyebrow { color: var(--green); font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { margin: 3px 0 0; font-size: clamp(30px, 5vw, 45px); line-height: 1; letter-spacing: -.05em; }
+    .updated { color: var(--muted); font-size: 11px; text-align: right; }
+    .updated strong { display: block; color: var(--ink); font-size: 12px; }
+    .card { min-width: 0; background: var(--paper); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); }
+    .error { display: none; margin-bottom: 10px; padding: 12px 14px; color: var(--red); background: var(--red-soft); border: 1px solid #e9c6c2; border-radius: 12px; }
 
-    .hero { display: grid; grid-template-columns: 1.18fr .82fr; overflow: hidden; }
-    .hero-main { padding: clamp(24px, 4vw, 40px); }
-    .hero-main h2 { max-width: 680px; margin: 0; font-size: clamp(25px, 4vw, 40px); line-height: 1.08; letter-spacing: -.042em; }
-    .hero-main p { max-width: 680px; margin: 12px 0 0; color: var(--muted); font-size: 13px; }
-    .hero-main p b { color: var(--ink); }
-    .hero-number { display: flex; flex-direction: column; justify-content: center; padding: 28px 34px; color: #fff; background: var(--green); }
-    .hero-number strong { font-size: clamp(54px, 8vw, 82px); line-height: .9; letter-spacing: -.065em; }
-    .hero-number span { margin-top: 13px; font-size: 13px; font-weight: 700; }
-    .hero-number small { margin-top: 4px; color: rgba(255,255,255,.72); font-size: 10px; }
+    .statebar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 11px; align-items: center; margin-bottom: 9px; padding: 13px 15px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--green); }
+    .dot.warn { background: var(--amber); }
+    .dot.bad { background: var(--red); }
+    .statebar strong { display: block; font-size: 12px; }
+    .statebar span { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .statebar aside { color: var(--muted); font-size: 10px; text-align: right; }
+
+    .hero { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(250px, .65fr); overflow: hidden; }
+    .hero-copy { padding: clamp(24px, 4vw, 40px); }
+    .hero-copy .tag { display: inline-flex; padding: 5px 8px; color: var(--green); background: var(--green-soft); border-radius: 999px; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+    .hero-copy .tag.warn { color: var(--amber); background: var(--amber-soft); }
+    .hero-copy .tag.bad { color: var(--red); background: var(--red-soft); }
+    .hero-copy h2 { max-width: 720px; margin: 13px 0 0; font-size: clamp(24px, 4vw, 39px); line-height: 1.08; letter-spacing: -.042em; }
+    .hero-copy p { max-width: 720px; margin: 11px 0 0; color: var(--muted); font-size: 12px; }
+    .hero-copy p b { color: var(--ink); }
+    .hero-number { display: flex; flex-direction: column; justify-content: center; min-height: 210px; padding: 28px 34px; color: #fff; background: var(--green); }
+    .hero-number.warn { background: var(--amber); }
+    .hero-number.bad { background: var(--red); }
+    .hero-number strong { font-size: clamp(58px, 8vw, 86px); line-height: .88; letter-spacing: -.07em; }
+    .hero-number span { margin-top: 15px; font-size: 12px; font-weight: 800; }
+    .hero-number small { margin-top: 4px; color: rgba(255,255,255,.72); font-size: 9.5px; }
 
     .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; margin-top: 9px; }
-    .metric { appearance: none; width: 100%; padding: 17px; text-align: left; background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
-    button.metric { transition: border-color .16s, transform .16s; }
-    button.metric:hover { transform: translateY(-1px); border-color: #b7b9b0; }
+    .metric { padding: 17px; }
     .metric strong { display: block; font-size: 27px; line-height: 1; letter-spacing: -.045em; }
-    .metric span { display: block; margin-top: 8px; font-size: 11.5px; font-weight: 700; }
-    .metric small { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }
-    .metric.review strong { color: var(--red); }
-    .metric.wait strong { color: var(--amber); }
+    .metric span { display: block; margin-top: 8px; font-size: 11px; font-weight: 800; }
+    .metric small { display: block; margin-top: 3px; color: var(--muted); font-size: 9.5px; }
+    .metric.good strong { color: var(--green); }
+    .metric.warn strong { color: var(--amber); }
+    .metric.bad strong { color: var(--red); }
 
-    .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin: 28px 1px 9px; }
-    .section-head h2 { margin: 0; font-size: 15px; letter-spacing: -.01em; }
-    .section-head p { margin: 0; color: var(--muted); font-size: 10.5px; }
-    .grid { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(330px, .88fr); gap: 10px; }
-    .card-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 16px 17px 12px; border-bottom: 1px solid var(--line); }
-    .card-title strong { font-size: 13px; }
-    .card-title span { color: var(--muted); font-size: 10px; }
+    .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin: 27px 1px 9px; }
+    .section-head h2 { margin: 0; font-size: 15px; letter-spacing: -.012em; }
+    .section-head p { margin: 0; color: var(--muted); font-size: 10px; text-align: right; }
+    .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 15px 16px 11px; border-bottom: 1px solid var(--line); }
+    .card-head strong { font-size: 12.5px; }
+    .card-head span { color: var(--muted); font-size: 9.5px; }
+    .split { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(320px, .85fr); gap: 10px; }
 
-    .gate-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border-bottom: 1px solid var(--line); }
-    .gate-state { padding: 15px 14px; background: var(--card); }
-    .gate-state strong { display: block; font-size: 21px; line-height: 1; letter-spacing: -.04em; }
-    .gate-state span { display: block; margin-top: 7px; font-size: 10px; font-weight: 700; }
-    .gate-state small { display: block; margin-top: 2px; color: var(--muted); font-size: 9px; }
-    .gate-state.published strong { color: var(--green); }
-    .gate-state.candidate strong { color: var(--amber); }
-    .gate-state.review strong { color: var(--red); }
-    .gate-state.suppressed strong { color: var(--slate); }
-    .reason-list { padding: 7px 0; }
-    .reason-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; width: 100%; padding: 10px 16px; text-align: left; background: transparent; border: 0; border-bottom: 1px solid #efeee8; }
-    .reason-row:last-child { border-bottom: 0; }
-    .reason-row:hover { background: #faf9f4; }
-    .reason-row strong { display: block; font-size: 11.5px; font-weight: 700; }
-    .reason-row small { display: block; margin-top: 2px; color: var(--muted); font-size: 9.5px; }
-    .reason-row b { align-self: center; font-size: 14px; }
-    .explain { padding: 12px 16px; color: var(--muted); background: #faf9f4; border-top: 1px solid var(--line); border-radius: 0 0 15px 15px; font-size: 10px; }
+    .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 18px; }
+    .flow-step { position: relative; min-width: 0; padding: 12px 26px 12px 12px; background: #f6f5ef; border-radius: 11px; }
+    .flow-step + .flow-step { margin-left: 19px; }
+    .flow-step + .flow-step::before { content: "→"; position: absolute; left: -17px; top: 50%; color: var(--faint); transform: translateY(-50%); }
+    .flow-step strong { display: block; font-size: 21px; letter-spacing: -.04em; }
+    .flow-step span { display: block; margin-top: 6px; font-size: 10px; font-weight: 800; }
+    .flow-step small { display: block; margin-top: 2px; color: var(--muted); font-size: 8.8px; }
+    .flow-note { padding: 10px 16px; color: var(--muted); background: #faf9f5; border-top: 1px solid var(--line); border-radius: 0 0 15px 15px; font-size: 9.5px; }
 
-    .actions { padding: 7px 0; }
-    .action { display: grid; grid-template-columns: 35px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 11px 16px; border-bottom: 1px solid #efeee8; }
-    .action:last-child { border-bottom: 0; }
-    .action-icon { display: grid; place-items: center; width: 31px; height: 31px; color: var(--green); background: var(--green-bg); border-radius: 9px; font-size: 12px; font-weight: 800; }
-    .action.urgent .action-icon { color: var(--red); background: var(--red-bg); }
-    .action.waiting .action-icon { color: var(--amber); background: var(--amber-bg); }
-    .action strong { display: block; font-size: 11.5px; }
-    .action span { display: block; margin-top: 2px; color: var(--muted); font-size: 9.5px; }
-    .action b { font-size: 17px; letter-spacing: -.035em; }
-    .action-button { appearance: none; display: block; width: calc(100% - 28px); margin: 8px 14px 12px; padding: 9px 11px; color: var(--ink); background: #f4f3ed; border: 1px solid var(--line); border-radius: 9px; font-size: 10.5px; font-weight: 700; }
-
-    .source-list { display: grid; grid-template-columns: repeat(3, 1fr); }
-    .source { padding: 17px; border-right: 1px solid var(--line); }
-    .source:last-child { border-right: 0; }
+    .source-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .source { min-width: 0; padding: 16px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .source:nth-child(3n) { border-right: 0; }
+    .source:nth-last-child(-n+2) { border-bottom: 0; }
     .source-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
-    .source-name { font-size: 12px; font-weight: 750; }
-    .pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 7px; border-radius: 999px; color: var(--green); background: var(--green-bg); font-size: 9px; font-weight: 750; }
-    .pill.running { color: var(--blue); background: var(--blue-bg); }
-    .pill.failed { color: var(--red); background: var(--red-bg); }
-    .source-time { margin-top: 5px; color: var(--muted); font-size: 9.5px; }
-    .source-stat { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding-top: 8px; margin-top: 11px; border-top: 1px solid #efeee8; color: var(--muted); font-size: 9.5px; }
-    .source-stat b { color: var(--ink); font-size: 10.5px; }
-    .source-note { padding: 11px 16px; color: var(--muted); background: #faf9f4; border-top: 1px solid var(--line); border-radius: 0 0 15px 15px; font-size: 9.5px; }
+    .source-name { font-size: 11.5px; font-weight: 800; }
+    .source-role { margin-top: 3px; color: var(--muted); font-size: 9px; }
+    .pill { flex: 0 0 auto; padding: 4px 7px; color: var(--green); background: var(--green-soft); border-radius: 999px; font-size: 8.5px; font-weight: 800; }
+    .pill.warn { color: var(--amber); background: var(--amber-soft); }
+    .pill.bad { color: var(--red); background: var(--red-soft); }
+    .pill.neutral { color: var(--slate); background: var(--slate-soft); }
+    .source-stats { display: grid; grid-template-columns: 1fr auto; gap: 5px 10px; margin-top: 13px; color: var(--muted); font-size: 9px; }
+    .source-stats b { color: var(--ink); text-align: right; }
+    .source-error { margin-top: 10px; padding: 7px 8px; color: var(--red); background: var(--red-soft); border-radius: 7px; font-size: 8.5px; overflow-wrap: anywhere; }
 
-    .coverage { display: grid; grid-template-columns: 1fr .85fr; }
-    .coverage-part { padding: 15px 17px 17px; }
-    .coverage-part + .coverage-part { border-left: 1px solid var(--line); }
-    .mini-title { margin-bottom: 11px; font-size: 10px; font-weight: 750; text-transform: uppercase; letter-spacing: .07em; }
-    .bar-row { display: grid; grid-template-columns: minmax(85px, 150px) 1fr 38px; gap: 9px; align-items: center; margin-top: 8px; font-size: 9.5px; }
-    .bar-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .queue { padding: 7px 0; }
+    .queue-row { display: grid; grid-template-columns: 31px minmax(0,1fr) auto; gap: 10px; align-items: center; padding: 10px 15px; border-bottom: 1px solid #efeee8; }
+    .queue-row:last-child { border-bottom: 0; }
+    .queue-icon { display: grid; place-items: center; width: 31px; height: 31px; color: var(--green); background: var(--green-soft); border-radius: 9px; font-size: 11px; font-weight: 900; }
+    .queue-row.warn .queue-icon { color: var(--amber); background: var(--amber-soft); }
+    .queue-row.bad .queue-icon { color: var(--red); background: var(--red-soft); }
+    .queue-row strong { display: block; font-size: 10.5px; }
+    .queue-row span { display: block; margin-top: 2px; color: var(--muted); font-size: 8.8px; }
+    .queue-row b { font-size: 16px; }
+
+    .blockers { padding: 6px 0; }
+    .blocker { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 12px; padding: 9px 15px; border-bottom: 1px solid #efeee8; }
+    .blocker:last-child { border-bottom: 0; }
+    .blocker strong { display: block; font-size: 10.5px; }
+    .blocker small { display: block; margin-top: 2px; color: var(--muted); font-size: 8.8px; }
+    .blocker b { align-self: center; font-size: 13px; }
+    .empty { padding: 28px 15px; color: var(--muted); text-align: center; font-size: 10px; }
+
+    .coverage { display: grid; grid-template-columns: 1fr 1fr; }
+    .coverage-list { padding: 13px 16px 17px; }
+    .coverage-list + .coverage-list { border-left: 1px solid var(--line); }
+    .mini-title { margin-bottom: 9px; color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    .bar-row { display: grid; grid-template-columns: minmax(75px, 120px) 1fr 65px; gap: 9px; align-items: center; margin-top: 9px; font-size: 9.5px; }
     .bar-track { height: 7px; overflow: hidden; background: #ecebe5; border-radius: 999px; }
     .bar-track i { display: block; height: 100%; background: var(--green); border-radius: inherit; }
-    .bar-row b { text-align: right; }
-    .city-cloud { display: flex; flex-wrap: wrap; gap: 6px; }
-    .city { padding: 6px 8px; background: #f0efe9; border-radius: 8px; font-size: 9.5px; }
-    .city b { margin-left: 4px; }
+    .bar-track i.low { background: var(--amber); }
+    .bar-row b { text-align: right; font-size: 9px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip { padding: 6px 8px; background: #f0efe9; border-radius: 8px; font-size: 9px; }
+    .chip b { margin-left: 4px; }
 
-    .inspector { overflow: hidden; }
-    .inspector-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px; border-bottom: 1px solid var(--line); }
-    .tabs { display: flex; flex-wrap: wrap; gap: 3px; }
-    .tab { appearance: none; padding: 8px 10px; color: var(--muted); background: transparent; border: 0; border-radius: 8px; font-size: 10.5px; }
-    .tab.active { color: var(--ink); background: #efeee8; font-weight: 750; }
-    .search { width: min(245px, 35vw); padding: 8px 10px; outline: none; background: #fff; border: 1px solid var(--line); border-radius: 9px; font-size: 11px; }
+    .catalog { overflow: hidden; }
+    .catalog-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 13px; border-bottom: 1px solid var(--line); }
+    .catalog-tools span { color: var(--muted); font-size: 9.5px; }
+    .search { width: min(290px, 48vw); padding: 8px 10px; outline: none; background: #fff; border: 1px solid var(--line); border-radius: 9px; font-size: 10.5px; }
     .search:focus { border-color: #a8aaa1; }
-    .filters { display: flex; align-items: center; gap: 7px; padding: 9px 12px; background: #faf9f4; border-bottom: 1px solid var(--line); }
-    .filters select { padding: 7px 9px; background: #fff; border: 1px solid var(--line); border-radius: 8px; font-size: 10px; }
-    .active-filter { display: none; padding: 5px 8px; color: var(--amber); background: var(--amber-bg); border-radius: 999px; font-size: 9px; }
-    .active-filter.visible { display: inline-block; }
-    .clear-filter { display: none; padding: 5px 7px; color: var(--muted); background: transparent; border: 0; font-size: 9px; }
-    .clear-filter.visible { display: inline-block; }
-    .list-meta { padding: 11px 14px 2px; color: var(--muted); font-size: 10px; }
-    .items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 10px 11px 12px; }
-    .item { min-width: 0; padding: 13px; background: #fff; border: 1px solid var(--line); border-radius: 12px; }
-    .item-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-    .item-name { overflow: hidden; font-size: 12px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
-    .item-type, .item-address, .item-source { margin-top: 3px; color: var(--muted); font-size: 9.5px; }
-    .item-address { margin-top: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .state-badge { flex: 0 0 auto; padding: 4px 7px; color: var(--green); background: var(--green-bg); border-radius: 999px; font-size: 8.5px; font-weight: 800; text-transform: capitalize; }
-    .state-badge.candidate { color: var(--amber); background: var(--amber-bg); }
-    .state-badge.review { color: var(--red); background: var(--red-bg); }
-    .state-badge.suppressed { color: var(--slate); background: var(--slate-bg); }
-    .blocker { margin-top: 10px; padding: 8px 9px; color: #74511d; background: var(--amber-bg); border-radius: 8px; font-size: 9.5px; }
-    .blocker.review { color: var(--red); background: var(--red-bg); }
-    .blocker.suppressed { color: var(--slate); background: var(--slate-bg); }
-    .confidence { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
-    .confidence span { padding: 4px 6px; color: var(--muted); background: #f2f1ec; border-radius: 6px; font-size: 8.5px; }
-    .empty { grid-column: 1/-1; padding: 36px 15px; color: var(--muted); text-align: center; }
+    .venues { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 11px; }
+    .venue { min-width: 0; padding: 13px; background: #fff; border: 1px solid var(--line); border-radius: 11px; }
+    .venue-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+    .venue-name { overflow: hidden; font-size: 11.5px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+    .venue-type { margin-top: 3px; color: var(--muted); font-size: 9px; }
+    .venue-address { margin-top: 9px; overflow: hidden; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+    .evidence { flex: 0 0 auto; padding: 3px 6px; color: var(--green); background: var(--green-soft); border-radius: 999px; font-size: 7.8px; font-weight: 850; }
+    .facts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 9px; }
+    .fact { padding: 3px 5px; color: var(--muted); background: #f2f1ec; border-radius: 5px; font-size: 7.8px; }
+    .fact.missing { color: var(--amber); background: var(--amber-soft); }
     .load-wrap { padding: 0 11px 13px; text-align: center; }
-    .load { padding: 8px 13px; background: #fff; border: 1px solid var(--line); border-radius: 9px; font-size: 10px; }
+    .load { padding: 8px 13px; background: #fff; border: 1px solid var(--line); border-radius: 9px; font-size: 9.5px; }
     .load[hidden] { display: none; }
-    footer { display: flex; justify-content: space-between; gap: 14px; margin-top: 12px; color: var(--muted); font-size: 9.5px; }
+    footer { display: flex; justify-content: space-between; gap: 16px; margin-top: 13px; color: var(--muted); font-size: 9px; }
 
     @media (max-width: 900px) {
       .metrics { grid-template-columns: repeat(2, 1fr); }
-      .grid { grid-template-columns: 1fr; }
-      .source-list { grid-template-columns: 1fr; }
-      .source { border-right: 0; border-bottom: 1px solid var(--line); }
-      .source:last-child { border-bottom: 0; }
+      .split { grid-template-columns: 1fr; }
+      .source-grid, .venues { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .source:nth-child(3n) { border-right: 1px solid var(--line); }
+      .source:nth-child(2n) { border-right: 0; }
+      .source:nth-last-child(-n+2) { border-bottom: 0; }
     }
-    @media (max-width: 700px) {
+    @media (max-width: 680px) {
       .shell { width: min(100% - 20px, 1180px); padding-top: 22px; }
-      header { align-items: flex-start; flex-direction: column; gap: 9px; }
-      .header-meta { text-align: left; }
-      .statusbar { align-items: flex-start; flex-direction: column; }
-      .status-copy span { white-space: normal; }
+      header { align-items: flex-start; flex-direction: column; gap: 8px; }
+      .updated { text-align: left; }
+      .statebar { grid-template-columns: auto minmax(0,1fr); }
+      .statebar span { white-space: normal; }
+      .statebar aside { display: none; }
       .hero { grid-template-columns: 1fr; }
-      .hero-number { min-height: 165px; }
-      .gate-summary { grid-template-columns: repeat(2, 1fr); }
-      .coverage { grid-template-columns: 1fr; }
-      .coverage-part + .coverage-part { border-top: 1px solid var(--line); border-left: 0; }
-      .inspector-top { align-items: stretch; flex-direction: column; }
+      .hero-number { min-height: 170px; }
+      .flow { grid-template-columns: 1fr; gap: 7px; }
+      .flow-step + .flow-step { margin-left: 0; }
+      .flow-step + .flow-step::before { content: "↓"; left: 50%; top: -10px; transform: translateX(-50%); }
+      .source-grid, .venues, .coverage { grid-template-columns: 1fr; }
+      .source { border-right: 0 !important; border-bottom: 1px solid var(--line) !important; }
+      .source:last-child { border-bottom: 0 !important; }
+      .coverage-list + .coverage-list { border-top: 1px solid var(--line); border-left: 0; }
+      .catalog-tools { align-items: stretch; flex-direction: column; }
       .search { width: 100%; }
-      .items { grid-template-columns: 1fr; }
       footer { flex-direction: column; }
     }
   </style>
@@ -199,116 +192,89 @@
 <body>
   <main class="shell">
     <header>
-      <div>
-        <div class="eyebrow">Paloma data</div>
-        <h1>Catalog operations</h1>
-      </div>
-      <div class="header-meta"><strong id="updated">Connecting…</strong><span>Bay Area drinking venues</span></div>
+      <div><div class="eyebrow">Paloma data</div><h1>Catalog control room</h1></div>
+      <div class="updated"><strong id="updated">Connecting…</strong><span>Bay Area drinking venues · decision v2</span></div>
     </header>
 
     <div class="error" id="error"></div>
-    <section class="card statusbar" aria-live="polite">
-      <div class="status-copy">
-        <span class="status-dot" id="statusDot"></span>
-        <div><strong id="statusTitle">Checking the pipeline…</strong><span id="statusDetail"></span></div>
-      </div>
-      <div class="status-aside" id="statusAside"></div>
+    <section class="card statebar" aria-live="polite">
+      <i class="dot" id="statusDot"></i>
+      <div><strong id="statusTitle">Checking publication safety…</strong><span id="statusDetail"></span></div>
+      <aside id="statusAside"></aside>
     </section>
 
     <section class="card hero">
-      <div class="hero-main">
-        <h2 id="heroTitle">Only places safe for a consumer catalog go live.</h2>
-        <p id="heroCopy">Loading publication evidence…</p>
+      <div class="hero-copy">
+        <span class="tag" id="heroTag">Loading</span>
+        <h2 id="heroTitle">Only evidence-backed establishments belong in Paloma.</h2>
+        <p id="heroCopy">Loading catalog state…</p>
       </div>
-      <div class="hero-number">
-        <strong id="publishedCount">—</strong>
-        <span>venues live in Paloma</span>
-        <small>Published + open; this mirrors the app catalog</small>
+      <div class="hero-number" id="heroNumber">
+        <strong id="safeLive">—</strong>
+        <span>safe, live establishments</span>
+        <small>Published + open + v2 verified + unexpired</small>
       </div>
     </section>
 
-    <section class="metrics" aria-label="Catalog summary">
-      <button class="metric wait" data-open="candidate" type="button">
-        <strong id="candidateCount">—</strong><span>Held for evidence</span><small>Safe canonical records, invisible in the app</small>
-      </button>
-      <button class="metric review" data-open="review" type="button">
-        <strong id="publicationReviewCount">—</strong><span>Publication decisions</span><small>Duplicate or status conflicts</small>
-      </button>
-      <button class="metric review" data-open="match" type="button">
-        <strong id="matchReviewCount">—</strong><span>Matching decisions</span><small>Potential duplicate, rebrand, or disagreement</small>
-      </button>
-      <div class="metric"><strong id="currentResolverCount">—</strong><span>On resolver v4</span><small id="resolverDetail">Canonical fields evaluated</small></div>
+    <section class="metrics" aria-label="Safety summary">
+      <article class="card metric"><strong id="appVisible">—</strong><span>Rows the app can see</span><small>Must equal the safe count before launch</small></article>
+      <article class="card metric good"><strong id="verifiedPool">—</strong><span>Unexpired verified pool</span><small>Includes already live and ready records</small></article>
+      <article class="card metric bad"><strong id="unsafeCount">—</strong><span>Unsafe app-visible rows</span><small>Legacy or expired; target is zero</small></article>
+      <article class="card metric warn"><strong id="readyCount">—</strong><span>Ready to publish</span><small>Verified privately, not yet materialized</small></article>
     </section>
 
-    <div class="section-head"><h2>Publication gate</h2><p>The decision that controls app visibility</p></div>
-    <section class="grid">
-      <article class="card">
-        <div class="card-title"><strong>Where canonical venues stand</strong><span id="gateTotal"></span></div>
-        <div class="gate-summary">
-          <div class="gate-state published"><strong id="gatePublished">—</strong><span>Published</span><small>Visible</small></div>
-          <div class="gate-state candidate"><strong id="gateCandidate">—</strong><span>Candidate</span><small>Needs evidence</small></div>
-          <div class="gate-state review"><strong id="gateReview">—</strong><span>Review</span><small>Needs a decision</small></div>
-          <div class="gate-state suppressed"><strong id="gateSuppressed">—</strong><span>Suppressed</span><small>Closed or unsafe</small></div>
-        </div>
-        <div class="reason-list" id="publicationReasons"><div class="empty">Loading blockers…</div></div>
-        <div class="explain">A license is necessary but never sufficient. Publishing requires a compatible active ABC license, a current consumer-place observation, walk-in access, and a resolved identity/name.</div>
-      </article>
-
-      <article class="card">
-        <div class="card-title"><strong>Operator attention</strong><span>Sorted by what can be acted on</span></div>
-        <div class="actions" id="actions"><div class="empty">Loading work queues…</div></div>
-        <button class="action-button" id="openActions" type="button">Open the actionable queue</button>
-      </article>
-    </section>
-
-    <div class="section-head"><h2>Source health</h2><p>Freshness and contribution, not raw volume alone</p></div>
+    <div class="section-head"><h2>How a row reaches the app</h2><p>Discovery volume is not catalog size</p></div>
     <section class="card">
-      <div class="source-list" id="sourceList"><div class="empty">Loading sources…</div></div>
-      <div class="source-note">“Published contribution” can overlap: a venue should normally be supported by both regulatory and consumer-place evidence.</div>
+      <div class="flow">
+        <div class="flow-step"><strong id="sourceEvidence">—</strong><span>Current source records</span><small>Private evidence; never shown directly</small></div>
+        <div class="flow-step"><strong id="candidateTotal">—</strong><span>Distinct candidates</span><small>Conservative entity resolution</small></div>
+        <div class="flow-step"><strong id="verifiedFlow">—</strong><span>Verified + unexpired</span><small>Every hard fact is present</small></div>
+        <div class="flow-step"><strong id="publishedFlow">—</strong><span>Safe public rows</span><small>The only product establishments</small></div>
+      </div>
+      <div class="flow-note">FSQ OS supplies the consumer identity; California ABC supplies exact legal privileges. A license never creates a venue by itself. Optional enrichment never weakens the publication gate.</div>
     </section>
 
-    <div class="section-head"><h2>What users can discover</h2><p>Only currently published, open venues</p></div>
+    <div class="section-head"><h2>Source snapshots</h2><p>A failed optional source cannot take down the truth path</p></div>
+    <section class="card"><div class="source-grid" id="sources"><div class="empty">Loading source health…</div></div></section>
+
+    <div class="section-head"><h2>Work and blockers</h2><p>What needs an operator versus what remains safely hidden</p></div>
+    <section class="split">
+      <article class="card">
+        <div class="card-head"><strong>Next operational work</strong><span id="nextAction">Loading…</span></div>
+        <div class="queue" id="workQueue"></div>
+      </article>
+      <article class="card">
+        <div class="card-head"><strong>Why candidates are held back</strong><span>Top hard-gate failures</span></div>
+        <div class="blockers" id="blockers"><div class="empty">Loading blockers…</div></div>
+      </article>
+    </section>
+
+    <div class="section-head"><h2>Published data quality</h2><p>Coverage is measured only across safe, live rows</p></div>
     <section class="card coverage">
-      <div class="coverage-part"><div class="mini-title">Venue types</div><div id="typeBreakdown"></div></div>
-      <div class="coverage-part"><div class="mini-title">Cities</div><div class="city-cloud" id="cityBreakdown"></div></div>
+      <div class="coverage-list"><div class="mini-title">Optional field coverage</div><div id="fieldCoverage"></div></div>
+      <div class="coverage-list">
+        <div class="mini-title">Verification basis</div><div class="chips" id="tierBreakdown"></div>
+        <div class="mini-title" style="margin-top:18px">Venue types</div><div id="typeBreakdown"></div>
+        <div class="mini-title" style="margin-top:18px">Cities</div><div class="chips" id="cityBreakdown"></div>
+      </div>
     </section>
 
-    <div class="section-head"><h2>Inspect records</h2><p>Start with a product state, then drill into the blocker</p></div>
-    <section class="card inspector" id="inspector">
-      <div class="inspector-top">
-        <div class="tabs">
-          <button class="tab active" data-mode="published" type="button">Live</button>
-          <button class="tab" data-mode="candidate" type="button">Candidates</button>
-          <button class="tab" data-mode="review" type="button">Publication review</button>
-          <button class="tab" data-mode="suppressed" type="button">Suppressed</button>
-          <button class="tab" data-mode="match" type="button">Match queue</button>
-        </div>
-        <input class="search" id="search" type="search" placeholder="Search name, address, or city" aria-label="Search records" />
-      </div>
-      <div class="filters">
-        <select id="sourceFilter" aria-label="Filter by source">
-          <option value="">All sources</option><option value="ca_abc">California ABC</option>
-          <option value="datasf">DataSF</option><option value="overture">Overture Maps</option>
-        </select>
-        <span class="active-filter" id="activeFilter"></span>
-        <button class="clear-filter" id="clearFilter" type="button">Clear blocker</button>
-      </div>
-      <div class="list-meta" id="listMeta">Loading…</div>
-      <div class="items" id="items"><div class="empty">Loading records…</div></div>
-      <div class="load-wrap"><button class="load" id="loadMore" type="button" hidden>Load more</button></div>
+    <div class="section-head"><h2>Safe live catalog</h2><p>No private candidates or legal-name-only records are exposed here</p></div>
+    <section class="card catalog">
+      <div class="catalog-tools"><span id="listMeta">Loading…</span><input class="search" id="search" type="search" placeholder="Search live name, address, city, neighborhood" /></div>
+      <div class="venues" id="venues"><div class="empty">Loading safe establishments…</div></div>
+      <div class="load-wrap"><button class="load" id="loadMore" hidden type="button">Load more</button></div>
     </section>
 
-    <footer><span>Live operational data · refreshes every 15 seconds</span><span>Hidden candidates remain available for reconciliation without appearing in Paloma</span></footer>
+    <footer><span>Operational data refreshes every 30 seconds</span><span>Accuracy beats coverage · unknown optional fields stay null</span></footer>
   </main>
 
   <script>
     const ENDPOINT = 'https://lighcnfzajgvfbdoekzt.supabase.co/functions/v1/paloma-data-progress';
     const nf = new Intl.NumberFormat();
-    const compact = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 });
-    const state = { mode: 'published', q: '', reason: '', source: '', offset: 0, total: 0, items: [], loading: false };
-    let summary = null, searchTimer = null;
+    const state = { q: '', offset: 0, total: 0, items: [], loading: false };
+    let searchTimer = null;
     const fmt = value => nf.format(Number(value || 0));
-    const short = value => compact.format(Number(value || 0));
     const num = value => Number(value || 0);
     const esc = value => String(value ?? '').replace(/[&<>'"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[c]));
     const human = value => String(value || '').replace(/:v\d+$/, '').replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
@@ -320,217 +286,190 @@
       if (minutes < 1440) return `${Math.round(minutes / 60)} hr ago`;
       return `${Math.round(minutes / 1440)} days ago`;
     };
-    const pct = value => value == null ? '—' : `${Math.round(Number(value) * 100)}%`;
+    const until = iso => {
+      if (!iso) return 'none';
+      const minutes = (new Date(iso).getTime() - Date.now()) / 60000;
+      if (minutes <= 0) return 'expired';
+      if (minutes < 60) return `in ${Math.ceil(minutes)} min`;
+      if (minutes < 1440) return `in ${Math.ceil(minutes / 60)} hr`;
+      return `in ${Math.ceil(minutes / 1440)} days`;
+    };
+    const setText = (id, value) => { document.getElementById(id).textContent = value; };
 
     const REASONS = {
-      full_gate_not_satisfied: ['Gate not yet satisfied', 'One or more required facts are still missing'],
-      manufacturer_without_access_evidence: ['Manufacturer, not a venue yet', 'No explicit taproom or tasting-room evidence'],
-      abc_only_missing_consumer_evidence: ['License record only', 'ABC confirms legality, not a visitable consumer place'],
-      missing_consumer_access_evidence: ['No public-access evidence', 'No current consumer source says people can walk in'],
-      stale_consumer_evidence: ['Consumer evidence is stale', 'The public-place observation is older than the freshness window'],
-      identity_not_resolved: ['Identity is uncertain', 'The consumer place and legal record are not a confident match'],
-      consumer_name_not_resolved: ['Consumer name is uncertain', 'The public-facing name does not resolve cleanly'],
-      missing_active_abc_license: ['No active compatible license', 'A consumer place exists, but current ABC evidence is missing'],
-      license_does_not_support_consumer_venue_type: ['License/type mismatch', 'The license does not support the claimed consumer venue type'],
-      consumer_duplicate_requires_merge: ['Possible duplicate', 'Consumer data marks this as a duplicate that needs merging'],
-      consumer_status_conflict: ['Open/closed conflict', 'Consumer sources disagree about current operating status'],
-      consumer_reported_closed: ['Reported closed', 'Consumer evidence says this place is closed'],
-      consumer_hard_negative: ['Unsafe source record', 'Consumer data marks it deleted, private, or nonexistent'],
-      canonical_closed: ['Closed', 'The canonical venue is closed'],
-      public_bar_license_and_current_consumer_poi: ['Licensed public bar', 'Compatible bar license plus current consumer-place evidence'],
-      brewery_license_and_explicit_taproom: ['Licensed taproom', 'Brewery license plus an explicit taproom observation'],
-      manufacturer_license_and_explicit_tasting_room: ['Licensed tasting room', 'Manufacturer license plus an explicit tasting-room observation'],
-      brewery_license_and_explicit_brewpub: ['Licensed brewpub', 'Brewery/brewpub license plus an explicit brewpub observation'],
-      needs_type_or_location_corroboration: ['Waiting for another source', 'No human action yet; another independent source can resolve it'],
-      source_conflict: ['Sources disagree', 'Type, location, or status needs an operator decision'],
-      same_location_name_conflict: ['Possible rebrand', 'Same address, materially different public name'],
-      ambiguous_match: ['Possible duplicate', 'Two venue identities scored too closely'],
-      weak_match: ['Uncertain match', 'Evidence is too weak to link automatically'],
+      no_linked_sources: ['No linked evidence', 'The candidate has no currently valid source link'],
+      abc_license_not_active: ['ABC license is not active', 'Raw status is closed, missing, pending, or unknown'],
+      missing_exact_active_abc: ['No exact active ABC match', 'A consumer place exists, but legal evidence is missing'],
+      missing_current_fsq_os_anchor: ['No current FSQ OS identity', 'The consumer observation is absent, stale, or closed'],
+      consumer_type_not_supported: ['Unsupported consumer type', 'The current category is outside Paloma’s catalog'],
+      abc_license_incompatible_with_venue_type: ['License/type mismatch', 'ABC privileges do not support the consumer venue type'],
+      identity_below_publication_threshold: ['Identity needs review', 'Name, address, phone, website, or location do not agree strongly enough'],
+      current_verifier_failure: ['Current verifier failed', 'Recent evidence says one or more hard facts are false'],
+      verification_expired_or_not_storable: ['Verification cannot be retained', 'The pass expired or its license forbids server storage'],
+      missing_high_quality_verification: ['More access evidence required', 'Restaurant/manufacturer paths need licensed or manual verification'],
+      manufacturer_access_requires_hours_or_manual_attestation: ['Manufacturer access unproven', 'A production license is not proof of a public taproom or tasting room'],
+      missing_required_materialization_fields: ['Required product field missing', 'Name, type, address, city, or coordinates are incomplete'],
+      consumer_hard_negative: ['Consumer source rejected the place', 'Closed, duplicate, private, deleted, or nonexistent flag'],
+      possible_public_duplicate: ['Possible duplicate', 'A near-identical safe public row already exists'],
+      verification_expired: ['Verification lease expired', 'The place must be refreshed before returning to the app'],
     };
-    const reasonKey = value => String(value || '').replace(/:v\d+$/, '');
-    const reasonInfo = value => REASONS[reasonKey(value)] || [human(value || 'not evaluated'), ''];
+    const reasonInfo = value => {
+      const key = String(value || '').replace(/:v\d+$/, '');
+      return REASONS[key] || [human(key || 'not evaluated'), 'Held safely outside the app'];
+    };
 
-    function setText(id, value) { document.getElementById(id).textContent = value; }
-    function openInspector(mode, reason = '') {
-      state.mode = mode; state.reason = reason; state.offset = 0; state.items = [];
-      document.querySelectorAll('.tab').forEach(tab => tab.classList.toggle('active', tab.dataset.mode === mode));
-      const info = reason ? reasonInfo(reason)[0] : '';
-      const badge = document.getElementById('activeFilter');
-      badge.textContent = info; badge.classList.toggle('visible', Boolean(reason));
-      document.getElementById('clearFilter').classList.toggle('visible', Boolean(reason));
-      loadList(true);
-      document.getElementById('inspector').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-
-    function renderStatus(data) {
-      const runs = (data.recent_runs || []).filter(Boolean);
-      const running = runs.find(run => run.status === 'running');
-      const failed = (data.sources || []).map(source => source.latest_run).filter(run => run?.status === 'failed')
-        .sort((a, b) => String(b.started_at).localeCompare(String(a.started_at)))[0];
+    function renderReadiness(data) {
+      const r = data.readiness || {}, o = data.overall || {};
+      const legacy = data.schema_version !== 'catalog_v2';
+      const unsafe = num(o.unsafe_legacy_live) + num(o.unsafe_expired_live);
       const dot = document.getElementById('statusDot');
-      dot.className = 'status-dot';
-      if (running) {
-        dot.classList.add('running');
-        setText('statusTitle', `Refresh running · ${running.label}`);
-        setText('statusDetail', `${human(running.mode)} · ${fmt(running.fetched)} records read so far. The published catalog remains protected.`);
-        setText('statusAside', `Started ${ago(running.started_at)}`);
-      } else if (failed) {
-        dot.classList.add('failed');
-        setText('statusTitle', `Latest ${failed.label} refresh failed`);
-        setText('statusDetail', failed.error || 'The source did not finish. Existing publication decisions remain in force.');
-        setText('statusAside', ago(failed.finished_at || failed.started_at));
+      const tag = document.getElementById('heroTag');
+      const hero = document.getElementById('heroNumber');
+      dot.className = 'dot'; tag.className = 'tag'; hero.className = 'hero-number';
+      if (legacy) {
+        dot.classList.add('bad'); tag.classList.add('bad'); hero.classList.add('bad');
+        tag.textContent = 'Migration required';
+        setText('statusTitle', 'The dashboard is seeing the legacy catalog');
+        setText('statusDetail', 'Those rows do not carry v2 verification leases and should not be treated as ground truth.');
+        setText('heroTitle', 'The current app-visible catalog is not production-safe.');
+        document.getElementById('heroCopy').innerHTML = `<b>${fmt(o.app_visible)} legacy rows may be visible.</b> Apply the additive migration, run the bounded trial, and cut over only to verified candidates.`;
+      } else if (unsafe > 0) {
+        dot.classList.add('bad'); tag.classList.add('bad'); hero.classList.add('bad');
+        tag.textContent = 'Cutover incomplete';
+        setText('statusTitle', `${fmt(unsafe)} unsafe row${unsafe === 1 ? '' : 's'} can still be seen by the app`);
+        setText('statusDetail', r.next_action || 'Remove legacy or expired rows before launch.');
+        setText('heroTitle', 'The v2 gate is working, but the old public catalog has not been replaced.');
+        document.getElementById('heroCopy').innerHTML = `<b>${fmt(o.safe_live)} rows pass every v2 hard gate.</b> ${fmt(unsafe)} legacy or expired rows must leave the consumer read path.`;
+      } else if (!r.required_sources_ready) {
+        dot.classList.add('warn'); tag.classList.add('warn'); hero.classList.add('warn');
+        tag.textContent = 'Source refresh due';
+        setText('statusTitle', 'A required source snapshot is missing or stale');
+        setText('statusDetail', r.next_action || 'Refresh California ABC and Foursquare OS.');
+        setText('heroTitle', 'Published leases remain fail-closed while source evidence is refreshed.');
+        document.getElementById('heroCopy').innerHTML = `<b>${fmt(o.safe_live)} rows currently have unexpired verification.</b> No new venue should publish until required snapshots are current.`;
       } else {
-        const finished = (data.sources || []).map(source => source.latest_run?.finished_at).filter(Boolean).sort().pop();
-        setText('statusTitle', 'All core sources are healthy');
-        setText('statusDetail', 'No failed or running source refreshes. The catalog gate is using the latest completed evidence.');
-        setText('statusAside', finished ? `Last activity ${ago(finished)}` : 'No runs yet');
+        tag.textContent = 'Production safe';
+        setText('statusTitle', 'The consumer catalog contains only current v2 establishments');
+        setText('statusDetail', r.next_action || 'No urgent operator action.');
+        setText('heroTitle', 'Every live establishment has current consumer and legal evidence.');
+        document.getElementById('heroCopy').innerHTML = `<b>${fmt(o.safe_live)} places are safe to show.</b> Candidates with missing, conflicting, or unlicensed evidence remain private.`;
       }
-      return { running, failed };
+      setText('statusAside', o.next_expiry ? `Next lease expiry ${until(o.next_expiry)}` : 'No active lease');
     }
 
-    function renderReasons(data) {
-      const rows = (data.publication_breakdown || [])
-        .filter(row => row.state !== 'published')
-        .sort((a, b) => num(b.count) - num(a.count))
-        .slice(0, 7);
-      const el = document.getElementById('publicationReasons');
-      if (!rows.length) { el.innerHTML = '<div class="empty">No venues are held back.</div>'; return; }
-      el.innerHTML = rows.map(row => {
-        const info = reasonInfo(row.reason);
-        return `<button class="reason-row" type="button" data-state="${esc(row.state)}" data-reason="${esc(row.reason)}"><span><strong>${esc(info[0])}</strong><small>${esc(info[1])}</small></span><b>${fmt(row.count)}</b></button>`;
-      }).join('');
-      el.querySelectorAll('.reason-row').forEach(button => button.addEventListener('click', () => openInspector(button.dataset.state, button.dataset.reason)));
-    }
-
-    function renderActions(data) {
-      const o = data.overall || {};
-      const publication = num(o.publication_reviews), matching = num(o.actionable_match_reviews), waiting = num(o.evidence_waiting);
-      const actions = [
-        { cls: publication ? 'urgent' : '', icon: publication ? '!' : '✓', title: 'Publication conflicts', detail: publication ? 'Resolve duplicate or open/closed conflicts before these can publish' : 'No canonical venue publication conflicts', count: publication },
-        { cls: matching ? 'urgent' : '', icon: matching ? '!' : '✓', title: 'Identity and rebrand decisions', detail: matching ? 'Potential duplicates, source disagreements, and same-address renames' : 'No actionable matching conflicts', count: matching },
-        { cls: 'waiting', icon: '↻', title: 'Automatic evidence queue', detail: 'Waiting for an independent source; this is not a human backlog', count: waiting },
-      ];
-      document.getElementById('actions').innerHTML = actions.map(action => `<div class="action ${action.cls}"><div class="action-icon">${action.icon}</div><div><strong>${esc(action.title)}</strong><span>${esc(action.detail)}</span></div><b>${fmt(action.count)}</b></div>`).join('');
-      setText('matchReviewCount', fmt(matching));
+    function renderMetrics(data) {
+      const o = data.overall || {}, w = data.work_queue || {};
+      const unsafe = num(o.unsafe_legacy_live) + num(o.unsafe_expired_live);
+      setText('safeLive', fmt(o.safe_live)); setText('appVisible', fmt(o.app_visible));
+      setText('verifiedPool', fmt(w.unexpired_verified)); setText('unsafeCount', fmt(unsafe));
+      setText('readyCount', fmt(w.ready_to_publish)); setText('verifiedFlow', fmt(w.unexpired_verified));
+      setText('publishedFlow', fmt(o.safe_live));
+      const candidates = (data.candidates || []).reduce((sum, row) => sum + num(row.count), 0);
+      const sourceRecords = (data.sources || []).filter(row => ['ca_abc','fsq','datasf'].includes(row.source)).reduce((sum, row) => sum + num(row.record_count), 0);
+      setText('candidateTotal', fmt(candidates)); setText('sourceEvidence', fmt(sourceRecords));
+      setText('nextAction', data.readiness?.next_action || 'No action available');
     }
 
     function renderSources(data) {
-      document.getElementById('sourceList').innerHTML = (data.sources || []).map(source => {
-        const run = source.latest_run || {};
-        const cls = run.status === 'running' ? 'running' : run.status === 'failed' ? 'failed' : '';
-        const label = run.status === 'running' ? 'Running' : run.status === 'failed' ? 'Failed' : run.status === 'succeeded' ? 'Healthy' : 'No run';
-        const time = run.status === 'running' ? `${fmt(run.fetched)} read · started ${ago(run.started_at)}` : run.finished_at ? `Finished ${ago(run.finished_at)}` : 'Never completed';
-        return `<div class="source"><div class="source-top"><div><div class="source-name">${esc(source.label)}</div><div class="source-time">${esc(time)}</div></div><span class="pill ${cls}">${esc(label)}</span></div>
-          <div class="source-stat"><span>Current source records</span><b>${fmt(source.record_count)}</b></div>
-          <div class="source-stat"><span>Consumer walk-in observations</span><b>${fmt(source.consumer_place_count)}</b></div>
-          <div class="source-stat"><span>Linked canonical venues</span><b>${fmt(source.linked_establishment_count)}</b></div>
-          <div class="source-stat"><span>Published contribution</span><b>${fmt(source.published_establishment_count)}</b></div></div>`;
+      const rows = data.sources || [];
+      const el = document.getElementById('sources');
+      if (!rows.length) { el.innerHTML = '<div class="empty">No source snapshots reported.</div>'; return; }
+      el.innerHTML = rows.map(source => {
+        const latest = source.latest_run || {};
+        const noSnapshot = !source.completed_at;
+        const stale = source.fresh === false && !noSnapshot;
+        const failed = latest.status === 'failed';
+        const cls = noSnapshot || (source.required && stale) ? 'bad' : failed || stale ? 'warn' : source.record_count ? '' : 'neutral';
+        const label = noSnapshot ? 'Not loaded' : stale ? 'Stale' : failed ? 'Refresh failed' : source.record_count ? 'Current' : 'Optional';
+        const role = source.required ? 'Required for publication' : source.source === 'overture' ? 'Optional corroboration only' : 'Optional enrichment/corroboration';
+        const error = failed && latest.error ? `<div class="source-error">Latest attempt: ${esc(latest.error)}</div>` : '';
+        return `<article class="source"><div class="source-top"><div><div class="source-name">${esc(source.label)}</div><div class="source-role">${esc(role)}</div></div><span class="pill ${cls}">${esc(label)}</span></div>
+          <div class="source-stats"><span>Current records</span><b>${fmt(source.record_count)}</b><span>Open records</span><b>${fmt(source.open_record_count)}</b><span>Completed snapshot</span><b>${esc(source.completed_at ? ago(source.completed_at) : 'never')}</b><span>Latest attempt</span><b>${esc(latest.started_at ? ago(latest.started_at) : 'never')}</b></div>${error}</article>`;
       }).join('');
     }
 
+    function renderWork(data) {
+      const w = data.work_queue || {}, unsafe = num(data.overall?.unsafe_legacy_live) + num(data.overall?.unsafe_expired_live);
+      const rows = [
+        { value: unsafe, cls: unsafe ? 'bad' : '', icon: unsafe ? '!' : '✓', title: 'Unsafe consumer rows', detail: 'Legacy or expired rows that must not remain app-visible' },
+        { value: w.pending_match_reviews, cls: num(w.pending_match_reviews) ? 'bad' : '', icon: num(w.pending_match_reviews) ? '?' : '✓', title: 'Identity decisions', detail: 'Ambiguous duplicates, rebrands, or source conflicts' },
+        { value: w.verification_due, cls: num(w.verification_due) ? 'warn' : '', icon: '↻', title: 'Verification work due', detail: 'New candidates and leases inside the refresh window' },
+        { value: w.ready_to_publish, cls: num(w.ready_to_publish) ? 'warn' : '', icon: '→', title: 'Verified but not materialized', detail: 'Safe private rows awaiting an explicit publish step' },
+      ];
+      document.getElementById('workQueue').innerHTML = rows.map(row => `<div class="queue-row ${row.cls}"><div class="queue-icon">${row.icon}</div><div><strong>${esc(row.title)}</strong><span>${esc(row.detail)}</span></div><b>${fmt(row.value)}</b></div>`).join('');
+    }
+
+    function renderBlockers(data) {
+      const rows = data.blockers || [], el = document.getElementById('blockers');
+      if (!rows.length) { el.innerHTML = '<div class="empty">No held candidates or v2 migration not yet applied.</div>'; return; }
+      el.innerHTML = rows.map(row => { const info = reasonInfo(row.reason); return `<div class="blocker"><span><strong>${esc(info[0])}</strong><small>${esc(info[1])}</small></span><b>${fmt(row.count)}</b></div>`; }).join('');
+    }
+
     function renderCoverage(data) {
+      const coverage = data.coverage || {}, denominator = num(coverage.denominator);
+      const fields = [['Phone','phone'],['Website','website'],['Neighborhood','neighborhood'],['Hours','hours'],['Price','price'],['Setting','settings']];
+      document.getElementById('fieldCoverage').innerHTML = fields.map(([label,key]) => {
+        const count = num(coverage[key]), percent = denominator ? count / denominator * 100 : 0;
+        return `<div class="bar-row"><span>${label}</span><div class="bar-track"><i class="${percent < 60 ? 'low' : ''}" style="width:${percent.toFixed(1)}%"></i></div><b>${fmt(count)} · ${Math.round(percent)}%</b></div>`;
+      }).join('');
+      const tiers = data.verification_tiers || [];
+      document.getElementById('tierBreakdown').innerHTML = tiers.length ? tiers.map(row => `<span class="chip">${esc(human(row.tier))}<b>${fmt(row.count)}</b></span>`).join('') : '<span class="chip">None yet</span>';
       const types = data.published_types || [], max = Math.max(1, ...types.map(row => num(row.count)));
-      document.getElementById('typeBreakdown').innerHTML = types.length ? types.slice(0, 12).map(row => `<div class="bar-row"><span>${esc(row.name)}</span><div class="bar-track"><i style="width:${(num(row.count) / max * 100).toFixed(1)}%"></i></div><b>${fmt(row.count)}</b></div>`).join('') : '<div class="empty">No published venues.</div>';
+      document.getElementById('typeBreakdown').innerHTML = types.length ? types.slice(0, 10).map(row => `<div class="bar-row"><span>${esc(row.name)}</span><div class="bar-track"><i style="width:${(num(row.count)/max*100).toFixed(1)}%"></i></div><b>${fmt(row.count)}</b></div>`).join('') : '<div class="empty">No safe published types.</div>';
       const cities = data.published_cities || [];
-      document.getElementById('cityBreakdown').innerHTML = cities.length ? cities.map(row => `<span class="city">${esc(row.city)} <b>${fmt(row.count)}</b></span>`).join('') : '<span class="empty">No published cities.</span>';
+      document.getElementById('cityBreakdown').innerHTML = cities.length ? cities.map(row => `<span class="chip">${esc(row.city)}<b>${fmt(row.count)}</b></span>`).join('') : '<span class="chip">None yet</span>';
     }
 
     function renderSummary(data) {
-      summary = data;
-      const o = data.overall || {}, status = renderStatus(data);
-      const published = num(o.published), candidates = num(o.candidates), reviews = num(o.publication_reviews), suppressed = num(o.suppressed);
-      setText('updated', `Updated ${new Date(data.generated_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`);
-      setText('publishedCount', fmt(published)); setText('candidateCount', fmt(candidates));
-      setText('publicationReviewCount', fmt(reviews)); setText('currentResolverCount', fmt(o.resolver_current));
-      setText('resolverDetail', `${fmt(o.resolver_current)} of ${fmt(o.ingestion_backed)} ingestion-backed venues`);
-      setText('gatePublished', fmt(published)); setText('gateCandidate', fmt(candidates)); setText('gateReview', fmt(reviews)); setText('gateSuppressed', fmt(suppressed));
-      setText('gateTotal', `${fmt(num(o.ingestion_backed))} ingestion-backed venues`);
-      if (status.running) {
-        setText('heroTitle', 'A catalog refresh is running behind a closed publication gate.');
-        document.getElementById('heroCopy').innerHTML = `<b>${fmt(published)} currently published venues remain available.</b> New and changed records stay hidden until the full resolver and publication decision complete.`;
-      } else if (status.failed) {
-        setText('heroTitle', 'The source refresh failed, but the consumer catalog stayed protected.');
-        document.getElementById('heroCopy').innerHTML = `<b>${fmt(published)} previously approved venues remain live.</b> No incomplete candidate bypassed the publication gate.`;
-      } else {
-        setText('heroTitle', 'The catalog is current and protected by consumer evidence.');
-        document.getElementById('heroCopy').innerHTML = `<b>${fmt(published)} open venues are published.</b> ${fmt(candidates)} candidates remain invisible until public access, current identity, name, type, and licensing all agree.`;
-      }
-      renderReasons(data); renderActions(data); renderSources(data); renderCoverage(data);
+      setText('updated', `Updated ${new Date(data.generated_at).toLocaleTimeString([], { hour:'numeric', minute:'2-digit' })}`);
+      renderReadiness(data); renderMetrics(data); renderSources(data); renderWork(data); renderBlockers(data); renderCoverage(data);
     }
 
-    function renderVenue(item) {
-      const publication = item.publication_state || 'unknown';
-      const info = reasonInfo(item.publication_reason);
-      const confidence = [
-        item.identity_confidence == null ? null : `Identity ${pct(item.identity_confidence)}`,
-        item.display_name_confidence == null ? null : `Name ${pct(item.display_name_confidence)}`,
-        item.type_confidence == null ? null : `Type ${pct(item.type_confidence)}`,
-      ].filter(Boolean);
-      const blocker = publication === 'published' ? '' : `<div class="blocker ${esc(publication)}"><b>${esc(info[0])}</b>${info[1] ? ` · ${esc(info[1])}` : ''}</div>`;
-      return `<article class="item"><div class="item-head"><div style="min-width:0"><div class="item-name">${esc(item.name)}</div><div class="item-type">${esc(item.primary_type_name || human(item.primary_type_slug || 'unclassified'))} · ${esc(item.city || '')}</div></div><span class="state-badge ${esc(publication)}">${esc(publication)}</span></div>
-        <div class="item-address">${esc(item.address || 'No address')}${item.region ? ` · ${esc(item.region)}` : ''}</div>${blocker}
-        <div class="item-source">Sources: ${(item.sources || []).map(human).join(' · ') || 'Curated record'}</div>
-        ${confidence.length ? `<div class="confidence">${confidence.map(value => `<span>${esc(value)}</span>`).join('')}<span>Resolver ${esc(item.field_resolution_version || 'not run')}</span></div>` : ''}</article>`;
+    function venueCard(item) {
+      const facts = [
+        [Boolean(item.phone_e164), 'phone'], [Boolean(item.website_url), 'website'],
+        [Boolean(item.neighborhood), 'neighborhood'], [Boolean(item.has_hours), 'hours'],
+        [Boolean(item.has_price), 'price'], [Boolean(item.has_settings), 'setting'],
+      ];
+      return `<article class="venue"><div class="venue-top"><div style="min-width:0"><div class="venue-name">${esc(item.name)}</div><div class="venue-type">${esc(item.primary_type_name || human(item.primary_type_slug))} · ${esc(item.city || '')}${item.neighborhood ? ` · ${esc(item.neighborhood)}` : ''}</div></div><span class="evidence">${esc(human(item.verification_tier))}</span></div><div class="venue-address">${esc(item.address || 'No address')}${item.region ? ` · ${esc(item.region)}` : ''}</div><div class="facts">${facts.map(([has,label]) => `<span class="fact ${has ? '' : 'missing'}">${has ? '✓' : '—'} ${label}</span>`).join('')}</div></article>`;
     }
 
-    function renderQueueItem(item) {
-      const info = reasonInfo(item.reason), actionable = reasonKey(item.reason) !== 'needs_type_or_location_corroboration';
-      return `<article class="item"><div class="item-head"><div style="min-width:0"><div class="item-name">${esc(item.name)}</div><div class="item-type">${esc(human(item.primary_type_slug || 'unclassified'))} · ${esc(item.city || '')}</div></div><span class="state-badge ${actionable ? 'review' : 'candidate'}">${actionable ? 'decision' : 'waiting'}</span></div>
-        <div class="item-address">${esc(item.address || 'No address')}${item.region ? ` · ${esc(item.region)}` : ''}</div>
-        <div class="blocker ${actionable ? 'review' : ''}"><b>${esc(info[0])}</b>${info[1] ? ` · ${esc(info[1])}` : ''}</div>
-        <div class="item-source">Source: ${esc(item.label || human(item.source))}${item.candidate_name ? ` · Possible match: ${esc(item.candidate_name)}` : ''}</div></article>`;
-    }
-
-    function renderItems() {
-      const modeLabel = { published: 'live venues', candidate: 'hidden candidates', review: 'publication decisions', suppressed: 'suppressed venues', match: 'source records in the match queue' }[state.mode];
-      setText('listMeta', `${fmt(state.total)} ${modeLabel}${state.reason ? ` · ${reasonInfo(state.reason)[0]}` : ''}`);
-      document.getElementById('items').innerHTML = state.items.length ? state.items.map(item => state.mode === 'match' ? renderQueueItem(item) : renderVenue(item)).join('') : '<div class="empty">Nothing to show here.</div>';
+    function renderVenues() {
+      setText('listMeta', `${fmt(state.total)} safe live establishment${state.total === 1 ? '' : 's'}`);
+      document.getElementById('venues').innerHTML = state.items.length ? state.items.map(venueCard).join('') : '<div class="empty">No v2 establishment currently passes every publication gate.</div>';
       document.getElementById('loadMore').hidden = state.items.length >= state.total;
     }
 
-    async function loadList(reset = false) {
+    async function loadVenues(reset = false) {
       if (state.loading) return;
       if (reset) { state.offset = 0; state.items = []; }
       state.loading = true; document.getElementById('loadMore').disabled = true;
-      if (!state.items.length) document.getElementById('items').innerHTML = '<div class="empty">Loading records…</div>';
-      const params = new URLSearchParams({ view: state.mode === 'match' ? 'review_queue' : 'venues', limit: '24', offset: String(state.offset) });
-      if (state.mode !== 'match') params.set('state', state.mode);
-      if (state.q) params.set('q', state.q); if (state.reason) params.set('reason', state.reason); if (state.source) params.set('source', state.source);
+      if (!state.items.length) document.getElementById('venues').innerHTML = '<div class="empty">Loading safe establishments…</div>';
+      const params = new URLSearchParams({ view:'live', limit:'24', offset:String(state.offset) });
+      if (state.q) params.set('q', state.q);
       try {
-        const response = await fetch(`${ENDPOINT}?${params}`, { cache: 'no-store' });
+        const response = await fetch(`${ENDPOINT}?${params}`, { cache:'no-store' });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json(), next = data.list?.items || [];
-        state.total = num(data.list?.total); state.items = reset ? next : state.items.concat(next); state.offset = state.items.length; renderItems();
+        state.total = num(data.list?.total); state.items = reset ? next : state.items.concat(next); state.offset = state.items.length; renderVenues();
       } catch (error) {
-        document.getElementById('items').innerHTML = `<div class="empty">Could not load records: ${esc(error.message)}</div>`;
+        document.getElementById('venues').innerHTML = `<div class="empty">Could not load the safe catalog: ${esc(error.message)}</div>`;
       } finally { state.loading = false; document.getElementById('loadMore').disabled = false; }
     }
 
     async function refreshSummary() {
       try {
-        const response = await fetch(ENDPOINT, { cache: 'no-store' });
+        const response = await fetch(ENDPOINT, { cache:'no-store' });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        renderSummary(await response.json());
-        document.getElementById('error').style.display = 'none';
+        renderSummary(await response.json()); document.getElementById('error').style.display = 'none';
       } catch (error) {
-        const el = document.getElementById('error'); el.textContent = `Could not load live catalog data: ${error.message}`; el.style.display = 'block';
-        setText('updated', 'Disconnected');
+        const el = document.getElementById('error'); el.textContent = `Could not load catalog operations: ${error.message}`; el.style.display = 'block'; setText('updated', 'Disconnected');
       }
     }
 
-    document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', () => openInspector(tab.dataset.mode)));
-    document.querySelectorAll('[data-open]').forEach(button => button.addEventListener('click', () => openInspector(button.dataset.open)));
-    document.getElementById('openActions').addEventListener('click', () => {
-      const publication = num(summary?.overall?.publication_reviews), mode = publication ? 'review' : 'match'; openInspector(mode);
-    });
-    document.getElementById('sourceFilter').addEventListener('change', event => { state.source = event.target.value; loadList(true); });
-    document.getElementById('clearFilter').addEventListener('click', () => openInspector(state.mode));
-    document.getElementById('search').addEventListener('input', event => {
-      clearTimeout(searchTimer); searchTimer = setTimeout(() => { state.q = event.target.value.trim(); loadList(true); }, 250);
-    });
-    document.getElementById('loadMore').addEventListener('click', () => loadList(false));
-
-    refreshSummary(); loadList(true); setInterval(refreshSummary, 15000);
+    document.getElementById('search').addEventListener('input', event => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { state.q = event.target.value.trim(); loadVenues(true); }, 250); });
+    document.getElementById('loadMore').addEventListener('click', () => loadVenues(false));
+    refreshSummary(); loadVenues(true); setInterval(refreshSummary, 30000);
   </script>
 </body>
 </html>

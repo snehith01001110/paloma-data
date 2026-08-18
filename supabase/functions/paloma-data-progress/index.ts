@@ -1,14 +1,15 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import postgres from "npm:postgres@3.4.7";
 
-const SOURCES = ["ca_abc", "datasf", "overture"] as const;
+type Sql = ReturnType<typeof postgres>;
+
 const SOURCE_LABELS: Record<string, string> = {
   ca_abc: "California ABC",
-  datasf: "DataSF",
-  overture: "Overture Maps",
   fsq: "Foursquare OS",
+  datasf: "DataSF registrations",
+  datasf_neighborhoods: "SF civic neighborhoods",
+  overture: "Overture (optional)",
 };
-const PUBLICATION_STATES = ["published", "candidate", "review", "suppressed"] as const;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -28,6 +29,25 @@ function boundedInt(value: string | null, fallback: number, min: number, max: nu
   return Math.min(max, Math.max(min, Math.trunc(parsed)));
 }
 
+function run(row: Record<string, unknown> | undefined) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    source: row.source,
+    label: SOURCE_LABELS[String(row.source)] ?? row.source,
+    mode: row.mode,
+    status: row.status,
+    fetched: number(row.fetched_count),
+    created: number(row.created_count),
+    updated: number(row.updated_count),
+    unchanged: number(row.unchanged_count),
+    closed: number(row.closed_count),
+    started_at: row.started_at,
+    finished_at: row.finished_at,
+    error: row.error_summary || null,
+  };
+}
+
 Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -44,15 +64,6 @@ Deno.serve(async (request: Request) => {
   const url = new URL(request.url);
   const view = url.searchParams.get("view");
   const q = (url.searchParams.get("q") ?? "").trim().slice(0, 100);
-  const requestedState = url.searchParams.get("state");
-  const publicationState = PUBLICATION_STATES.includes(
-    requestedState as (typeof PUBLICATION_STATES)[number],
-  ) ? requestedState : null;
-  const requestedSource = url.searchParams.get("source");
-  const source = SOURCES.includes(requestedSource as (typeof SOURCES)[number])
-    ? requestedSource
-    : null;
-  const reason = (url.searchParams.get("reason") ?? "").trim().slice(0, 100) || null;
   const limit = boundedInt(url.searchParams.get("limit"), 24, 1, 50);
   const offset = boundedInt(url.searchParams.get("offset"), 0, 0, 10000);
   const pattern = `%${q}%`;
@@ -65,361 +76,64 @@ Deno.serve(async (request: Request) => {
   });
 
   try {
-    const [
-      latestRunRows,
-      recentRunRows,
-      sourceMetricRows,
-      overallRows,
-      publicationReasonRows,
-      reviewReasonRows,
-      typeRows,
-      cityRows,
-    ] = await Promise.all([
-      sql`
-        select distinct on (source)
-          id::text, source, mode, status, fetched_count, created_count, updated_count,
-          unchanged_count, review_count, closed_count, started_at, finished_at,
-          left(coalesce(error_summary, ''), 280) as error_summary
-        from ingest.ingestion_runs
-        where source in ('ca_abc', 'datasf', 'overture')
-        order by source, started_at desc
-      `,
-      sql`
-        select id::text, source, mode, status, fetched_count, created_count, updated_count,
-               unchanged_count, review_count, closed_count, started_at, finished_at,
-               left(coalesce(error_summary, ''), 280) as error_summary
-        from ingest.ingestion_runs
-        where source in ('ca_abc', 'datasf', 'overture')
-        order by started_at desc
-        limit 18
-      `,
-      sql`
-        select
-          source,
-          count(*)::bigint as record_count,
-          count(*) filter (where latitude is not null and longitude is not null)::bigint as placed_count,
-          count(*) filter (where consumer_facing and public_access = 'walk_in')::bigint
-            as consumer_place_count,
-          count(*) filter (where source_status = 'open')::bigint as open_record_count
-        from ingest.source_records
-        where source in ('ca_abc', 'datasf', 'overture')
-        group by source
-      `,
-      sql`
-        with provenance as (
-          select establishment_id, count(distinct source)::int as source_count
-          from ingest.establishment_sources
-          group by establishment_id
-        ), queue as (
-          select
-            count(distinct (source, source_record_id)) filter (
-              where state = 'pending' and reason = 'needs_type_or_location_corroboration'
-            )::bigint as evidence_waiting,
-            count(distinct (source, source_record_id)) filter (
-              where state = 'pending' and reason <> 'needs_type_or_location_corroboration'
-            )::bigint as actionable_match_reviews
-          from ingest.establishment_review_queue
-        )
-        select
-          count(*)::bigint as total_establishments,
-          count(*) filter (where p.establishment_id is not null)::bigint as ingestion_backed,
-          count(*) filter (
-            where e.publication_state = 'published' and e.status = 'open'
-          )::bigint as published,
-          count(*) filter (
-            where e.publication_state = 'published' and e.status = 'open'
-              and p.establishment_id is null
-          )::bigint as curated_published,
-          count(*) filter (
-            where p.establishment_id is not null and e.publication_state = 'candidate'
-          )::bigint as candidates,
-          count(*) filter (
-            where p.establishment_id is not null and e.publication_state = 'review'
-          )::bigint as publication_reviews,
-          count(*) filter (
-            where p.establishment_id is not null and e.publication_state = 'suppressed'
-          )::bigint as suppressed,
-          count(*) filter (
-            where p.establishment_id is not null and e.field_resolution_version = 'v4'
-          )::bigint as resolver_current,
-          count(*) filter (
-            where p.establishment_id is not null and p.source_count >= 2
-          )::bigint as multi_source,
-          count(*) filter (
-            where e.publication_state = 'published' and e.status = 'open'
-              and e.public_access_verified_at >= now() - interval '550 days'
-          )::bigint as access_evidence_current,
-          max(e.publication_evaluated_at) as publication_evaluated_at,
-          q.evidence_waiting,
-          q.actionable_match_reviews
-        from public.establishments e
-        left join provenance p on p.establishment_id = e.id
-        cross join queue q
-        group by q.evidence_waiting, q.actionable_match_reviews
-      `,
-      sql`
-        select e.publication_state as state,
-               coalesce(e.publication_reason, 'not_evaluated') as reason,
-               count(*)::bigint as count
-        from public.establishments e
-        where exists (
-          select 1 from ingest.establishment_sources es where es.establishment_id = e.id
-        )
-        group by e.publication_state, coalesce(e.publication_reason, 'not_evaluated')
-        order by count desc
-      `,
-      sql`
-        select reason, source,
-               count(distinct (source, source_record_id))::bigint as count
-        from ingest.establishment_review_queue
-        where state = 'pending'
-          and source in ('ca_abc', 'datasf', 'overture')
-        group by reason, source
-        order by count desc
-      `,
-      sql`
-        select pt.slug, pt.name, count(*)::bigint as count
-        from public.establishments e
-        join public.primary_types pt on pt.id = e.primary_type_id
-        where e.publication_state = 'published' and e.status = 'open'
-        group by pt.slug, pt.name
-        order by count desc, pt.name
-      `,
-      sql`
-        select city, count(*)::bigint as count
-        from public.establishments
-        where publication_state = 'published' and status = 'open'
-        group by city
-        order by count desc, city
-        limit 12
-      `,
-    ]);
-
-    const latestBySource = new Map(latestRunRows.map((row) => [String(row.source), row]));
-    const metricsBySource = new Map(sourceMetricRows.map((row) => [String(row.source), row]));
-    const sourceLinkRows = await sql`
-      select es.source,
-             count(*)::bigint as linked_record_count,
-             count(distinct es.establishment_id)::bigint as linked_establishment_count,
-             count(distinct es.establishment_id) filter (
-               where e.publication_state = 'published' and e.status = 'open'
-             )::bigint as published_establishment_count
-      from ingest.establishment_sources es
-      join public.establishments e on e.id = es.establishment_id
-      where es.source in ('ca_abc', 'datasf', 'overture')
-      group by es.source
+    const schemaRows = await sql`
+      select
+        to_regclass('ingest.catalog_candidates') is not null as migration_applied,
+        to_regclass('ingest.source_sync_state') is not null as sync_state_applied
     `;
-    const linksBySource = new Map(sourceLinkRows.map((row) => [String(row.source), row]));
-
-    const reviewBreakdown = new Map<
-      string,
-      { reason: string; count: number; sources: Array<{ source: string; label: string; count: number }> }
-    >();
-    for (const row of reviewReasonRows) {
-      const reasonName = String(row.reason);
-      const sourceName = String(row.source);
-      const count = number(row.count);
-      const entry = reviewBreakdown.get(reasonName) ?? { reason: reasonName, count: 0, sources: [] };
-      entry.count += count;
-      entry.sources.push({
-        source: sourceName,
-        label: SOURCE_LABELS[sourceName] ?? sourceName,
-        count,
+    const migrationApplied = Boolean(schemaRows[0]?.migration_applied);
+    if (!migrationApplied) {
+      const payload = await legacyPayload(sql);
+      return Response.json(payload, {
+        headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" },
       });
-      reviewBreakdown.set(reasonName, entry);
     }
 
-    const run = (row: Record<string, unknown> | undefined) => row ? ({
-      id: row.id,
-      source: row.source,
-      label: SOURCE_LABELS[String(row.source)] ?? row.source,
-      mode: row.mode,
-      status: row.status,
-      fetched: number(row.fetched_count),
-      created: number(row.created_count),
-      updated: number(row.updated_count),
-      unchanged: number(row.unchanged_count),
-      review: number(row.review_count),
-      closed: number(row.closed_count),
-      started_at: row.started_at,
-      finished_at: row.finished_at,
-      error: row.error_summary || null,
-    }) : null;
-
-    const sources = SOURCES.map((sourceName) => {
-      const metric = metricsBySource.get(sourceName);
-      const links = linksBySource.get(sourceName);
-      return {
-        source: sourceName,
-        label: SOURCE_LABELS[sourceName],
-        record_count: number(metric?.record_count),
-        placed_count: number(metric?.placed_count),
-        consumer_place_count: number(metric?.consumer_place_count),
-        open_record_count: number(metric?.open_record_count),
-        linked_record_count: number(links?.linked_record_count),
-        linked_establishment_count: number(links?.linked_establishment_count),
-        published_establishment_count: number(links?.published_establishment_count),
-        latest_run: run(latestBySource.get(sourceName)),
-      };
-    });
-
-    const overall = overallRows[0] ?? {};
-    const payload: Record<string, unknown> = {
-      generated_at: new Date().toISOString(),
-      overall: {
-        total_establishments: number(overall.total_establishments),
-        ingestion_backed: number(overall.ingestion_backed),
-        published: number(overall.published),
-        curated_published: number(overall.curated_published),
-        candidates: number(overall.candidates),
-        publication_reviews: number(overall.publication_reviews),
-        suppressed: number(overall.suppressed),
-        resolver_current: number(overall.resolver_current),
-        multi_source: number(overall.multi_source),
-        access_evidence_current: number(overall.access_evidence_current),
-        evidence_waiting: number(overall.evidence_waiting),
-        actionable_match_reviews: number(overall.actionable_match_reviews),
-        publication_evaluated_at: overall.publication_evaluated_at,
-      },
-      sources,
-      recent_runs: recentRunRows.map((row) => run(row)),
-      publication_breakdown: publicationReasonRows.map((row) => ({
-        state: String(row.state),
-        reason: String(row.reason),
-        count: number(row.count),
-      })),
-      review_breakdown: Array.from(reviewBreakdown.values()).sort((a, b) => b.count - a.count),
-      published_types: typeRows.map((row) => ({
-        slug: String(row.slug),
-        name: String(row.name),
-        count: number(row.count),
-      })),
-      published_cities: cityRows.map((row) => ({
-        city: String(row.city),
-        count: number(row.count),
-      })),
-    };
-
-    if (view === "venues") {
+    const payload: Record<string, unknown> = await v2Payload(sql);
+    if (view === "live") {
       const [countRows, items] = await Promise.all([
         sql`
           select count(*)::bigint as total
           from public.establishments e
-          where (${publicationState === null} or e.publication_state = ${publicationState ?? ""})
-            and (${reason === null} or e.publication_reason = ${reason ?? ""})
+          where e.publication_state = 'published'
+            and e.status = 'open'
+            and e.catalog_candidate_id is not null
+            and e.verification_expires_at > now()
             and (
               ${q === ""} or e.name ilike ${pattern} or e.address ilike ${pattern}
-              or e.city ilike ${pattern}
-            )
-            and (
-              ${source === null} or exists (
-                select 1 from ingest.establishment_sources f
-                where f.establishment_id = e.id and f.source = ${source ?? ""}
-              )
+              or e.city ilike ${pattern} or coalesce(e.neighborhood, '') ilike ${pattern}
             )
         `,
         sql`
-          with provenance as (
-            select establishment_id,
-                   array_agg(distinct source order by source) as sources,
-                   count(distinct source)::int as source_count
-            from ingest.establishment_sources
-            group by establishment_id
-          )
-          select e.id::text, e.name, e.address, e.city, e.region, e.status,
-                 e.publication_state, e.publication_reason, e.access_mode,
-                 e.public_access_verified_at, e.publication_evaluated_at,
-                 e.identity_confidence, e.display_name_confidence, e.display_name_source,
-                 e.type_confidence, e.field_resolution_version, e.last_verified_at,
+          select e.id::text, e.name, e.address, e.city, e.region, e.neighborhood,
+                 e.phone_e164, e.website_url, e.hours is not null as has_hours,
+                 e.price_level is not null as has_price,
+                 e.verification_tier, e.last_verified_at, e.verification_expires_at,
                  pt.slug as primary_type_slug, pt.name as primary_type_name,
-                 coalesce(p.sources, '{}'::text[]) as sources,
-                 coalesce(p.source_count, 0)::int as source_count
+                 exists (
+                   select 1 from public.establishment_settings es
+                   where es.establishment_id = e.id
+                 ) as has_settings
           from public.establishments e
-          left join provenance p on p.establishment_id = e.id
           left join public.primary_types pt on pt.id = e.primary_type_id
-          where (${publicationState === null} or e.publication_state = ${publicationState ?? ""})
-            and (${reason === null} or e.publication_reason = ${reason ?? ""})
+          where e.publication_state = 'published'
+            and e.status = 'open'
+            and e.catalog_candidate_id is not null
+            and e.verification_expires_at > now()
             and (
               ${q === ""} or e.name ilike ${pattern} or e.address ilike ${pattern}
-              or e.city ilike ${pattern}
+              or e.city ilike ${pattern} or coalesce(e.neighborhood, '') ilike ${pattern}
             )
-            and (${source === null} or ${source ?? ""} = any(coalesce(p.sources, '{}'::text[])))
-          order by
-            case e.publication_state
-              when 'review' then 0 when 'candidate' then 1
-              when 'suppressed' then 2 else 3
-            end,
-            e.publication_evaluated_at desc nulls last,
-            e.name
+          order by e.name, e.id
           limit ${limit} offset ${offset}
         `,
       ]);
       payload.list = {
-        view,
-        state: publicationState,
-        reason,
+        view: "live",
         total: number(countRows[0]?.total),
         offset,
         limit,
-        items: items.map((row) => ({
-          ...row,
-          identity_confidence: row.identity_confidence == null ? null : number(row.identity_confidence),
-          display_name_confidence: row.display_name_confidence == null
-            ? null
-            : number(row.display_name_confidence),
-          type_confidence: row.type_confidence == null ? null : number(row.type_confidence),
-          source_count: number(row.source_count),
-          sources: row.sources ?? [],
-        })),
-      };
-    } else if (view === "review_queue") {
-      const [countRows, items] = await Promise.all([
-        sql`
-          select count(*)::bigint as total
-          from ingest.establishment_review_queue rq
-          join ingest.source_records sr
-            on sr.source = rq.source and sr.source_record_id = rq.source_record_id
-          where rq.state = 'pending'
-            and (${reason === null} or rq.reason = ${reason ?? ""})
-            and (${source === null} or rq.source = ${source ?? ""})
-            and (
-              ${q === ""} or sr.name ilike ${pattern} or sr.address ilike ${pattern}
-              or sr.city ilike ${pattern} or rq.reason ilike ${pattern}
-            )
-        `,
-        sql`
-          select rq.id::text, rq.source, rq.reason, rq.confidence, rq.created_at,
-                 rq.candidate_establishment_id::text, sr.name, sr.address, sr.city, sr.region,
-                 sr.primary_type_slug, candidate.name as candidate_name
-          from ingest.establishment_review_queue rq
-          join ingest.source_records sr
-            on sr.source = rq.source and sr.source_record_id = rq.source_record_id
-          left join public.establishments candidate on candidate.id = rq.candidate_establishment_id
-          where rq.state = 'pending'
-            and (${reason === null} or rq.reason = ${reason ?? ""})
-            and (${source === null} or rq.source = ${source ?? ""})
-            and (
-              ${q === ""} or sr.name ilike ${pattern} or sr.address ilike ${pattern}
-              or sr.city ilike ${pattern} or rq.reason ilike ${pattern}
-            )
-          order by
-            case when rq.reason = 'needs_type_or_location_corroboration' then 1 else 0 end,
-            rq.created_at desc,
-            sr.name
-          limit ${limit} offset ${offset}
-        `,
-      ]);
-      payload.list = {
-        view,
-        reason,
-        total: number(countRows[0]?.total),
-        offset,
-        limit,
-        items: items.map((row) => ({
-          ...row,
-          label: SOURCE_LABELS[String(row.source)] ?? row.source,
-          confidence: row.confidence == null ? null : number(row.confidence),
-        })),
+        items,
       };
     }
 
@@ -433,3 +147,329 @@ Deno.serve(async (request: Request) => {
     await sql.end({ timeout: 1 });
   }
 });
+
+async function legacyPayload(sql: Sql) {
+  const [publicRows, latestRunRows] = await Promise.all([
+    sql`
+      select count(*)::bigint as rows_total,
+             count(*) filter (
+               where publication_state = 'published' and status = 'open'
+             )::bigint as app_visible
+      from public.establishments
+    `,
+    sql`
+      select distinct on (source)
+        id::text, source, mode, status, fetched_count, created_count, updated_count,
+        unchanged_count, closed_count, started_at, finished_at,
+        left(coalesce(error_summary, ''), 220) as error_summary
+      from ingest.ingestion_runs
+      order by source, started_at desc
+    `,
+  ]);
+  const overall = publicRows[0] ?? {};
+  return {
+    schema_version: "legacy",
+    decision_version: null,
+    generated_at: new Date().toISOString(),
+    readiness: {
+      migration_applied: false,
+      cutover_complete: false,
+      safe_for_users: false,
+      next_action: "Apply the additive catalog v2 migration; do not trust or rebuild the legacy catalog.",
+    },
+    overall: {
+      rows_total: number(overall.rows_total),
+      app_visible: number(overall.app_visible),
+      safe_live: 0,
+      unsafe_legacy_live: number(overall.app_visible),
+      unsafe_expired_live: 0,
+    },
+    sources: latestRunRows.map((row) => ({
+      source: String(row.source),
+      label: SOURCE_LABELS[String(row.source)] ?? row.source,
+      required: ["ca_abc", "fsq"].includes(String(row.source)),
+      record_count: 0,
+      open_record_count: 0,
+      completed_at: null,
+      latest_run: run(row),
+    })),
+    candidates: [],
+    blockers: [],
+    verification_tiers: [],
+    coverage: {},
+    work_queue: {},
+    published_types: [],
+    published_cities: [],
+    recent_runs: latestRunRows.map((row) => run(row)),
+  };
+}
+
+async function v2Payload(sql: Sql) {
+  const [
+    overallRows,
+    candidateRows,
+    blockerRows,
+    workRows,
+    sourceRows,
+    runRows,
+    tierRows,
+    typeRows,
+    cityRows,
+  ] = await Promise.all([
+    sql`
+      select
+        count(*)::bigint as rows_total,
+        count(*) filter (
+          where publication_state = 'published' and status = 'open'
+        )::bigint as app_visible,
+        count(*) filter (
+          where publication_state = 'published' and status = 'open'
+            and catalog_candidate_id is not null and verification_expires_at > now()
+        )::bigint as safe_live,
+        count(*) filter (
+          where publication_state = 'published' and status = 'open'
+            and catalog_candidate_id is null
+        )::bigint as unsafe_legacy_live,
+        count(*) filter (
+          where publication_state = 'published' and status = 'open'
+            and catalog_candidate_id is not null
+            and (verification_expires_at is null or verification_expires_at <= now())
+        )::bigint as unsafe_expired_live,
+        count(*) filter (
+          where publication_state = 'published' and status = 'open'
+            and catalog_candidate_id is not null and verification_expires_at > now()
+            and phone_e164 is not null
+        )::bigint as phone,
+        count(*) filter (
+          where publication_state = 'published' and status = 'open'
+            and catalog_candidate_id is not null and verification_expires_at > now()
+            and website_url is not null
+        )::bigint as website,
+        count(*) filter (
+          where publication_state = 'published' and status = 'open'
+            and catalog_candidate_id is not null and verification_expires_at > now()
+            and neighborhood is not null
+        )::bigint as neighborhood,
+        count(*) filter (
+          where publication_state = 'published' and status = 'open'
+            and catalog_candidate_id is not null and verification_expires_at > now()
+            and hours is not null
+        )::bigint as hours,
+        count(*) filter (
+          where publication_state = 'published' and status = 'open'
+            and catalog_candidate_id is not null and verification_expires_at > now()
+            and price_level is not null
+        )::bigint as price,
+        count(*) filter (
+          where publication_state = 'published' and status = 'open'
+            and catalog_candidate_id is not null and verification_expires_at > now()
+            and exists (
+              select 1 from public.establishment_settings es
+              where es.establishment_id = establishments.id
+            )
+        )::bigint as settings,
+        min(verification_expires_at) filter (
+          where publication_state = 'published' and status = 'open'
+            and catalog_candidate_id is not null and verification_expires_at > now()
+        ) as next_expiry,
+        max(last_verified_at) filter (
+          where publication_state = 'published' and status = 'open'
+            and catalog_candidate_id is not null
+        ) as last_verified_at
+      from public.establishments
+    `,
+    sql`
+      select candidate_state as state, count(*)::bigint as count
+      from ingest.catalog_candidates
+      group by candidate_state
+      order by candidate_state
+    `,
+    sql`
+      select decision_reason as reason, count(*)::bigint as count
+      from ingest.catalog_candidates
+      where candidate_state not in ('verified', 'published')
+      group by decision_reason
+      order by count(*) desc, decision_reason
+      limit 12
+    `,
+    sql`
+      select
+        (select count(*) from ingest.candidate_match_reviews where state = 'pending')::bigint
+          as pending_match_reviews,
+        count(*) filter (where candidate_state = 'verified')::bigint as ready_to_publish,
+        count(*) filter (
+          where candidate_state in ('needs_verification', 'needs_review')
+             or (
+               candidate_state in ('verified', 'published')
+               and (verification_expires_at is null
+                    or verification_expires_at <= now() + interval '14 days')
+             )
+        )::bigint as verification_due,
+        count(*) filter (
+          where candidate_state in ('verified', 'published')
+            and verification_expires_at > now()
+        )::bigint as unexpired_verified
+      from ingest.catalog_candidates
+    `,
+    sql`
+      with expected(source, label, required, freshness_days) as (
+        values
+          ('ca_abc', 'California ABC', true, 7),
+          ('fsq', 'Foursquare OS', true, 45),
+          ('datasf', 'DataSF registrations', false, 7),
+          ('datasf_neighborhoods', 'SF civic neighborhoods', false, 45),
+          ('overture', 'Overture (optional)', false, 45)
+      ), latest as (
+        select distinct on (source)
+          id::text, source, mode, status, fetched_count, created_count, updated_count,
+          unchanged_count, closed_count, started_at, finished_at,
+          left(coalesce(error_summary, ''), 220) as error_summary
+        from ingest.ingestion_runs
+        order by source, started_at desc
+      ), metrics as (
+        select source,
+               count(*) filter (where retired_at is null)::bigint as record_count,
+               count(*) filter (
+                 where retired_at is null and source_status = 'open'
+               )::bigint as open_record_count
+        from ingest.source_records
+        group by source
+      )
+      select e.source, e.label, e.required, e.freshness_days,
+             coalesce(m.record_count, s.record_count, 0)::bigint as record_count,
+             coalesce(m.open_record_count, 0)::bigint as open_record_count,
+             s.completed_at, s.release_id,
+             l.id, l.mode, l.status, l.fetched_count, l.created_count, l.updated_count,
+             l.unchanged_count, l.closed_count, l.started_at, l.finished_at, l.error_summary
+      from expected e
+      left join ingest.source_sync_state s on s.source = e.source
+      left join metrics m on m.source = e.source
+      left join latest l on l.source = e.source
+      order by e.required desc, e.source
+    `,
+    sql`
+      select id::text, source, mode, status, fetched_count, created_count, updated_count,
+             unchanged_count, closed_count, started_at, finished_at,
+             left(coalesce(error_summary, ''), 220) as error_summary
+      from ingest.ingestion_runs
+      order by started_at desc
+      limit 18
+    `,
+    sql`
+      select verification_tier as tier, count(*)::bigint as count
+      from public.establishments
+      where publication_state = 'published' and status = 'open'
+        and catalog_candidate_id is not null and verification_expires_at > now()
+      group by verification_tier
+      order by count(*) desc, verification_tier
+    `,
+    sql`
+      select pt.slug, pt.name, count(*)::bigint as count
+      from public.establishments e
+      join public.primary_types pt on pt.id = e.primary_type_id
+      where e.publication_state = 'published' and e.status = 'open'
+        and e.catalog_candidate_id is not null and e.verification_expires_at > now()
+      group by pt.slug, pt.name
+      order by count(*) desc, pt.name
+    `,
+    sql`
+      select city, count(*)::bigint as count
+      from public.establishments
+      where publication_state = 'published' and status = 'open'
+        and catalog_candidate_id is not null and verification_expires_at > now()
+      group by city
+      order by count(*) desc, city
+      limit 16
+    `,
+  ]);
+
+  const overall = overallRows[0] ?? {};
+  const safeLive = number(overall.safe_live);
+  const unsafeLegacy = number(overall.unsafe_legacy_live);
+  const unsafeExpired = number(overall.unsafe_expired_live);
+  const sources = sourceRows.map((row) => ({
+    source: String(row.source),
+    label: row.label,
+    required: Boolean(row.required),
+    freshness_days: number(row.freshness_days),
+    record_count: number(row.record_count),
+    open_record_count: number(row.open_record_count),
+    completed_at: row.completed_at,
+    release_id: row.release_id,
+    latest_run: row.id ? run(row) : null,
+    fresh: Boolean(
+      row.completed_at &&
+      Date.now() - new Date(String(row.completed_at)).getTime() <=
+        number(row.freshness_days) * 86_400_000
+    ),
+  }));
+  const requiredReady = sources
+    .filter((source) => source.required)
+    .every((source) => source.fresh && source.record_count > 0);
+  const cutoverComplete = unsafeLegacy === 0;
+  const safeForUsers = cutoverComplete && unsafeExpired === 0 && requiredReady;
+
+  return {
+    schema_version: "catalog_v2",
+    decision_version: "v2",
+    generated_at: new Date().toISOString(),
+    readiness: {
+      migration_applied: true,
+      cutover_complete: cutoverComplete,
+      required_sources_ready: requiredReady,
+      safe_for_users: safeForUsers,
+      next_action: nextAction({ unsafeLegacy, unsafeExpired, requiredReady, safeLive, work: workRows[0] }),
+    },
+    overall: {
+      rows_total: number(overall.rows_total),
+      app_visible: number(overall.app_visible),
+      safe_live: safeLive,
+      unsafe_legacy_live: unsafeLegacy,
+      unsafe_expired_live: unsafeExpired,
+      next_expiry: overall.next_expiry,
+      last_verified_at: overall.last_verified_at,
+    },
+    coverage: {
+      denominator: safeLive,
+      phone: number(overall.phone),
+      website: number(overall.website),
+      neighborhood: number(overall.neighborhood),
+      hours: number(overall.hours),
+      price: number(overall.price),
+      settings: number(overall.settings),
+    },
+    candidates: candidateRows.map((row) => ({ state: row.state, count: number(row.count) })),
+    blockers: blockerRows.map((row) => ({ reason: row.reason, count: number(row.count) })),
+    work_queue: {
+      pending_match_reviews: number(workRows[0]?.pending_match_reviews),
+      ready_to_publish: number(workRows[0]?.ready_to_publish),
+      verification_due: number(workRows[0]?.verification_due),
+      unexpired_verified: number(workRows[0]?.unexpired_verified),
+    },
+    sources,
+    verification_tiers: tierRows.map((row) => ({ tier: row.tier, count: number(row.count) })),
+    published_types: typeRows.map((row) => ({
+      slug: row.slug,
+      name: row.name,
+      count: number(row.count),
+    })),
+    published_cities: cityRows.map((row) => ({ city: row.city, count: number(row.count) })),
+    recent_runs: runRows.map((row) => run(row)),
+  };
+}
+
+function nextAction(args: {
+  unsafeLegacy: number;
+  unsafeExpired: number;
+  requiredReady: boolean;
+  safeLive: number;
+  work: Record<string, unknown> | undefined;
+}): string {
+  if (!args.requiredReady) return "Complete successful California ABC and Foursquare OS snapshots.";
+  if (args.unsafeExpired > 0) return "Run catalog-sweep immediately; expired rows are still app-visible.";
+  if (args.unsafeLegacy > 0) return "Run a bounded trial, approve it, then perform the one-time verified cutover.";
+  if (number(args.work?.ready_to_publish) > 0) return "Review the ready set, then publish only verified candidates.";
+  if (number(args.work?.pending_match_reviews) > 0) return "Resolve the pending identity conflicts; they remain hidden meanwhile.";
+  if (args.safeLive === 0) return "No venue currently passes every hard gate; leave the app catalog empty.";
+  return "No urgent action. Keep source snapshots and verification leases current.";
+}

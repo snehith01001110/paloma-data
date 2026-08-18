@@ -1,7 +1,7 @@
 from io import BytesIO
 from zipfile import ZipFile
 
-from paloma_data.adapters.ca_abc import CaliforniaABCAdapter
+from paloma_data.adapters.ca_abc import CaliforniaABCAdapter, _canonical_status
 
 
 def test_raw_export_layout_maps_to_source_record():
@@ -59,6 +59,15 @@ def test_pending_application_is_not_open():
     assert record.primary_type_slug == "bar"
     assert record.consumer_facing is False
     assert record.public_access == "walk_in"
+
+
+def test_every_documented_non_active_abbreviation_fails_closed():
+    for status in ("SUREND", "SUSPEN", "REVPEN", "NREN", "INACT", "R65", "A/REV"):
+        assert _canonical_status(status, "LIC") == "closed"
+
+
+def test_unknown_abc_status_is_never_assumed_open():
+    assert _canonical_status("NEW_STATUS", "LIC") == "unknown"
 
 
 def test_csv_export_skips_updated_preamble_before_header():
