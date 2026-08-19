@@ -24,6 +24,7 @@ from paloma_data.catalog_repository import (
 from paloma_data.config import Settings
 from paloma_data.contributions import ContributionReviewer
 from paloma_data.db import Database
+from paloma_data.expansion import ExpansionBlocked, ExpansionGate
 from paloma_data.geocoding import AddressGeocoder
 from paloma_data.field_resolution import FieldResolver
 from paloma_data.field_review import FieldConflictReviewer
@@ -411,32 +412,54 @@ def catalog_reevaluate(
 
 @app.command("catalog-publish")
 def catalog_publish(
+    release_id: str = typer.Option(..., help="Approved release ID from the Bay Area manifest"),
     confirm: str = typer.Option("", help="Must be exactly PUBLISH_VERIFIED"),
     limit: int = typer.Option(2_000, min=1),
 ) -> None:
-    """Materialize only unexpired verified candidates into the consumer catalog."""
+    """Materialize a bounded, authorized release of unexpired verified candidates."""
     if confirm != "PUBLISH_VERIFIED":
         raise typer.BadParameter("Pass --confirm PUBLISH_VERIFIED")
     _, _, _, catalog = _components()
-    typer.echo(json.dumps(catalog.publish(limit=limit), indent=2, sort_keys=True))
-
-
-@app.command("catalog-cutover")
-def catalog_cutover(
-    confirm: str = typer.Option("", help="Must be exactly REPLACE_PUBLIC_CATALOG"),
-    minimum_verified: int = typer.Option(1, min=1),
-) -> None:
-    """Replace the pre-launch junk catalog with the verified v2 set."""
-    if confirm != "REPLACE_PUBLIC_CATALOG":
-        raise typer.BadParameter("Pass --confirm REPLACE_PUBLIC_CATALOG")
-    _, _, _, catalog = _components()
+    try:
+        result = catalog.publish(release_id=release_id, limit=limit)
+    except ExpansionBlocked as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from None
     typer.echo(
         json.dumps(
-            catalog.cutover(minimum_verified=minimum_verified),
+            result,
             indent=2,
             sort_keys=True,
         )
     )
+
+
+@app.command("expansion-status")
+def expansion_status(
+    release_id: str | None = typer.Option(None, help="Optional single release ID"),
+    require_ready: bool = typer.Option(
+        False,
+        help="Exit nonzero unless every selected release is ready",
+    ),
+) -> None:
+    """Report immutable authorizations, safety checks, and remaining batch slots."""
+    _, db, _, _ = _components()
+    gate = ExpansionGate(db)
+    if release_id:
+        with db.connection() as conn:
+            status = gate.status(conn, release_id)
+        payload: dict[str, Any] = {
+            "manifest_id": gate.manifest.manifest_id,
+            "manifest_sha256": gate.manifest.sha256,
+            "releases": {release_id: status},
+        }
+    else:
+        payload = gate.all_statuses()
+    typer.echo(json.dumps(payload, indent=2, sort_keys=True, default=str))
+    if require_ready and not all(
+        bool(status.get("ready")) for status in payload["releases"].values()
+    ):
+        raise typer.Exit(code=1)
 
 
 @app.command("catalog-sweep")

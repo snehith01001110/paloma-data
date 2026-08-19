@@ -146,6 +146,32 @@ def test_materialized_candidate_selection_is_scoped_to_publication_state():
     )
 
 
+def test_new_publication_candidate_selection_is_scoped_to_release_cities():
+    connection = _RecordingConnection()
+    repository = CatalogRepository(db=None)
+
+    assert repository.candidate_ids(
+        connection,
+        cities=("Berkeley", "Oakland"),
+        limit=25,
+        states=("verified",),
+        decision_version="v7",
+    ) == []
+
+    assert "lower(city) = any(%s::text[])" in connection.query
+    assert connection.params == (
+        None,
+        None,
+        ["berkeley", "oakland"],
+        ["berkeley", "oakland"],
+        ["verified"],
+        ["verified"],
+        "v7",
+        "v7",
+        25,
+    )
+
+
 def test_boundary_adjacent_neighborhood_uses_independent_coordinate_consensus():
     connection = _NeighborhoodConnection(
         [

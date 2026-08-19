@@ -713,6 +713,7 @@ class CatalogRepository:
         conn: psycopg.Connection,
         *,
         city: str | None = None,
+        cities: tuple[str, ...] | None = None,
         limit: int = 100,
         states: tuple[str, ...] | None = None,
         decision_version: str | None = None,
@@ -722,6 +723,7 @@ class CatalogRepository:
             select id::text
             from ingest.catalog_candidates
             where (%s::text is null or lower(city) = lower(%s::text))
+              and (%s::text[] is null or lower(city) = any(%s::text[]))
               and (%s::text[] is null or candidate_state = any(%s::text[]))
               and (%s::text is null or decision_version = %s::text)
             order by updated_at, id
@@ -730,6 +732,8 @@ class CatalogRepository:
             (
                 city,
                 city,
+                [value.casefold() for value in cities] if cities else None,
+                [value.casefold() for value in cities] if cities else None,
                 list(states) if states else None,
                 list(states) if states else None,
                 decision_version,
@@ -1389,33 +1393,6 @@ class CatalogRepository:
                 (f"verification_expired:{CATALOG_DECISION_VERSION}", ids),
             )
         return len(rows)
-
-    def reset_public_catalog(
-        self, conn: psycopg.Connection, *, minimum_verified: int
-    ) -> int:
-        """Invoke the one-time, privilege-contained legacy catalog reset."""
-        row = conn.execute(
-            """
-            select ingest.reset_legacy_public_catalog(%s, %s)
-              as legacy_rows_removed
-            """,
-            ("REPLACE_PUBLIC_CATALOG", minimum_verified),
-        ).fetchone()
-        if row is None:
-            raise RuntimeError("Catalog cutover reset returned no result")
-        conn.execute(
-            """
-            update ingest.catalog_candidates
-            set candidate_state = case
-                  when verification_expires_at > now() then 'verified'
-                  else 'needs_verification'
-                end,
-                updated_at = now()
-            where candidate_state = 'published'
-            """
-        )
-        return int(row["legacy_rows_removed"])
-
 
 def _overlay_public_field_projection(
     resolved: dict[str, Any],

@@ -1,0 +1,30 @@
+name: Pipeline bug
+description: Report an ingestion, reconciliation, publication, or dashboard defect.
+title: "[bug] "
+labels: [bug]
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Observed outcome
+      description: What happened, including affected establishment IDs when safe to share.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected outcome
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Include run IDs and timestamps. Do not paste secrets or restricted provider payloads.
+  - type: dropdown
+    id: publication
+    attributes:
+      label: Public catalog affected?
+      options: [Unknown, "No", "Yes"]
+    validations:
+      required: true

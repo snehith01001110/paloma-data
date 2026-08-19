@@ -1,4 +1,4 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import "jsr:@supabase/functions-js@2.5.0/edge-runtime.d.ts";
 import { createRemoteJWKSet, jwtVerify } from "npm:jose@6.1.0";
 
 const ISSUER = "https://token.actions.githubusercontent.com";
@@ -69,10 +69,16 @@ Deno.serve(async (req: Request) => {
       }
 
       const headers = new Headers();
-      headers.set("Content-Type", upstream.headers.get("content-type") ?? "application/zip");
+      headers.set(
+        "Content-Type",
+        upstream.headers.get("content-type") ?? "application/zip",
+      );
       headers.set("Cache-Control", "no-store");
       headers.set("X-Paloma-Source", "California-ABC");
-      headers.set("X-Paloma-Upstream", url.endsWith("WeeklyExport_CSV.zip") ? "csv" : "fixed-width");
+      headers.set(
+        "X-Paloma-Upstream",
+        url.endsWith("WeeklyExport_CSV.zip") ? "csv" : "fixed-width",
+      );
       const length = upstream.headers.get("content-length");
       if (length) headers.set("Content-Length", length);
       const modified = upstream.headers.get("last-modified");
@@ -83,7 +89,9 @@ Deno.serve(async (req: Request) => {
       // Stream exact official ABC bytes through; do not parse or transform the source here.
       return new Response(upstream.body, { status: 200, headers });
     } catch (error) {
-      failures.push(`${url}:${error instanceof Error ? error.name : "fetch_error"}`);
+      failures.push(
+        `${url}:${error instanceof Error ? error.name : "fetch_error"}`,
+      );
     }
   }
 

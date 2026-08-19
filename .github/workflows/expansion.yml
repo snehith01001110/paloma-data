@@ -1,0 +1,116 @@
+name: Controlled catalog expansion
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Expansion action
+        required: true
+        default: status
+        type: choice
+        options: [status, discover, trial, verify, reevaluate, audit, publish]
+      release_id:
+        description: Versioned bounded release
+        required: true
+        default: east-bay-pilot-v1
+        type: choice
+        options: [east-bay-pilot-v1, south-bay-pilot-v1, peninsula-pilot-v1, north-bay-pilot-v1]
+      city:
+        description: Exact city within the selected release (not used by status/publish)
+        required: false
+        default: Oakland
+        type: string
+      limit:
+        description: Candidate or API-call limit
+        required: false
+        default: '25'
+        type: string
+      confirmation:
+        description: PUBLISH_VERIFIED is required for publication
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: paloma-catalog-expansion
+  cancel-in-progress: false
+
+jobs:
+  expansion:
+    environment: catalog-expansion
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      PALOMA_COUNTRIES: US
+      PALOMA_REGIONS: CA
+      PALOMA_CITIES: San Francisco,Oakland,Berkeley,San Jose,San Mateo,Palo Alto,Mountain View,Sunnyvale,Santa Clara,Redwood City,Napa,Sonoma
+      PALOMA_OVERTURE_BBOX: -123.2,36.8,-121.1,38.9
+      FSQ_CATALOG_URI: ${{ vars.FSQ_CATALOG_URI }}
+      FSQ_CATALOG_TOKEN: ${{ secrets.FSQ_CATALOG_TOKEN }}
+      FSQ_PLACES_TABLE: ${{ vars.FSQ_PLACES_TABLE }}
+      FSQ_CATALOG_WAREHOUSE: ${{ vars.FSQ_CATALOG_WAREHOUSE }}
+      FSQ_PLACES_API_KEY: ${{ secrets.FSQ_PLACES_API_KEY }}
+      FSQ_SERVER_STORAGE_LICENSED: ${{ vars.FSQ_SERVER_STORAGE_LICENSED }}
+      CATALOG_PROVIDER_LEASE_DAYS: '45'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup-data-worker
+      - name: Validate release scope and execute action
+        shell: bash
+        env:
+          ACTION: ${{ inputs.action }}
+          RELEASE_ID: ${{ inputs.release_id }}
+          CITY: ${{ inputs.city }}
+          LIMIT: ${{ inputs.limit }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$LIMIT" =~ ^[1-9][0-9]*$ ]] || (( LIMIT > 2000 )); then
+            echo "limit must be an integer from 1 through 2000" >&2
+            exit 2
+          fi
+          if [[ "$ACTION" != "status" && "$ACTION" != "publish" ]]; then
+            RELEASE_ID="$RELEASE_ID" CITY="$CITY" python - <<'PY'
+          import os
+          from paloma_data.expansion import load_expansion_manifest
+
+          release = load_expansion_manifest().release(os.environ["RELEASE_ID"])
+          if os.environ["CITY"].casefold() not in {city.casefold() for city in release.cities}:
+              raise SystemExit(
+                  f"{os.environ['CITY']} is outside {release.release_id}: "
+                  + ", ".join(release.cities)
+              )
+          PY
+          fi
+          case "$ACTION" in
+            status)
+              paloma-data expansion-status --release-id "$RELEASE_ID"
+              ;;
+            discover)
+              paloma-data catalog-discover --city "$CITY" --limit "$LIMIT"
+              ;;
+            trial)
+              paloma-data catalog-trial --city "$CITY" --limit "$LIMIT"
+              ;;
+            verify)
+              paloma-data catalog-verify --city "$CITY" --limit "$LIMIT"
+              ;;
+            reevaluate)
+              paloma-data catalog-reevaluate --city "$CITY" --limit "$LIMIT"
+              ;;
+            audit)
+              paloma-data catalog-audit --city "$CITY" --limit "$LIMIT"
+              ;;
+            publish)
+              test "$CONFIRMATION" = "PUBLISH_VERIFIED"
+              paloma-data expansion-status --release-id "$RELEASE_ID" --require-ready
+              paloma-data catalog-publish \
+                --release-id "$RELEASE_ID" \
+                --confirm "$CONFIRMATION" \
+                --limit "$LIMIT"
+              ;;
+          esac
