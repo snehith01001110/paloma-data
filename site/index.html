@@ -127,7 +127,7 @@
       <article class="card metric good"><strong id="safeLive">—</strong><span>Live establishments</span><small>Verified and safe</small></article>
       <article class="card metric"><strong id="phoneCount">—</strong><span>With phone</span><small id="phoneMeta">Durable coverage</small></article>
       <article class="card metric"><strong id="websiteCount">—</strong><span>With website</span><small id="websiteMeta">Durable coverage</small></article>
-      <article class="card metric"><strong id="hoursCount">—</strong><span>With hours</span><small id="hoursMeta">Durable coverage</small></article>
+      <article class="card metric"><strong id="neighborhoodCount">—</strong><span>With neighborhood</span><small id="neighborhoodMeta">Durable coverage</small></article>
     </section>
 
     <div class="section-head"><h2>Published establishments</h2><p>Only rows currently safe for the app</p></div>
@@ -196,7 +196,7 @@
       setText('expiryMeta', until(overall.next_expiry));
       setText('safeLive', fmt(overall.safe_live));
       const denominator = num(coverage.denominator);
-      for (const [field, count] of [['phone', coverage.phone], ['website', coverage.website], ['hours', coverage.hours]]) {
+      for (const [field, count] of [['phone', coverage.phone], ['website', coverage.website], ['neighborhood', coverage.neighborhood]]) {
         setText(`${field}Count`, fmt(count));
         setText(`${field}Meta`, `of ${fmt(denominator)} live`);
       }
