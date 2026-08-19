@@ -269,6 +269,80 @@ class CatalogPipeline:
             conn.commit()
         return dict(counters)
 
+    def refresh_candidate(self, candidate_id: str) -> dict[str, Any]:
+        """Re-evaluate one identity and refresh it only if it was already materialized."""
+        with self.db.connection() as conn:
+            conn.execute(
+                "select pg_advisory_xact_lock(hashtext('paloma_candidate:' || %s))",
+                (candidate_id,),
+            )
+            candidate = conn.execute(
+                """
+                select candidate_state
+                from ingest.catalog_candidates
+                where id = %s::uuid
+                for update
+                """,
+                (candidate_id,),
+            ).fetchone()
+            if candidate is None:
+                raise ValueError(f"Unknown catalog candidate: {candidate_id}")
+
+            publication = self.repo.materialized_publication(conn, candidate_id)
+            decision = self._evaluate_candidate(conn, candidate_id)
+            materialized = False
+            if decision.state == "verified" and publication is not None:
+                materialized = self.repo.materialize(conn, candidate_id)
+                if not materialized:
+                    conn.execute(
+                        """
+                        update public.establishments
+                        set publication_state = 'suppressed',
+                            publication_reason = %s,
+                            publication_evaluated_at = now(),
+                            updated_at = now()
+                        where catalog_candidate_id = %s::uuid
+                          and publication_state = 'published'
+                        """,
+                        (
+                            f"materialization_guard_failed:{CATALOG_DECISION_VERSION}",
+                            candidate_id,
+                        ),
+                    )
+
+            final = conn.execute(
+                """
+                select c.candidate_state,
+                       e.publication_state
+                from ingest.catalog_candidates c
+                left join public.establishments e on e.catalog_candidate_id = c.id
+                where c.id = %s::uuid
+                """,
+                (candidate_id,),
+            ).fetchone()
+            conn.commit()
+
+        publication_before = publication["publication_state"] if publication else None
+        publication_after = final["publication_state"] if final else None
+        if materialized:
+            publication_action = (
+                "refreshed" if publication_before == "published" else "republished"
+            )
+        elif publication_before == "published" and publication_after == "suppressed":
+            publication_action = "suppressed"
+        else:
+            publication_action = "unchanged"
+        return {
+            "candidate_id": candidate_id,
+            "candidate_state": final["candidate_state"] if final else decision.state,
+            "decision_reason": decision.reason,
+            "field_coverage": _field_coverage(decision),
+            "publication_before": publication_before,
+            "publication_after": publication_after,
+            "publication_action": publication_action,
+            "publication_mutated": publication_action != "unchanged",
+        }
+
     def publish(self, *, limit: int) -> dict[str, int]:
         counters = {"considered": 0, "published": 0, "skipped": 0, "expired_withdrawn": 0}
         with self.db.connection() as conn:

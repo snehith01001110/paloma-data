@@ -126,6 +126,66 @@ class _VerificationDatabase(_Database):
         self.conn = _VerificationConnection()
 
 
+class _RowCursor:
+    def __init__(self, row):
+        self.row = row
+
+    def fetchone(self):
+        return self.row
+
+
+class _RefreshConnection(_Connection):
+    def execute(self, query, _params=None):
+        if "select candidate_state" in query:
+            return _RowCursor({"candidate_state": "published"})
+        if "select c.candidate_state" in query:
+            return _RowCursor(
+                {"candidate_state": "published", "publication_state": "published"}
+            )
+        return _RowCursor(None)
+
+
+class _RefreshDatabase(_Database):
+    def __init__(self):
+        self.conn = _RefreshConnection()
+
+
+class _UnmaterializedRefreshConnection(_RefreshConnection):
+    def execute(self, query, params=None):
+        if "select c.candidate_state" in query:
+            return _RowCursor(
+                {"candidate_state": "verified", "publication_state": None}
+            )
+        return super().execute(query, params)
+
+
+class _UnmaterializedRefreshDatabase(_Database):
+    def __init__(self):
+        self.conn = _UnmaterializedRefreshConnection()
+
+
+class _RefreshRepository:
+    def __init__(self):
+        self.materialized = []
+
+    def materialized_publication(self, _, candidate_id):
+        assert candidate_id == "candidate-1"
+        return {"establishment_id": "candidate-1", "publication_state": "published"}
+
+    def materialize(self, _, candidate_id):
+        self.materialized.append(candidate_id)
+        return True
+
+
+class _UnmaterializedRefreshRepository(_RefreshRepository):
+    def materialized_publication(self, _, candidate_id):
+        assert candidate_id == "candidate-1"
+        return None
+
+    def materialize(self, *_):
+        raise AssertionError("refresh must not publish an unmaterialized candidate")
+
+
 def _decision(state: str) -> CatalogDecision:
     return CatalogDecision(
         state=state,
@@ -167,6 +227,33 @@ def test_publish_materializes_only_after_current_decision_passes():
     assert repository.requested_version == CATALOG_DECISION_VERSION
     assert repository.materialized == ["candidate-1"]
     assert result["published"] == 1
+
+
+def test_single_candidate_refresh_updates_an_existing_public_identity():
+    database = _RefreshDatabase()
+    pipeline = CatalogPipeline(database)
+    repository = _RefreshRepository()
+    pipeline.repo = repository
+    pipeline._evaluate_candidate = lambda *_: _decision("verified")
+
+    result = pipeline.refresh_candidate("candidate-1")
+
+    assert repository.materialized == ["candidate-1"]
+    assert result["candidate_state"] == "published"
+    assert result["publication_action"] == "refreshed"
+    assert database.conn.commits == 1
+
+
+def test_single_candidate_refresh_never_publishes_a_new_identity():
+    pipeline = CatalogPipeline(_UnmaterializedRefreshDatabase())
+    pipeline.repo = _UnmaterializedRefreshRepository()
+    pipeline._evaluate_candidate = lambda *_: _decision("verified")
+
+    result = pipeline.refresh_candidate("candidate-1")
+
+    assert result["candidate_state"] == "verified"
+    assert result["publication_after"] is None
+    assert result["publication_action"] == "unchanged"
 
 
 def test_exact_address_name_conflict_demotes_an_otherwise_verified_candidate(

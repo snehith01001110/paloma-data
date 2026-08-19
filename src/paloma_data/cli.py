@@ -22,6 +22,16 @@ from paloma_data.catalog_repository import (
 from paloma_data.config import Settings
 from paloma_data.db import Database
 from paloma_data.geocoding import AddressGeocoder
+from paloma_data.jobs import (
+    JobRequest,
+    PipelineJobHandler,
+    PipelineQueue,
+    PipelineWorker,
+    catalog_refresh_requests,
+    default_requester,
+    default_worker_id,
+    utc_now_iso,
+)
 from paloma_data.neighborhoods import DataSFNeighborhoodAdapter, NeighborhoodStager
 from paloma_data.provider_links import ProviderLinkSync
 from paloma_data.staging import SourceStager
@@ -329,6 +339,196 @@ def provider_links_sync(
     with YelpPlacesAPI(settings.yelp_api_key) as api:
         result = ProviderLinkSync(db).run(api, city=city, limit=limit)
     typer.echo(json.dumps(result, indent=2, sort_keys=True))
+
+
+@app.command("pipeline-enqueue-catalog")
+def pipeline_enqueue_catalog(
+    city: str | None = typer.Option(None, help="Optional exact city guardrail"),
+    limit: int = typer.Option(50_000, min=1, max=50_000),
+    include_unpublished: bool = typer.Option(
+        False,
+        help="Queue private candidates too; refresh still cannot publish a new identity",
+    ),
+    include_suppressed: bool = typer.Option(
+        False,
+        help="Also refresh previously materialized rows that are currently suppressed",
+    ),
+    max_attempts: int = typer.Option(5, min=1, max=25),
+) -> None:
+    """Queue one idempotent refresh for each selected catalog identity."""
+    _, db, _, _ = _components()
+    repository = CatalogRepository(db)
+    with db.connection() as conn:
+        if include_unpublished:
+            candidate_ids = repository.candidate_ids(conn, city=city, limit=limit)
+        else:
+            candidate_ids = repository.materialized_candidate_ids(
+                conn,
+                city=city,
+                limit=limit,
+                publication_states=("published", "suppressed")
+                if include_suppressed
+                else ("published",),
+            )
+    if not candidate_ids:
+        typer.echo(
+            json.dumps(
+                {
+                    "run_id": None,
+                    "scope": {"city": city, "limit": limit},
+                    "requested": 0,
+                    "created": 0,
+                    "deduplicated": 0,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return
+
+    queue = PipelineQueue(db)
+    run_id = queue.create_run(
+        "catalog_refresh",
+        requested_by=default_requester(),
+        metadata={
+            "city": city,
+            "limit": limit,
+            "include_unpublished": include_unpublished,
+            "include_suppressed": include_suppressed,
+            "decision_version": CATALOG_DECISION_VERSION,
+            "enqueued_at": utc_now_iso(),
+        },
+    )
+    counts = queue.enqueue_many(
+        run_id,
+        catalog_refresh_requests(
+            candidate_ids,
+            decision_version=CATALOG_DECISION_VERSION,
+            max_attempts=max_attempts,
+        ),
+    )
+    typer.echo(
+        json.dumps(
+            {"run_id": run_id, "scope": {"city": city, "limit": limit}, **counts},
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
+@app.command("pipeline-enqueue-sweep")
+def pipeline_enqueue_sweep(
+    max_attempts: int = typer.Option(5, min=1, max=25),
+) -> None:
+    """Queue the fail-closed verification-expiry sweep."""
+    _, db, _, _ = _components()
+    queue = PipelineQueue(db)
+    run_id = queue.create_run(
+        "catalog_sweep",
+        requested_by=default_requester(),
+        metadata={"enqueued_at": utc_now_iso()},
+    )
+    counts = queue.enqueue_many(
+        run_id,
+        [
+            JobRequest(
+                job_type="catalog_sweep",
+                dedupe_key="catalog_sweep",
+                payload={},
+                max_attempts=max_attempts,
+            )
+        ],
+    )
+    typer.echo(json.dumps({"run_id": run_id, **counts}, indent=2, sort_keys=True))
+
+
+@app.command("pipeline-enqueue-provider-links")
+def pipeline_enqueue_provider_links(
+    city: str | None = typer.Option(None, help="Optional exact city guardrail"),
+    limit: int = typer.Option(250, min=1, max=500),
+    max_attempts: int = typer.Option(5, min=1, max=25),
+) -> None:
+    """Queue a bounded Yelp durable-ID sync without storing provider attributes."""
+    settings, db, _, _ = _components()
+    if not settings.yelp_api_key:
+        raise typer.BadParameter("YELP_API_KEY is required")
+    queue = PipelineQueue(db)
+    run_id = queue.create_run(
+        "provider_links_sync",
+        requested_by=default_requester(),
+        metadata={"city": city, "limit": limit, "enqueued_at": utc_now_iso()},
+    )
+    counts = queue.enqueue_many(
+        run_id,
+        [
+            JobRequest(
+                job_type="provider_links_sync",
+                dedupe_key=f"yelp:{city or 'all'}",
+                payload={"city": city, "limit": limit},
+                max_attempts=max_attempts,
+            )
+        ],
+    )
+    typer.echo(json.dumps({"run_id": run_id, **counts}, indent=2, sort_keys=True))
+
+
+@app.command("pipeline-worker")
+def pipeline_worker(
+    drain: bool = typer.Option(
+        False,
+        "--drain",
+        help="Exit when no messages are immediately visible",
+    ),
+    max_jobs: int | None = typer.Option(None, min=1),
+    batch_size: int = typer.Option(1, min=1, max=100),
+    visibility_seconds: int = typer.Option(900, min=30, max=7_200),
+    poll_seconds: float = typer.Option(2.0, min=0.0, max=60.0),
+    idle_timeout_seconds: float | None = typer.Option(
+        None,
+        min=1.0,
+        help="Wait this long for delayed work before exiting",
+    ),
+    worker_id: str | None = typer.Option(None, help="Stable runtime instance identifier"),
+    fail_on_error: bool = typer.Option(
+        False,
+        help="Exit non-zero when a job remains retrying or is dead-lettered",
+    ),
+) -> None:
+    """Consume reviewed background job types from the private durable queue."""
+    settings, db, _, _ = _components()
+    queue = PipelineQueue(db)
+    worker = PipelineWorker(
+        queue,
+        PipelineJobHandler(settings, db),
+        worker_id=worker_id or default_worker_id(),
+        visibility_seconds=visibility_seconds,
+        batch_size=batch_size,
+        poll_seconds=poll_seconds,
+    )
+    result = worker.run(
+        drain=drain,
+        max_jobs=max_jobs,
+        idle_timeout_seconds=idle_timeout_seconds,
+    )
+    typer.echo(json.dumps(result, indent=2, sort_keys=True, default=str))
+    if fail_on_error and (result["unresolved_retries"] or result["dead"]):
+        raise typer.Exit(code=1)
+
+
+@app.command("pipeline-status")
+def pipeline_status(
+    recent_runs: int = typer.Option(20, min=1, max=100),
+) -> None:
+    """Report queue latency, logical runs, and recent terminal failures."""
+    _, db, _, _ = _components()
+    typer.echo(
+        json.dumps(
+            PipelineQueue(db).status(recent_runs=recent_runs),
+            indent=2,
+            sort_keys=True,
+            default=str,
+        )
+    )
 
 
 @app.command("catalog-status")

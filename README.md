@@ -222,6 +222,19 @@ The workflow has three independent paths:
 
 No GitHub push runs ingestion. Deployment and data mutation are deliberately separate.
 
+## Durable worker control plane
+
+Per-candidate maintenance runs through the private `paloma_pipeline` Supabase Queue. Logical runs,
+active-job deduplication, worker leases, bounded retries, attempt audits, and terminal dead letters
+live in `ingest.pipeline_*`. Queue functions are available only to the scoped `paloma_ingest`
+database role; clients cannot enqueue work through the Data API.
+
+GitHub Actions initially drains the same queue used by a managed container worker. This preserves
+the current recovery path while allowing compute to move without changing job semantics. A queued
+candidate refresh may update or suppress an already materialized establishment but cannot publish
+a new identity. See [production pipeline operations](docs/production-pipeline.md) for deployment,
+cutover, alerting, and capacity guidance.
+
 ## Commands
 
 ```bash
@@ -239,6 +252,9 @@ paloma-data catalog-review-resolve --review-id 123 --resolution not_same_or_stal
   --confirm RESOLVE_MATCH_REVIEW
 paloma-data catalog-publish --confirm PUBLISH_VERIFIED
 paloma-data provider-links-sync --provider yelp --city "San Francisco" --limit 25
+paloma-data pipeline-enqueue-catalog --city "San Francisco" --limit 5000
+paloma-data pipeline-worker --drain --max-jobs 5000 --fail-on-error
+paloma-data pipeline-status
 paloma-data catalog-sweep
 paloma-data catalog-status
 paloma-data sync-neighborhoods
@@ -249,6 +265,7 @@ paloma-data sync-neighborhoods
 See `.env.example`. Required server-side values are:
 
 - `SUPABASE_DB_URL` or `DATABASE_URL`;
+- optional `PALOMA_PIPELINE_REQUESTER` and `PALOMA_WORKER_ID` audit labels;
 - FSQ Places Portal Iceberg connection values for FSQ OS discovery;
 - optional `FSQ_PLACES_API_KEY` for a bounded, non-caching trial;
 - `FSQ_PLACES_API_KEY` as a Supabase Edge Function secret for transient consumer detail lookups;
@@ -267,10 +284,11 @@ No database password belongs in GitHub or the iOS app.
 
 ## Database security
 
-New v2 tables enable RLS, revoke `anon`/`authenticated` privileges, and grant one explicit
-`paloma_ingest` policy. Existing legacy ingest tables predate v2 and should receive the same RLS
-hardening in a separately approved migration after confirming every operational role; enabling RLS
-without the ingest policy would stop scheduled jobs.
+New v2 and pipeline-control tables enable RLS, revoke client privileges, and grant one explicit
+`paloma_ingest` policy. The pgmq tables also have RLS enabled with no client policy; workers use
+privilege-contained functions for one fixed private queue. Existing legacy ingest tables predate v2
+and should receive the same RLS hardening in a separately approved migration after confirming every
+operational role; enabling RLS without the ingest policy would stop scheduled jobs.
 
 ## Development
 
