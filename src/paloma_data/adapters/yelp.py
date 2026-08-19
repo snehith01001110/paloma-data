@@ -83,6 +83,18 @@ class YelpMatchSelection:
     confidence: float | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class YelpDetailsAudit:
+    """Non-persistent projection of a Yelp business-details response."""
+
+    identity_compatible: bool
+    identity_reason: str
+    currently_operating: bool
+    has_phone: bool
+    has_hours: bool
+    has_price: bool
+
+
 class YelpAPIError(RuntimeError):
     """A bounded error classification that never includes Yelp response content."""
 
@@ -156,6 +168,34 @@ class YelpPlacesAPI:
         if not isinstance(payload, dict):
             raise YelpAPIError("invalid_payload")
         return select_yelp_business_match(payload, expected)
+
+    def audit_details(
+        self,
+        provider_place_id: str,
+        expected: YelpMatchInput,
+    ) -> YelpDetailsAudit:
+        """Audit live identity/status/coverage without returning provider attributes."""
+        if not YELP_BUSINESS_ID.fullmatch(provider_place_id):
+            raise YelpAPIError("invalid_request")
+        response = self._get(f"/businesses/{provider_place_id}", params={})
+        _raise_for_status(response)
+        if len(response.content) > YELP_RESPONSE_LIMIT_BYTES:
+            raise YelpAPIError("invalid_payload")
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise YelpAPIError("invalid_payload") from exc
+        if not isinstance(payload, dict):
+            raise YelpAPIError("invalid_payload")
+        accepted, reason, _, _ = _validate_candidate(payload, expected)
+        return YelpDetailsAudit(
+            identity_compatible=accepted,
+            identity_reason=reason,
+            currently_operating=payload.get("is_closed") is False,
+            has_phone=bool(_text(payload.get("phone") or payload.get("display_phone"))),
+            has_hours=isinstance(payload.get("hours"), list) and bool(payload["hours"]),
+            has_price=bool(_text(payload.get("price"))),
+        )
 
     def _get(self, path: str, *, params: dict[str, Any]) -> httpx.Response:
         retryable_statuses = {429, 500, 502, 503, 504}

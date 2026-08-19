@@ -24,6 +24,26 @@ class _RecordingConnection:
         return _EmptyCursor()
 
 
+class _Cursor:
+    def __init__(self, row):
+        self.row = row
+
+    def fetchone(self):
+        return self.row
+
+
+class _NeighborhoodConnection:
+    def __init__(self, rows):
+        self.rows = iter(rows)
+        self.queries = []
+        self.params = []
+
+    def execute(self, query, params):
+        self.queries.append(query)
+        self.params.append(params)
+        return _Cursor(next(self.rows))
+
+
 def test_potential_sources_only_queries_current_eligible_evidence():
     connection = _RecordingConnection()
     repository = CatalogRepository(db=None)
@@ -123,3 +143,57 @@ def test_materialized_candidate_selection_is_scoped_to_publication_state():
         ["published", "suppressed"],
         200,
     )
+
+
+def test_boundary_adjacent_neighborhood_uses_independent_coordinate_consensus():
+    connection = _NeighborhoodConnection(
+        [
+            None,
+            {
+                "name": "Inner Sunset",
+                "source": "datasf_neighborhoods:linked_coordinate_consensus",
+                "authority": 0.96,
+                "independent_votes": 2,
+                "origin_keys": ["ca_abc", "overture"],
+            },
+        ]
+    )
+    repository = CatalogRepository(db=None)
+    resolved = {
+        "city": "San Francisco",
+        "latitude": 37.766,
+        "longitude": -122.466,
+        "field_sources": {},
+        "field_confidences": {},
+    }
+
+    assert repository._attach_civic_neighborhood(
+        connection, "candidate-id", resolved
+    )
+
+    assert resolved["neighborhood"] == "Inner Sunset"
+    assert (
+        resolved["field_sources"]["neighborhood"]
+        == "datasf_neighborhoods:linked_coordinate_consensus"
+    )
+    assert resolved["field_confidences"]["neighborhood"] == 0.96
+    consensus_query = connection.queries[1]
+    assert "having count(distinct name) = 1" in consensus_query
+    assert "independent_votes >= 2" in consensus_query
+    assert "independent_votes > coalesce" in consensus_query
+    assert connection.params[1][0:2] == ("San Francisco", "candidate-id")
+
+
+def test_neighborhood_stays_blank_when_direct_and_consensus_resolution_fail():
+    connection = _NeighborhoodConnection([None, None])
+    repository = CatalogRepository(db=None)
+    resolved = {
+        "city": "San Francisco",
+        "latitude": 37.80,
+        "longitude": -122.41,
+    }
+
+    assert not repository._attach_civic_neighborhood(
+        connection, "candidate-id", resolved
+    )
+    assert "neighborhood" not in resolved

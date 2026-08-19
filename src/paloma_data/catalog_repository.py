@@ -645,7 +645,7 @@ class CatalogRepository:
             else {}
         )
         if snapshot:
-            self._attach_civic_neighborhood(conn, snapshot)
+            self._attach_civic_neighborhood(conn, candidate_id, snapshot)
         conn.execute(
             """
             insert into ingest.catalog_evaluations (
@@ -876,8 +876,94 @@ class CatalogRepository:
         ).fetchone()
         return dict(row) if row else None
 
+    def linked_source_neighborhood_consensus(
+        self,
+        conn: psycopg.Connection,
+        *,
+        candidate_id: str,
+        city: str,
+    ) -> dict[str, Any] | None:
+        """Resolve boundary-adjacent points from independent linked coordinates.
+
+        The canonical point is deliberately left unlabeled when it falls within the boundary
+        guard. In that case, two independent upstream coordinate lineages may resolve the
+        ambiguity. An origin that lands in multiple neighborhoods is discarded, and a tied
+        result is never selected.
+        """
+        row = conn.execute(
+            """
+            with source_votes as (
+              select csl.source, csl.source_record_id,
+                     coalesce(nullif(csl.origin_keys, '{}'), array[csl.source]) as origin_keys,
+                     neighborhood.name, neighborhood.source as boundary_source,
+                     neighborhood.authority::float
+              from ingest.candidate_source_links csl
+              join ingest.source_records sr
+                on sr.source = csl.source
+               and sr.source_record_id = csl.source_record_id
+              join lateral (
+                select nb.name, nb.source, nb.authority
+                from ingest.neighborhood_boundaries nb
+                where nb.retired_at is null
+                  and lower(nb.jurisdiction) = lower(%s)
+                  and ST_Covers(
+                    nb.boundary,
+                    ST_SetSRID(ST_MakePoint(sr.longitude, sr.latitude), 4326)
+                  )
+                order by nb.authority desc, ST_Area(nb.boundary::geography),
+                         nb.source, nb.source_record_id
+                limit 1
+              ) neighborhood on true
+              where csl.candidate_id = %s::uuid
+                and sr.retired_at is null
+                and sr.latitude is not null
+                and sr.longitude is not null
+                and not (sr.quality_flags && %s::text[])
+            ), origin_votes as (
+              select distinct unnest(origin_keys) as origin_key,
+                     name, boundary_source, authority
+              from source_votes
+            ), consistent_origins as (
+              select origin_key, min(name) as name,
+                     min(boundary_source) as boundary_source,
+                     min(authority)::float as authority
+              from origin_votes
+              group by origin_key
+              having count(distinct name) = 1
+            ), tallies as (
+              select name, min(boundary_source) as boundary_source,
+                     min(authority)::float as authority,
+                     count(*)::int as independent_votes,
+                     array_agg(origin_key order by origin_key) as origin_keys
+              from consistent_origins
+              group by name
+            ), winner as (
+              select *
+              from tallies
+              order by independent_votes desc, name
+              limit 1
+            )
+            select name,
+                   boundary_source || ':linked_coordinate_consensus' as source,
+                   least(authority, 0.96)::float as authority,
+                   independent_votes,
+                   origin_keys
+            from winner
+            where independent_votes >= 2
+              and independent_votes > coalesce(
+                (select max(t.independent_votes) from tallies t where t.name <> winner.name),
+                0
+              )
+            """,
+            (city, candidate_id, sorted(POTENTIAL_SOURCE_EXCLUDED_FLAGS)),
+        ).fetchone()
+        return dict(row) if row else None
+
     def _attach_civic_neighborhood(
-        self, conn: psycopg.Connection, resolved: dict[str, Any]
+        self,
+        conn: psycopg.Connection,
+        candidate_id: str,
+        resolved: dict[str, Any],
     ) -> bool:
         if resolved.get("neighborhood"):
             return False
@@ -887,6 +973,12 @@ class CatalogRepository:
             latitude=float(resolved["latitude"]),
             longitude=float(resolved["longitude"]),
         )
+        if not neighborhood:
+            neighborhood = self.linked_source_neighborhood_consensus(
+                conn,
+                candidate_id=candidate_id,
+                city=str(resolved["city"]),
+            )
         if not neighborhood:
             return False
         field_sources = dict(resolved.get("field_sources") or {})
@@ -916,7 +1008,7 @@ class CatalogRepository:
         resolved = dict(candidate["resolved_snapshot"] or {})
         field_sources = dict(resolved.get("field_sources") or {})
         field_confidences = dict(resolved.get("field_confidences") or {})
-        if self._attach_civic_neighborhood(conn, resolved):
+        if self._attach_civic_neighborhood(conn, candidate_id, resolved):
             field_sources = dict(resolved.get("field_sources") or {})
             field_confidences = dict(resolved.get("field_confidences") or {})
             conn.execute(

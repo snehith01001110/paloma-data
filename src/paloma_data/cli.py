@@ -33,7 +33,7 @@ from paloma_data.jobs import (
     utc_now_iso,
 )
 from paloma_data.neighborhoods import DataSFNeighborhoodAdapter, NeighborhoodStager
-from paloma_data.provider_links import ProviderLinkSync
+from paloma_data.provider_links import ProviderLinkSync, YelpProviderAudit
 from paloma_data.staging import SourceStager
 
 
@@ -338,6 +338,23 @@ def provider_links_sync(
         raise typer.BadParameter("YELP_API_KEY is required")
     with YelpPlacesAPI(settings.yelp_api_key) as api:
         result = ProviderLinkSync(db).run(api, city=city, limit=limit)
+    typer.echo(json.dumps(result, indent=2, sort_keys=True))
+
+
+@app.command("provider-audit")
+def provider_audit(
+    provider: str = typer.Option("yelp", help="Provider to audit"),
+    city: str | None = typer.Option(None, help="Optional exact city guardrail"),
+    limit: int = typer.Option(100, min=1, max=500, help="Maximum calls per audit section"),
+) -> None:
+    """Audit live Yelp coverage and rejected matches without retaining provider fields."""
+    settings, db, _, _ = _components()
+    if provider != "yelp":
+        raise typer.BadParameter("yelp is the only provider audit currently implemented")
+    if not settings.yelp_api_key:
+        raise typer.BadParameter("YELP_API_KEY is required")
+    with YelpPlacesAPI(settings.yelp_api_key) as api:
+        result = YelpProviderAudit(db).run(api, city=city, limit=limit)
     typer.echo(json.dumps(result, indent=2, sort_keys=True))
 
 

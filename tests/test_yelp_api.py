@@ -128,3 +128,30 @@ def test_client_classifies_provider_failures_without_response_details():
 
     assert "secret-key" not in str(error.value)
     assert "secret provider detail" not in str(error.value)
+
+
+def test_details_audit_returns_only_identity_status_and_attribute_presence():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v3/businesses/WavvLdfdP6g8aZTtbBQHTw"
+        return httpx.Response(
+            200,
+            json={**_business(), "hours": [{"open": []}], "price": "$$"},
+            request=request,
+        )
+
+    client = httpx.Client(
+        base_url="https://api.yelp.com/v3",
+        transport=httpx.MockTransport(handler),
+    )
+
+    audit = YelpPlacesAPI("secret-key", client=client).audit_details(
+        "WavvLdfdP6g8aZTtbBQHTw", EXPECTED
+    )
+
+    assert audit.identity_compatible
+    assert audit.currently_operating
+    assert audit.has_phone
+    assert audit.has_hours
+    assert audit.has_price
+    assert not hasattr(audit, "phone")
+    assert not hasattr(audit, "hours")

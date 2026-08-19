@@ -8,7 +8,7 @@ on:
         required: true
         default: status
         type: choice
-        options: [status, audit, resolve-review, stage, neighborhoods, discover, trial, trial-verified, verify, reevaluate, publish, provider-links, queue-refresh, queue-work, queue-status, deploy-worker, cutover]
+        options: [status, audit, resolve-review, stage, neighborhoods, discover, trial, trial-verified, verify, reevaluate, publish, provider-links, provider-audit, queue-refresh, queue-work, queue-status, deploy-worker, cutover]
       source:
         description: Source for stage
         required: false
@@ -236,6 +236,12 @@ jobs:
               ;;
             provider-links)
               paloma-data provider-links-sync \
+                --provider yelp \
+                --city "$CITY" \
+                --limit "$LIMIT"
+              ;;
+            provider-audit)
+              paloma-data provider-audit \
                 --provider yelp \
                 --city "$CITY" \
                 --limit "$LIMIT"
