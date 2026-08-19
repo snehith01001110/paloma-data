@@ -99,13 +99,13 @@ reconciliation.
 
 ## Scheduling during cutover
 
-While catalog expansion is paused, the checked-in GitHub workflow refreshes durable sources
-monthly and performs this sequence:
+While catalog expansion is paused, the checked-in GitHub workflow refreshes regulatory evidence
+twice weekly, refreshes the larger durable open-source snapshots monthly, and performs this sequence:
 
 1. Refresh specifically licensed verification evidence only for the existing materialized cohort
    when configured.
-2. Stage ABC, DataSF, FSQ OS when configured, Overture, Wikidata, and civic boundaries without
-   discovering or publishing new establishments.
+2. Stage ABC and DataSF twice weekly; stage FSQ OS when configured, Overture, Wikidata, and civic
+   boundaries monthly without discovering or publishing new establishments.
 3. Append rights-approved observations, resolve the existing cohort, and report field coverage.
 4. Queue published/suppressed cohort refreshes and a bounded provider-link sync.
 5. Leave scheduled publication disabled. A separate daily action queues the expiry sweep, and the

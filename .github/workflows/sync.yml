@@ -42,6 +42,8 @@ on:
         type: choice
         options: [not_same_or_stale, same_place]
   schedule:
+    # High-risk regulatory status must remain inside the seven-day freshness contract.
+    - cron: '30 14 * * 1,4'
     # Durable/open sources change slowly. Refresh monthly without discovering or publishing venues.
     - cron: '30 14 1 * *'
     # Queue the fail-closed lease sweep shortly before the daily managed worker runs.
@@ -135,6 +137,15 @@ jobs:
           else
             echo "Yelp is not configured; proactive durable-ID sync skipped"
           fi
+          paloma-data field-coverage
+
+      - name: Twice-weekly regulatory reconciliation
+        if: github.event_name == 'schedule' && github.event.schedule == '30 14 * * 1,4'
+        shell: bash
+        run: |
+          paloma-data sync-government
+          paloma-data resolve-fields
+          paloma-data pipeline-enqueue-catalog --include-suppressed --limit 50000
           paloma-data field-coverage
 
       - name: Daily safety sweep enqueue

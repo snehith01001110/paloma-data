@@ -28,5 +28,6 @@ stacking platform retries on top would make incident timing and provider usage h
 about. Multiple task executions are still safe because pgmq visibility leases and active-job
 deduplication coordinate them.
 
-GitHub queues monthly refresh work and a daily safety sweep. Cloud Run owns scheduled draining;
+GitHub queues twice-weekly regulatory work, monthly open-source work, and a daily safety sweep.
+Cloud Run owns scheduled draining;
 retain GitHub's manual `queue-work` action for recovery.

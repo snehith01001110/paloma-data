@@ -30,7 +30,8 @@ state is a projection, not overwritten history.
 
 ## Refresh and expansion gates
 
-Durable source snapshots run monthly; user/merchant corrections and incident refreshes are
-on-demand. The managed queue worker runs every 12 hours and scales to zero. Expansion remains disabled until
+Regulatory evidence refreshes twice weekly; larger durable source snapshots run monthly;
+user/merchant corrections and incident refreshes are on-demand. The managed queue worker runs
+every 12 hours and scales to zero. Expansion remains disabled until
 all pending conflict and high-risk review items for the published cohort are resolved, coverage is
 accepted explicitly, contribution terms are approved, and scheduled runs are healthy.
