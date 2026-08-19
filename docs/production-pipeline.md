@@ -99,12 +99,13 @@ reconciliation.
 
 ## Scheduling during cutover
 
-The checked-in GitHub workflow currently performs this sequence weekly:
+While catalog expansion is paused, the checked-in GitHub workflow performs this sequence weekly:
 
-1. Refresh specifically licensed verification evidence when configured.
-2. Queue candidate refreshes, the expiry sweep, and a bounded provider-link sync.
+1. Refresh specifically licensed verification evidence only for the existing materialized cohort
+   when configured.
+2. Queue published/suppressed cohort refreshes, the expiry sweep, and a bounded provider-link sync.
 3. Drain the queue with the same production worker command.
-4. Optionally publish newly verified candidates through the explicit publication gate.
+4. Leave scheduled publication disabled.
 5. Print queue status for the run log.
 
 Keep that path enabled until the managed worker has completed at least two clean weekly cycles.

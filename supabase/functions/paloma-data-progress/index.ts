@@ -712,6 +712,7 @@ async function v2Payload(sql: Sql, runtimeApplied: boolean) {
     };
   });
   const runtimeSummary = runtimeRows[0] ?? {};
+  const detailReady = number(runtimeSummary.detail_ready);
   const providerErrors = providers.reduce((sum, row) => sum + row.errors, 0);
   const sources = sourceRows.map((row) => ({
     source: String(row.source),
@@ -753,6 +754,7 @@ async function v2Payload(sql: Sql, runtimeApplied: boolean) {
         requiredReady,
         safeLive,
         providerErrors,
+        detailReady,
         work: workRows[0],
       }),
     },
@@ -796,7 +798,7 @@ async function v2Payload(sql: Sql, runtimeApplied: boolean) {
     runtime: {
       applied: runtimeApplied,
       eligible_establishments: safeLive,
-      detail_ready: number(runtimeSummary.detail_ready),
+      detail_ready: detailReady,
       warm_establishments: number(runtimeSummary.warm_detail_ready),
       fresh_cache_rows: providers.reduce(
         (sum, row) => sum + row.fresh_cache_rows,
@@ -836,6 +838,7 @@ function nextAction(args: {
   requiredReady: boolean;
   safeLive: number;
   providerErrors: number;
+  detailReady: number;
   work: Record<string, unknown> | undefined;
 }): string {
   if (!args.requiredReady) {
@@ -849,6 +852,9 @@ function nextAction(args: {
   }
   if (args.unsafeLegacy > 0) {
     return "Run a bounded trial, approve it, then perform the one-time verified cutover.";
+  }
+  if (args.detailReady < args.safeLive) {
+    return "Restore live-detail routing for every existing published establishment.";
   }
   if (number(args.work?.ready_to_publish) > 0) {
     return "Review the ready set, then publish only verified candidates.";

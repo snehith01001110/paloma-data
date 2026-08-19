@@ -249,9 +249,13 @@ def catalog_trial(
 def catalog_verify(
     city: str | None = typer.Option(None, help="Optional exact city guardrail"),
     limit: int = typer.Option(250, min=1, max=2_000),
+    existing_only: bool = typer.Option(
+        False,
+        help="Verify only candidates already materialized in the existing catalog cohort",
+    ),
 ) -> None:
     """Persist specifically licensed verification evidence; still does not publish."""
-    settings, _, _, catalog = _components()
+    settings, db, _, catalog = _components()
     if not settings.fsq_places_api_key:
         raise typer.BadParameter("FSQ_PLACES_API_KEY is required")
     if not settings.fsq_server_storage_licensed:
@@ -259,6 +263,16 @@ def catalog_verify(
             "FSQ_SERVER_STORAGE_LICENSED must be true only when a written agreement "
             "overrides the API's no-server-caching rule"
         )
+    candidate_ids: list[str] | None = None
+    if existing_only:
+        repository = CatalogRepository(db)
+        with db.connection() as conn:
+            candidate_ids = repository.materialized_candidate_ids(
+                conn,
+                city=city,
+                limit=limit,
+                publication_states=("published", "suppressed"),
+            )
     with FoursquarePlacesAPI(
         settings.fsq_places_api_key,
         storage_policy="contract",
@@ -269,8 +283,15 @@ def catalog_verify(
             limit=limit,
             mode="production",
             lease_days=settings.catalog_provider_lease_days,
+            candidate_ids=candidate_ids,
         )
-    typer.echo(json.dumps(result, indent=2, sort_keys=True))
+    typer.echo(
+        json.dumps(
+            {"scope": {"existing_only": existing_only}, **result},
+            indent=2,
+            sort_keys=True,
+        )
+    )
 
 
 @app.command("catalog-reevaluate")

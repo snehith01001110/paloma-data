@@ -9,6 +9,12 @@ import {
   validateProviderPlace,
 } from "./domain.ts";
 import {
+  hasRequestedLiveFields,
+  liveDetailsResponse,
+  missingLiveFields,
+  type ProviderLiveDetails,
+} from "./live_details_merge.ts";
+import {
   loadProviderPayload,
   PostgresProviderCacheStore,
   ProviderPayloadRejectedError,
@@ -127,6 +133,8 @@ Deno.serve(async (request: Request) => {
   const sql = databaseClient(databaseUrl);
   let place: EligiblePlace | null = null;
   let requested: LiveFieldRequest | null = null;
+  let foursquareRequested: LiveFieldRequest | null = null;
+  const providerResults: ProviderLiveDetails[] = [];
   let shouldDiscoverYelp = false;
 
   try {
@@ -137,7 +145,7 @@ Deno.serve(async (request: Request) => {
     }
 
     requested = requestedFields(place);
-    if (!Object.values(requested).some(Boolean)) {
+    if (!hasRequestedLiveFields(requested)) {
       return json({ available: false, reason: "durable_details_complete" });
     }
 
@@ -146,7 +154,7 @@ Deno.serve(async (request: Request) => {
       : null;
     if (yelpApiKey && yelpLink) {
       try {
-        const response = await yelpLiveDetails(
+        const yelpResult = await yelpLiveDetails(
           sql,
           userId,
           place,
@@ -154,7 +162,7 @@ Deno.serve(async (request: Request) => {
           yelpApiKey,
           yelpLink,
         );
-        if (response) return response;
+        if (yelpResult) providerResults.push(yelpResult);
       } catch (error) {
         if (error instanceof ProviderQuotaExceededError) {
           return json({ error: "rate_limited" }, 429, {
@@ -168,11 +176,21 @@ Deno.serve(async (request: Request) => {
       shouldDiscoverYelp = true;
     }
 
+    foursquareRequested = missingLiveFields(requested, providerResults);
+    if (!hasRequestedLiveFields(foursquareRequested)) {
+      return liveDetailsJson(liveDetailsResponse(providerResults)!);
+    }
     if (!fsqApiKey) {
-      return json({ error: "provider_unavailable" }, 503);
+      const partial = liveDetailsResponse(providerResults);
+      return partial
+        ? liveDetailsJson(partial)
+        : json({ error: "provider_unavailable" }, 503);
     }
     if (!await consumeQuota(sql, userId)) {
-      return json({ error: "rate_limited" }, 429, { "Retry-After": "60" });
+      const partial = liveDetailsResponse(providerResults);
+      return partial
+        ? liveDetailsJson(partial)
+        : json({ error: "rate_limited" }, 429, { "Retry-After": "60" });
     }
   } catch (error) {
     console.error("venue-live-details", safeErrorCode(error));
@@ -181,9 +199,9 @@ Deno.serve(async (request: Request) => {
     await sql.end({ timeout: 1 });
   }
 
-  const response = await fetchFoursquareLiveDetails(
+  const foursquareOutcome = await fetchFoursquareLiveDetails(
     place,
-    requested,
+    foursquareRequested,
     fsqApiKey,
   );
   if (shouldDiscoverYelp && yelpApiKey) {
@@ -194,7 +212,11 @@ Deno.serve(async (request: Request) => {
       discoverYelpLink(databaseUrl, userId, place, yelpApiKey),
     );
   }
-  return response;
+  if (foursquareOutcome.result) {
+    providerResults.push(foursquareOutcome.result);
+  }
+  const merged = liveDetailsResponse(providerResults);
+  return merged ? liveDetailsJson(merged) : foursquareOutcome.response;
 });
 
 function databaseClient(databaseUrl: string): Sql {
@@ -351,7 +373,7 @@ async function yelpLiveDetails(
   requested: LiveFieldRequest,
   apiKey: string,
   link: RuntimeProviderLink,
-): Promise<Response | null> {
+): Promise<ProviderLiveDetails | null> {
   const expected = {
     yelpBusinessId: link.providerPlaceId,
     name: place.name,
@@ -384,20 +406,18 @@ async function yelpLiveDetails(
 
   await touchRuntimeProviderLink(sql, link, loaded.fetchedAt);
   const details = projectYelpLiveDetails(loaded.payload, requested);
-  if (!hasLiveDetails(details)) return null;
   const attribution = yelpAttributionUrl(loaded.payload);
   if (!attribution) return null;
 
   logProviderEvent("yelp", loaded.cacheStatus);
-  return json({
-    available: true,
+  return {
     provider: "yelp",
-    cache_status: loaded.cacheStatus,
-    fetched_at: loaded.fetchedAt.toISOString(),
-    expires_at: loaded.expiresAt?.toISOString() ?? null,
+    cacheStatus: loaded.cacheStatus,
+    fetchedAt: loaded.fetchedAt.toISOString(),
+    expiresAt: loaded.expiresAt?.toISOString() ?? null,
     attribution: { name: "Yelp", url: attribution },
-    ...details,
-  });
+    details,
+  };
 }
 
 async function handleYelpLinkFailure(
@@ -644,7 +664,7 @@ async function fetchFoursquareLiveDetails(
   place: EligiblePlace,
   requested: LiveFieldRequest,
   serviceKey: string,
-): Promise<Response> {
+): Promise<{ result: ProviderLiveDetails | null; response: Response }> {
   const url = new URL(
     `https://places-api.foursquare.com/places/${
       encodeURIComponent(place.fsqPlaceId)
@@ -667,21 +687,40 @@ async function fetchFoursquareLiveDetails(
       signal: controller.signal,
     });
   } catch {
-    return json({ error: "provider_unavailable" }, 503);
+    return {
+      result: null,
+      response: json({ error: "provider_unavailable" }, 503),
+    };
   } finally {
     clearTimeout(timeout);
   }
 
   if (response.status === 404) {
-    return json({ available: false, reason: "not_available" });
+    return {
+      result: null,
+      response: json({ available: false, reason: "not_available" }),
+    };
   }
   if (response.status === 429) {
-    return json({ error: "provider_busy" }, 503, { "Retry-After": "60" });
+    return {
+      result: null,
+      response: json({ error: "provider_busy" }, 503, { "Retry-After": "60" }),
+    };
   }
-  if (!response.ok) return json({ error: "provider_unavailable" }, 503);
+  if (!response.ok) {
+    return {
+      result: null,
+      response: json({ error: "provider_unavailable" }, 503),
+    };
+  }
 
   const raw = await boundedJsonObject(response);
-  if (!raw) return json({ error: "provider_unavailable" }, 503);
+  if (!raw) {
+    return {
+      result: null,
+      response: json({ error: "provider_unavailable" }, 503),
+    };
+  }
   const validation = validateProviderPlace(raw, {
     fsqPlaceId: place.fsqPlaceId,
     name: place.name,
@@ -689,26 +728,36 @@ async function fetchFoursquareLiveDetails(
     longitude: place.longitude,
   });
   if (!validation.ok) {
-    return json({ available: false, reason: "verification_failed" });
+    return {
+      result: null,
+      response: json({ available: false, reason: "verification_failed" }),
+    };
   }
 
   const details = projectLiveDetails(raw, requested);
   if (!hasLiveDetails(details)) {
-    return json({ available: false, reason: "not_available" });
+    return {
+      result: null,
+      response: json({ available: false, reason: "not_available" }),
+    };
   }
+  const fetchedAt = new Date().toISOString();
   logProviderEvent("foursquare", "bypass");
-  return json({
-    available: true,
-    provider: "foursquare",
-    cache_status: "bypass",
-    fetched_at: new Date().toISOString(),
-    expires_at: null,
-    attribution: {
-      name: "Foursquare",
-      url: attributionUrl(raw, place.fsqPlaceId),
+  return {
+    result: {
+      provider: "foursquare",
+      cacheStatus: "bypass",
+      fetchedAt,
+      expiresAt: null,
+      attribution: {
+        name: "Foursquare",
+        url: attributionUrl(raw, place.fsqPlaceId),
+      },
+      details,
     },
-    ...details,
-  });
+    // Used only when no provider supplied a displayable field.
+    response: json({ available: false, reason: "not_available" }),
+  };
 }
 
 async function boundedJsonObject(
@@ -746,6 +795,30 @@ function json(
     status,
     headers: { ...responseHeaders, ...extraHeaders },
   });
+}
+
+function liveDetailsJson(payload: Record<string, unknown>): Response {
+  const rawSources = payload.field_sources;
+  const sources = rawSources !== null && typeof rawSources === "object" &&
+      !Array.isArray(rawSources)
+    ? rawSources as Record<string, unknown>
+    : {};
+  const fields = Object.entries(sources)
+    .filter(([, provider]) => typeof provider === "string")
+    .map(([field]) => field)
+    .sort();
+  const attributions = Array.isArray(payload.attributions)
+    ? payload.attributions.length
+    : 0;
+  // Aggregate-safe diagnostics only: no establishment/provider IDs, URLs,
+  // names, payload values, or user identifiers.
+  console.info("venue-live-details-result", {
+    provider_mode: payload.provider,
+    field_count: fields.length,
+    fields,
+    attribution_count: attributions,
+  });
+  return json(payload);
 }
 
 function providerFailureCode(error: unknown): string {

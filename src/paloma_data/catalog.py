@@ -21,7 +21,7 @@ from paloma_data.taxonomy import (
 )
 
 
-CATALOG_DECISION_VERSION = "v6"
+CATALOG_DECISION_VERSION = "v7"
 FSQ_OS_FRESHNESS_DAYS = 365
 DEFAULT_PROVIDER_LEASE_DAYS = 45
 DEFAULT_MANUAL_LEASE_DAYS = 90
@@ -339,8 +339,9 @@ def provider_verification(
     """Convert a contracted provider detail into explicit, auditable hard checks."""
     timestamp = _utc(observed_at or datetime.now(timezone.utc))
     identity = decide_identity(candidate_anchor, record)
+    quality_flags = set(record.quality_flags)
     current = record.source_status == "open" and not (
-        set(record.quality_flags) & HARD_NEGATIVE_FLAGS
+        quality_flags & HARD_NEGATIVE_FLAGS
     )
     explicit_type = record.primary_type_slug in CONSUMER_VENUE_TYPES
     explicit_access_type = (
@@ -379,10 +380,27 @@ def provider_verification(
     passed = all(checks[key] for key in REQUIRED_VERIFICATION_CHECKS) and checks[
         "provider_veracity"
     ]
+    # A missing field, low-veracity payload, provider reclassification, or stale provider ID is
+    # not evidence that the establishment closed. Only an identity-matched record with an
+    # explicit operating/access hard negative can withdraw an otherwise verified candidate.
+    explicit_hard_negative = checks["identity"] and (
+        record.source_status == "closed"
+        or bool(
+            quality_flags
+            & {
+                "closed",
+                "doesnt_exist",
+                "does_not_exist",
+                "privatevenue",
+                "private_venue",
+            }
+        )
+    )
+    outcome = "pass" if passed else "fail" if explicit_hard_negative else "inconclusive"
     return VerificationEvidence(
         verifier=record.source,
         verifier_record_id=record.source_record_id,
-        outcome="pass" if passed else "fail",
+        outcome=outcome,
         verification_tier="provider",
         checks=checks,
         # Ephemeral trials may evaluate this snapshot in process, but repository methods refuse

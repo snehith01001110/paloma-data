@@ -109,7 +109,10 @@ published venues before user traffic; a user-triggered matcher remains only as a
 first detail request can therefore read Business Details immediately. Valid raw JSON is cached once
 for all users, while concurrent misses share a single refresh lease.
 Cache hits do not consume paid-provider quota. Yelp data can fill phone, hours, and price in the
-transient overlay; Yelp's profile URL is attribution, never misrepresented as the venue website.
+transient overlay; Foursquare is then called only for fields Yelp did not supply. The combined
+response records field-level sources and every attribution actually used. Mixed responses are
+never reusable because the Foursquare portion is uncached. Yelp's profile URL is attribution,
+never misrepresented as the venue website.
 
 Licensed runtime enrichment uses two deliberately separate storage paths:
 
@@ -300,5 +303,6 @@ ruff check .
 pytest -q
 ```
 
-Decision version: `v6` (v5 protections plus a fail-closed gate for unresolved current-name
-conflicts at the exact licensed premise). The additive database architecture remains catalog v2.
+Decision version: `v7` (v6 protections plus conclusive-negative semantics: incomplete, stale, or
+unusable provider results require more evidence but cannot masquerade as establishment closures).
+The additive database architecture remains catalog v2.
