@@ -20,7 +20,8 @@ jobs:
       - run: pip install -e '.[dev]'
       - run: ruff check .
       - run: pytest -q
-      - run: deno fmt --check supabase/functions/venue-live-details
-      - run: deno lint supabase/functions/venue-live-details
-      - run: deno check supabase/functions/venue-live-details/index.ts supabase/functions/venue-live-details/provider_cache.ts
+      - run: deno fmt --check supabase/functions/venue-live-details supabase/functions/paloma-data-progress/index.ts
+      - run: deno lint supabase/functions/venue-live-details supabase/functions/paloma-data-progress/index.ts
+      - run: deno check supabase/functions/venue-live-details/index.ts supabase/functions/venue-live-details/provider_cache.ts supabase/functions/paloma-data-progress/index.ts
       - run: deno test supabase/functions/venue-live-details
+      - run: node scripts/check_dashboard.mjs
