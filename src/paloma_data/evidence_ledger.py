@@ -110,8 +110,178 @@ def append_linked_source_observations(conn: Any) -> int:
                     ),
                 )
             )
-    if not rows:
+    if rows:
+        execute_many(
+            conn,
+            """
+            insert into catalog.field_observations (
+              establishment_id, field_name, value_text, normalized_value, value_json,
+              value_hash, source, source_record_id, source_property, source_run_id,
+              source_record_payload_hash, claim_kind, evidence_confidence,
+              identity_confidence, authority, upstream_origin_keys, license_ids,
+              source_items, source_policy_id, source_updated_at, expires_at,
+              observation_fingerprint, metadata
+            ) values (
+              %s::uuid, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s::uuid,
+              %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s,
+              case when %s::interval is null then null else now() + %s::interval end,
+              %s, %s::jsonb
+            )
+            on conflict (observation_fingerprint) do nothing
+            """,
+            [row[:20] + (row[20], row[20]) + row[21:] for row in rows],
+        )
+    civic_rows = _append_civic_neighborhood_observations(
+        conn,
+        policies.get(("datasf_neighborhoods", "neighborhood")),
+    )
+    return len(rows) + civic_rows
+
+
+def _append_civic_neighborhood_observations(
+    conn: Any, policy: Mapping[str, Any] | None
+) -> int:
+    """Project reviewed SF Find polygons into durable per-establishment observations."""
+    if not policy or not _policy_allows(policy):
         return 0
+    matches = conn.execute(
+        """
+        with current_candidates as (
+          select c.id, c.location, c.identity_confidence,
+                 c.resolved_snapshot->>'neighborhood' as resolved_neighborhood,
+                 c.resolved_snapshot#>>'{field_sources,neighborhood}' as resolved_source
+          from ingest.catalog_candidates c
+          where c.candidate_state in ('verified', 'published')
+            and c.decision_version = 'v7'
+            and c.verification_expires_at > now()
+        ), direct_ranked as (
+          select c.id, c.location, c.identity_confidence,
+                 nb.source_record_id, nb.name, nb.normalized_name,
+                 nb.authority::float, nb.source_updated_at, nb.payload_hash,
+                 nb.last_seen_run_id::text as source_run_id,
+                 ST_Distance(
+                   ST_Boundary(nb.boundary)::geography,
+                   c.location
+                 )::float as boundary_distance_m,
+                 row_number() over (
+                   partition by c.id
+                   order by nb.authority desc, ST_Area(nb.boundary::geography),
+                            nb.source_record_id
+                 ) as rank
+          from current_candidates c
+          join ingest.neighborhood_boundaries nb
+            on nb.source = 'datasf_neighborhoods'
+           and nb.retired_at is null
+           and ST_Covers(nb.boundary, c.location::geometry)
+           and ST_Distance(
+                 ST_Boundary(nb.boundary)::geography,
+                 c.location
+               ) >= 10
+        ), direct as (
+          select id, location, identity_confidence, source_record_id, name,
+                 normalized_name, authority, source_updated_at, payload_hash,
+                 source_run_id, 'point_in_polygon'::text as match_method,
+                 boundary_distance_m,
+                 array['datasf:gfpk-269f']::text[] as origin_keys
+          from direct_ranked where rank = 1
+        ), consensus as (
+          select c.id, c.location, c.identity_confidence,
+                 nb.source_record_id, nb.name, nb.normalized_name,
+                 least(nb.authority, 0.94)::float as authority,
+                 nb.source_updated_at, nb.payload_hash,
+                 nb.last_seen_run_id::text as source_run_id,
+                 'linked_coordinate_consensus'::text as match_method,
+                 null::float as boundary_distance_m,
+                 array_prepend(
+                   'datasf:gfpk-269f',
+                   coalesce(origins.origin_keys, '{}'::text[])
+                 ) as origin_keys
+          from current_candidates c
+          join ingest.neighborhood_boundaries nb
+            on nb.source = 'datasf_neighborhoods'
+           and nb.retired_at is null
+           and nb.name = c.resolved_neighborhood
+          left join lateral (
+            select array_agg(distinct origin order by origin) as origin_keys
+            from ingest.candidate_source_links link
+            cross join lateral unnest(
+              coalesce(nullif(link.origin_keys, '{}'), array[link.source])
+            ) origin
+            where link.candidate_id = c.id
+          ) origins on true
+          where c.resolved_source = 'datasf_neighborhoods:linked_coordinate_consensus'
+            and not exists (select 1 from direct where direct.id = c.id)
+        )
+        select id::text as establishment_id,
+               ST_Y(location::geometry)::float as latitude,
+               ST_X(location::geometry)::float as longitude,
+               identity_confidence::float, source_record_id, name, normalized_name,
+               authority, source_updated_at, payload_hash, source_run_id,
+               match_method, boundary_distance_m, origin_keys
+        from direct
+        union all
+        select id::text, ST_Y(location::geometry)::float,
+               ST_X(location::geometry)::float, identity_confidence::float,
+               source_record_id, name, normalized_name, authority,
+               source_updated_at, payload_hash, source_run_id,
+               match_method, boundary_distance_m, origin_keys
+        from consensus
+        order by establishment_id
+        """
+    ).fetchall()
+    if not matches:
+        return 0
+
+    rows: list[tuple[Any, ...]] = []
+    for match in matches:
+        source_item = {
+            "dataset_id": "gfpk-269f",
+            "license_id": "Public-Domain-US-Government",
+            "record_id": str(match["source_record_id"]),
+            "property": "name",
+        }
+        metadata = {
+            "boundary_distance_m": match.get("boundary_distance_m"),
+            "derivation": str(match["match_method"]),
+            "latitude": float(match["latitude"]),
+            "longitude": float(match["longitude"]),
+            "policy_version": policy["policy_version"],
+        }
+        fingerprint = _digest(
+            {
+                "establishment_id": str(match["establishment_id"]),
+                "field": "neighborhood",
+                "source": "datasf_neighborhoods",
+                "source_record_id": str(match["source_record_id"]),
+                "payload_hash": str(match["payload_hash"]),
+                "value": str(match["name"]),
+                "latitude": round(float(match["latitude"]), 7),
+                "longitude": round(float(match["longitude"]), 7),
+                "derivation": str(match["match_method"]),
+                "policy_id": int(policy["source_policy_id"]),
+            }
+        )
+        rows.append(
+            (
+                str(match["establishment_id"]),
+                str(match["name"]),
+                str(match["normalized_name"]),
+                _digest({"text": str(match["name"]), "json": None}),
+                str(match["source_record_id"]),
+                match.get("source_run_id"),
+                str(match["payload_hash"]),
+                0.98 if match["match_method"] == "point_in_polygon" else 0.94,
+                float(match.get("identity_confidence") or 0.90),
+                min(float(match["authority"]), float(policy["authority"])),
+                list(match.get("origin_keys") or ("datasf:gfpk-269f",)),
+                json.dumps([source_item], sort_keys=True),
+                int(policy["source_policy_id"]),
+                match.get("source_updated_at"),
+                policy.get("recommended_max_age"),
+                fingerprint,
+                json.dumps(metadata, sort_keys=True),
+            )
+        )
     execute_many(
         conn,
         """
@@ -123,14 +293,16 @@ def append_linked_source_observations(conn: Any) -> int:
           source_items, source_policy_id, source_updated_at, expires_at,
           observation_fingerprint, metadata
         ) values (
-          %s::uuid, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s::uuid,
-          %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s,
+          %s::uuid, 'neighborhood', %s, %s, null,
+          %s, 'datasf_neighborhoods', %s, 'name', %s::uuid,
+          %s, 'derived', %s, %s, %s, %s,
+          array['Public-Domain-US-Government'], %s::jsonb, %s, %s,
           case when %s::interval is null then null else now() + %s::interval end,
           %s, %s::jsonb
         )
         on conflict (observation_fingerprint) do nothing
         """,
-        [row[:20] + (row[20], row[20]) + row[21:] for row in rows],
+        [row[:14] + (row[14], row[14]) + row[15:] for row in rows],
     )
     return len(rows)
 

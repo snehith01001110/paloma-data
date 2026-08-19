@@ -4,6 +4,7 @@ from paloma_data.field_resolution import (
     SOURCE_POLICIES,
     FieldResolver,
     _conflict_evidence_ids,
+    _filter_changed_decisions,
     _manual_review_covers_current_evidence,
     _reapply_manual_projections,
 )
@@ -83,6 +84,58 @@ def test_direct_upstream_wins_over_conflicting_overture_copy():
 
     assert selected is not None
     assert selected["best_source"] == "fsq"
+
+
+def test_reviewed_civic_polygon_outranks_a_broader_registration_label():
+    resolver = FieldResolver(None)
+    base = {
+        "field_name": "neighborhood",
+        "value_json": None,
+        "identity_confidence": 0.985,
+        "source_updated_at": None,
+        "upstream_origin_keys": ["datasf"],
+    }
+    rows = [
+        {
+            **base,
+            "evidence_id": "registration",
+            "value_text": "Sunset/Parkside",
+            "normalized_value": "sunset/parkside",
+            "source": "datasf",
+            "authority": 0.90,
+            "evidence_confidence": 0.96,
+        },
+        {
+            **base,
+            "evidence_id": "boundary",
+            "value_text": "Outer Sunset",
+            "normalized_value": "outer sunset",
+            "source": "datasf_neighborhoods",
+            "authority": 0.94,
+            "evidence_confidence": 0.98,
+        },
+    ]
+
+    selected = resolver._select_neighborhood(rows)
+
+    assert selected is not None
+    assert selected["value_text"] == "Outer Sunset"
+    assert selected["best_source"] == "datasf_neighborhoods"
+
+
+def test_unchanged_decisions_are_deduplicated_but_a_return_is_appended():
+    first = ("venue", "hours", "selected", "old-fingerprint")
+    second = ("venue", "hours", "unknown", "new-fingerprint")
+
+    assert _filter_changed_decisions(
+        [first], {("venue", "hours"): "old-fingerprint"}
+    ) == []
+    assert _filter_changed_decisions(
+        [first], {("venue", "hours"): "new-fingerprint"}
+    ) == [first]
+    assert _filter_changed_decisions(
+        [first, second], {("venue", "hours"): "old-fingerprint"}
+    ) == [second]
 
 
 def test_conflict_retains_every_evidence_id():

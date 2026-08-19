@@ -100,6 +100,7 @@ class FieldResolver:
         return append_linked_source_observations(conn)
 
     def resolve(self, conn) -> dict[str, int]:
+        conn.execute("select pg_advisory_xact_lock(hashtext('paloma_field_resolver'))")
         establishments = conn.execute(
             """
             select e.id::text, e.name, e.normalized_name, e.phone_e164,
@@ -151,11 +152,11 @@ class FieldResolver:
             """
         ).fetchall()
         setting_rows = conn.execute("select id, slug from public.settings").fetchall()
-        manual_review_rows = conn.execute(
+        current_decision_rows = conn.execute(
             """
-            select establishment_id::text, field_name, evidence_ids
+            select establishment_id::text, field_name, evidence_ids,
+                   resolver_version, decision_fingerprint
             from catalog.current_field_decisions
-            where resolver_version like 'manual-review-%'
             """
         ).fetchall()
 
@@ -174,7 +175,14 @@ class FieldResolver:
             (str(row["establishment_id"]), str(row["field_name"])): {
                 str(value) for value in (row["evidence_ids"] or [])
             }
-            for row in manual_review_rows
+            for row in current_decision_rows
+            if str(row["resolver_version"]).startswith("manual-review-")
+        }
+        current_fingerprints = {
+            (str(row["establishment_id"]), str(row["field_name"])): str(
+                row["decision_fingerprint"]
+            )
+            for row in current_decision_rows
         }
 
         conn.execute(
@@ -263,7 +271,7 @@ class FieldResolver:
             operating_status = self._select_attribute(
                 by_field["operating_status"], 0.68
             )
-            neighborhood = self._select_attribute(by_field["neighborhood"], 0.68)
+            neighborhood = self._select_neighborhood(by_field["neighborhood"])
             hours = self._select_attribute(by_field["hours"], 0.58)
             price = self._select_attribute(by_field["price_level"], 0.75)
             for selected, metric in (
@@ -417,6 +425,7 @@ class FieldResolver:
             updates,
         )
         _reapply_manual_projections(conn)
+        decisions = _filter_changed_decisions(decisions, current_fingerprints)
         if decisions:
             execute_many(
                 conn,
@@ -430,7 +439,6 @@ class FieldResolver:
                   %s::uuid, %s, %s, %s, %s, %s::jsonb, %s, %s,
                   %s::uuid[], %s, %s, %s
                 )
-                on conflict (decision_fingerprint) do nothing
                 """,
                 decisions,
             )
@@ -538,6 +546,16 @@ class FieldResolver:
             )
         candidates.sort(key=lambda row: float(row["score"]), reverse=True)
         return candidates
+
+    def _select_neighborhood(
+        self, rows: list[dict[str, Any]]
+    ) -> dict[str, Any] | None:
+        """Prefer the reviewed civic polygon vocabulary over broader registration labels."""
+        for source in ("datasf_neighborhoods", "overture_divisions"):
+            preferred = [row for row in rows if str(row.get("source")) == source]
+            if preferred:
+                return self._select_attribute(preferred, 0.68)
+        return self._select_attribute(rows, 0.68)
 
     def _select_attribute(
         self, rows: list[dict[str, Any]], minimum_score: float
@@ -714,6 +732,27 @@ def _decision_row(
         reasons,
         sha256(fingerprint_payload.encode()).hexdigest(),
     )
+
+
+def _filter_changed_decisions(
+    decisions: list[tuple[Any, ...]],
+    current_fingerprints: dict[tuple[str, str], str],
+) -> list[tuple[Any, ...]]:
+    """Append a decision event only when it changes the current projection.
+
+    Fingerprints are content identities, not globally unique event identities. A field may
+    legitimately return to a previously seen decision after evidence expires or is superseded.
+    """
+    changed: list[tuple[Any, ...]] = []
+    latest = dict(current_fingerprints)
+    for decision in decisions:
+        key = (str(decision[0]), str(decision[1]))
+        fingerprint = str(decision[-1])
+        if latest.get(key) == fingerprint:
+            continue
+        changed.append(decision)
+        latest[key] = fingerprint
+    return changed
 
 
 def _review_reason(
