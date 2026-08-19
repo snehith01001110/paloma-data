@@ -15,6 +15,9 @@ Reviewed 2026-08-18. Primary sources:
 - [Foursquare API agreement](https://foursquare.com/legal/terms/apilicenseagreement/)
 - [Foursquare API usage and retention guidelines](https://docs.foursquare.com/fsq-developers-places/reference/usage-guidelines)
 - [Foursquare acceptable-use policy](https://foursquare.com/legal/terms/aup/)
+- [Yelp Places API terms](https://terms.yelp.com/developers/api_terms/20250113_en_us/)
+- [Yelp display requirements](https://terms.yelp.com/developers/display_requirements/)
+- [Yelp Places API FAQ](https://docs.developer.yelp.com/docs/places-faq)
 - [Overture Places guide](https://docs.overturemaps.org/guides/places/)
 - [Overture Place schema](https://docs.overturemaps.org/schema/reference/places/place/)
 - [Google Places policies](https://developers.google.com/maps/documentation/places/web-service/policies)
@@ -62,6 +65,19 @@ quality on every call, return `no-store`, and discard the response after the cur
 This improves optional-field coverage without allowing licensed data to determine catalog
 membership or become database ground truth. It also requires Foursquare's venue link and visual
 credit whenever rich fields are shown.
+
+Yelp is eligible only as a future transient enrichment provider. Paloma may retain a matched Yelp
+business ID and may server-cache an unmodified API response for no more than 24 hours. The
+implementation uses a 23-hour safety window, stores raw responses outside the consumer schema,
+requires Yelp attribution at display time, and never feeds cached Yelp values into publication or
+the durable establishment row. A provider outage or expired response therefore falls back to
+Paloma's durable fields rather than stale Yelp content.
+
+The cache is policy-enforced rather than convention-based. SQL rejects every provider except Yelp,
+rejects expiry beyond 23 hours, and gives no client or ingest role access to cached payloads. Edge
+code applies the same TTL, uses a short single-flight lease for cold keys, and refuses Foursquare
+server caching before any database write can occur. Durable provider IDs are stored separately from
+licensed response bodies.
 
 The current Places API response fields include phone, website, hours, price, attributes, and
 veracity rating, but not neighborhood. Neighborhood is therefore a separate civic-boundary fact,

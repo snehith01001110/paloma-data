@@ -14,6 +14,13 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9.5
       - run: pip install -e '.[dev]'
       - run: ruff check .
       - run: pytest -q
+      - run: deno fmt --check supabase/functions/venue-live-details
+      - run: deno lint supabase/functions/venue-live-details
+      - run: deno check supabase/functions/venue-live-details/index.ts supabase/functions/venue-live-details/provider_cache.ts
+      - run: deno test supabase/functions/venue-live-details

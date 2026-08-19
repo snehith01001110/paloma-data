@@ -1105,6 +1105,7 @@ class CatalogRepository:
             """,
             (candidate_id, CATALOG_DECISION_VERSION, candidate_id),
         )
+        self.upsert_runtime_provider_links(conn, candidate_id)
         conn.execute(
             """
             update ingest.catalog_candidates
@@ -1114,6 +1115,47 @@ class CatalogRepository:
             (candidate_id,),
         )
         return True
+
+    def upsert_runtime_provider_links(
+        self, conn: psycopg.Connection, candidate_id: str
+    ) -> None:
+        """Persist only provider IDs that their terms allow Paloma to retain."""
+        conn.execute(
+            """
+            insert into ingest.runtime_provider_links as runtime_link (
+              establishment_id, provider, provider_place_id, match_method,
+              match_confidence, matched_at, last_validated_at, retired_at, updated_at
+            )
+            select
+              %s::uuid, 'foursquare', csl.source_record_id, csl.match_method,
+              csl.identity_confidence, csl.linked_at, csl.last_checked_at, null, now()
+            from ingest.candidate_source_links csl
+            join ingest.source_records source_record
+              on source_record.source = csl.source
+             and source_record.source_record_id = csl.source_record_id
+            where csl.candidate_id = %s::uuid
+              and csl.source = 'fsq'
+              and csl.identity_confidence >= 0.96
+              and source_record.retired_at is null
+              and source_record.source_status = 'open'
+              and source_record.consumer_facing
+              and source_record.public_access = 'walk_in'
+              and not (source_record.quality_flags && %s::text[])
+            order by csl.identity_confidence desc, csl.last_checked_at desc
+            limit 1
+            on conflict (establishment_id, provider) do update set
+              provider_place_id = excluded.provider_place_id,
+              match_method = excluded.match_method,
+              match_confidence = excluded.match_confidence,
+              matched_at = least(runtime_link.matched_at, excluded.matched_at),
+              last_validated_at = greatest(
+                runtime_link.last_validated_at, excluded.last_validated_at
+              ),
+              retired_at = null,
+              updated_at = now()
+            """,
+            (candidate_id, candidate_id, sorted(POTENTIAL_SOURCE_EXCLUDED_FLAGS)),
+        )
 
     def withdraw_expired(self, conn: psycopg.Connection) -> int:
         rows = conn.execute(

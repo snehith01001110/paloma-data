@@ -8,6 +8,7 @@ import {
   validateProviderPlace,
 } from "./domain.ts";
 import type { LiveFieldRequest } from "./domain.ts";
+import { assertNoServerResponseCache } from "./provider_policy.ts";
 
 const PLACES_API_VERSION = "2025-06-17";
 const MAX_BODY_BYTES = 1_024;
@@ -16,6 +17,10 @@ const USER_REQUESTS_PER_DAY = 100;
 const GLOBAL_REQUESTS_PER_SECOND = 15;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+// The self-service Foursquare policy currently prohibits response caching. Keep
+// this endpoint fail-closed if the shared policy is ever edited unintentionally.
+assertNoServerResponseCache("foursquare");
 
 const responseHeaders = {
   "Access-Control-Allow-Origin": "*",

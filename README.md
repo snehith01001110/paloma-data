@@ -103,6 +103,20 @@ receive provider values, and the iOS client keeps them only in the open view's m
 global aggregate counters bound spend without recording which places were requested. Rich values
 must be accompanied by the required Foursquare venue link and visual credit in the client.
 
+Licensed runtime enrichment uses two deliberately separate storage paths:
+
+- `ingest.runtime_provider_links` retains only provider identifiers and Paloma-owned match
+  metadata. Current terms permit indefinite retention of FSQ place IDs and Yelp business IDs.
+- `ingest.provider_response_cache` is a private, raw-payload cache that accepts only Yelp rows and
+  enforces a 23-hour maximum lifetime in both SQL and Edge Function code. A short refresh lease
+  collapses concurrent cold requests, and an hourly database job removes expired rows. Expired
+  content is never served as a stale fallback.
+
+Foursquare PAYG/Sandbox responses never enter that cache. The existing detail endpoint remains
+`no-store`, and Foursquare rich fields live only for the open detail-view session. Supporting a new
+cacheable provider requires both an explicit code policy and a reviewed database migration, so a
+future adapter cannot silently retain licensed data.
+
 The durable no-contract path is still useful: direct-public bars can pass using complementary
 Apache-2.0 FSQ OS and California ABC evidence, and FSQ OS phone/website fields may be stored. Rich
 optional fields stay null unless an open, manual, or specifically licensed source supports them.
