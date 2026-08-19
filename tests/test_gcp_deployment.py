@@ -4,6 +4,7 @@ from pathlib import Path
 BOOTSTRAP = Path("deploy/gcp/bootstrap.sh").read_text()
 DEPLOY = Path("deploy/gcp/deploy-worker.sh").read_text()
 SCHEDULER = Path("deploy/gcp/configure-scheduler.sh").read_text()
+MONITORING = Path("deploy/gcp/configure-monitoring.sh").read_text()
 WORKFLOW = Path(".github/workflows/sync.yml").read_text()
 
 
@@ -34,3 +35,18 @@ def test_scheduler_uses_a_dedicated_authenticated_invoker():
     assert "--oauth-service-account-email" in SCHEDULER
     assert "https://run.googleapis.com/v2/projects/" in SCHEDULER
     assert '--schedule="*/5 * * * *"' in SCHEDULER
+
+
+def test_monitoring_covers_execution_failure_absence_and_queue_health():
+    monitoring_directory = Path("deploy/gcp/monitoring")
+    policy_text = "\n".join(
+        path.read_text() for path in sorted(monitoring_directory.glob("*.json"))
+    )
+
+    assert "sendVerificationCode" in MONITORING
+    assert "notificationChannels" in MONITORING
+    assert "job/completed_execution_count" in policy_text
+    assert '"conditionAbsent"' in policy_text
+    assert '"conditionMatchedLog"' in policy_text
+    assert "jsonPayload.queue_metrics.jobs_dead_24h>0" in policy_text
+    assert "jsonPayload.queue_metrics.oldest_queued_seconds>900" in policy_text

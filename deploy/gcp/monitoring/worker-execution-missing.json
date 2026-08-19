@@ -1,0 +1,39 @@
+{
+  "displayName": "Paloma pipeline worker execution missing",
+  "documentation": {
+    "content": "No managed worker execution has completed for at least 15 minutes. Check the Cloud Scheduler trigger, its invoker identity, and Cloud Run execution history.",
+    "mimeType": "text/markdown"
+  },
+  "userLabels": {
+    "application": "paloma",
+    "environment": "production"
+  },
+  "conditions": [
+    {
+      "displayName": "No completed Cloud Run worker execution for 15 minutes",
+      "conditionAbsent": {
+        "filter": "metric.type=\"run.googleapis.com/job/completed_execution_count\" AND resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"paloma-pipeline-worker\" AND resource.labels.location=\"us-west1\"",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_SUM"
+          }
+        ],
+        "duration": "900s",
+        "trigger": {
+          "count": 1
+        }
+      }
+    }
+  ],
+  "combiner": "OR",
+  "enabled": true,
+  "notificationChannels": [],
+  "alertStrategy": {
+    "notificationPrompts": [
+      "OPENED",
+      "CLOSED"
+    ],
+    "autoClose": "86400s"
+  }
+}

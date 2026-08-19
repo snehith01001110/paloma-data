@@ -42,6 +42,19 @@ After the first deployment:
 GCP_PROJECT_ID=paloma-506006 GCP_REGION=us-west1 deploy/gcp/configure-scheduler.sh
 ```
 
+Configure the verified operator destination and the three production alert policies:
+
+```bash
+GCP_PROJECT_ID=paloma-506006 \
+PALOMA_ALERT_EMAIL=operator@example.com \
+deploy/gcp/configure-monitoring.sh
+```
+
+The first invocation sends a Google Cloud verification code to the address. Until the recipient
+verifies that code, the channel exists but cannot deliver incidents. The policies alert on failed
+Cloud Run executions, a missing completion for 15 minutes, and structured worker telemetry showing
+dead work or a queue age above 15 minutes.
+
 Keep GitHub's scheduled worker enabled during the initial overlap. The shared pgmq leases and
 deduplication keys make concurrent claims safe. After two clean weekly cycles, remove the scheduled
 GitHub drain while retaining its manual `queue-work` recovery action.
