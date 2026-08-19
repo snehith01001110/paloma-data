@@ -8,6 +8,8 @@ WORKFLOW = Path(".github/workflows/sync.yml").read_text()
 
 
 def test_github_deployment_uses_keyless_main_workflow_identity():
+    assert "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" in WORKFLOW
+    assert "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97" in WORKFLOW
     assert "google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093" in WORKFLOW
     assert "workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}" in WORKFLOW
     assert "credentials_json" not in WORKFLOW

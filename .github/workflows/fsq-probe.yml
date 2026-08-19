@@ -16,7 +16,7 @@ jobs:
       FSQ_PLACES_TABLE: ${{ vars.FSQ_PLACES_TABLE }}
       FSQ_CATALOG_WAREHOUSE: ${{ vars.FSQ_CATALOG_WAREHOUSE }}
     steps:
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
 
