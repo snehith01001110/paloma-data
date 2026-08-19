@@ -15,8 +15,10 @@ const duplicateIds = declaredIds.filter(
   (id, index) => declaredIds.indexOf(id) !== index,
 );
 const idSet = new Set(declaredIds);
-const referencedIds = [...scriptMatch[1].matchAll(/getElementById\(['"]([^'"]+)['"]\)/g)]
-  .map((match) => match[1]);
+const referencedIds = [
+  ...scriptMatch[1].matchAll(/getElementById\(['"]([^'"]+)['"]\)/g),
+  ...scriptMatch[1].matchAll(/setText\(['"]([^'"]+)['"]/g),
+].map((match) => match[1]);
 const missingIds = [...new Set(referencedIds.filter((id) => !idSet.has(id)))];
 
 if (duplicateIds.length || missingIds.length) {

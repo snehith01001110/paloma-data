@@ -3,300 +3,152 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Paloma catalog control room</title>
-  <meta name="description" content="Operational truth for Paloma's verified Bay Area drinking-place catalog.">
+  <title>Paloma catalog status</title>
+  <meta name="description" content="Live status and public establishments in Paloma's verified drinking-place catalog.">
   <style>
     :root {
       color-scheme: light;
-      --ink: #191b18;
-      --muted: #686d65;
-      --faint: #91968d;
-      --canvas: #f4f3ee;
-      --paper: #fffefa;
-      --line: #deddd5;
-      --green: #226747;
-      --green-soft: #e6f1e9;
-      --amber: #8a5d1f;
-      --amber-soft: #f7edd9;
-      --red: #9a3f39;
+      --ink: #1c211d;
+      --muted: #697169;
+      --canvas: #f3f4ef;
+      --paper: #fff;
+      --line: #dde1d9;
+      --green: #216446;
+      --green-soft: #e7f2ea;
+      --amber: #8c5d1d;
+      --amber-soft: #f8eedb;
+      --red: #963f39;
       --red-soft: #f8e8e5;
-      --blue: #3f5f9c;
-      --blue-soft: #e8edf7;
-      --slate: #59605b;
-      --slate-soft: #eceeeb;
-      --shadow: 0 1px 2px rgba(20,22,18,.025), 0 16px 42px rgba(29,31,25,.04);
+      --shadow: 0 14px 40px rgba(35, 43, 36, .055);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       color: var(--ink);
       background: var(--canvas);
-      font: 14px/1.45 Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font: 14px/1.5 Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
     button, input { color: inherit; font: inherit; }
     button { cursor: pointer; }
-    .shell { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 34px 0 68px; }
-    header { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 15px; }
-    .eyebrow { color: var(--green); font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
-    h1 { margin: 3px 0 0; font-size: clamp(30px, 5vw, 45px); line-height: 1; letter-spacing: -.05em; }
+    .shell { width: min(1040px, calc(100% - 32px)); margin: 0 auto; padding: 42px 0 64px; }
+    .top { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 18px; }
+    .eyebrow { color: var(--green); font-size: 10px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
+    h1 { margin: 4px 0 0; font-size: clamp(30px, 6vw, 48px); line-height: 1; letter-spacing: -.05em; }
     .updated { color: var(--muted); font-size: 11px; text-align: right; }
     .updated strong { display: block; color: var(--ink); font-size: 12px; }
     .card { min-width: 0; background: var(--paper); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); }
-    .error { display: none; margin-bottom: 10px; padding: 12px 14px; color: var(--red); background: var(--red-soft); border: 1px solid #e9c6c2; border-radius: 12px; }
+    .error { display: none; margin-bottom: 10px; padding: 12px 14px; color: var(--red); background: var(--red-soft); border: 1px solid #e7c5c0; border-radius: 12px; }
 
-    .statebar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 11px; align-items: center; margin-bottom: 9px; padding: 13px 15px; }
-    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--green); }
-    .dot.warn { background: var(--amber); }
-    .dot.bad { background: var(--red); }
-    .statebar strong { display: block; font-size: 12px; }
-    .statebar span { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .statebar aside { color: var(--muted); font-size: 10px; text-align: right; }
-
-    .hero { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(250px, .65fr); overflow: hidden; }
-    .hero-copy { padding: clamp(24px, 4vw, 40px); }
-    .hero-copy .tag { display: inline-flex; padding: 5px 8px; color: var(--green); background: var(--green-soft); border-radius: 999px; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
-    .hero-copy .tag.warn { color: var(--amber); background: var(--amber-soft); }
-    .hero-copy .tag.bad { color: var(--red); background: var(--red-soft); }
-    .hero-copy h2 { max-width: 720px; margin: 13px 0 0; font-size: clamp(24px, 4vw, 39px); line-height: 1.08; letter-spacing: -.042em; }
-    .hero-copy p { max-width: 720px; margin: 11px 0 0; color: var(--muted); font-size: 12px; }
-    .hero-copy p b { color: var(--ink); }
-    .hero-number { display: flex; flex-direction: column; justify-content: center; min-height: 210px; padding: 28px 34px; color: #fff; background: var(--green); }
-    .hero-number.warn { background: var(--amber); }
-    .hero-number.bad { background: var(--red); }
-    .hero-number strong { font-size: clamp(58px, 8vw, 86px); line-height: .88; letter-spacing: -.07em; }
-    .hero-number span { margin-top: 15px; font-size: 12px; font-weight: 800; }
-    .hero-number small { margin-top: 4px; color: rgba(255,255,255,.72); font-size: 9.5px; }
+    .status { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; align-items: start; padding: clamp(22px, 4vw, 34px); }
+    .status-icon { display: grid; place-items: center; width: 38px; height: 38px; color: var(--green); background: var(--green-soft); border-radius: 50%; font-size: 17px; font-weight: 900; }
+    .status.warn .status-icon { color: var(--amber); background: var(--amber-soft); }
+    .status.bad .status-icon { color: var(--red); background: var(--red-soft); }
+    .status-label { color: var(--green); font-size: 9px; font-weight: 850; letter-spacing: .09em; text-transform: uppercase; }
+    .status.warn .status-label { color: var(--amber); }
+    .status.bad .status-label { color: var(--red); }
+    .status h2 { margin: 5px 0 0; font-size: clamp(20px, 3vw, 28px); line-height: 1.15; letter-spacing: -.035em; }
+    .status p { max-width: 780px; margin: 8px 0 0; color: var(--muted); font-size: 12px; }
+    .status-meta { display: flex; flex-wrap: wrap; gap: 7px 18px; margin-top: 16px; color: var(--muted); font-size: 10px; }
 
     .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; margin-top: 9px; }
-    .metric { padding: 17px; }
-    .metric strong { display: block; font-size: 27px; line-height: 1; letter-spacing: -.045em; }
-    .metric span { display: block; margin-top: 8px; font-size: 11px; font-weight: 800; }
-    .metric small { display: block; margin-top: 3px; color: var(--muted); font-size: 9.5px; }
+    .metric { padding: 18px; }
+    .metric strong { display: block; font-size: 30px; line-height: 1; letter-spacing: -.05em; }
+    .metric span { display: block; margin-top: 9px; font-size: 11px; font-weight: 800; }
+    .metric small { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; }
     .metric.good strong { color: var(--green); }
-    .metric.warn strong { color: var(--amber); }
     .metric.bad strong { color: var(--red); }
+    .metric.warn strong { color: var(--amber); }
 
-    .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin: 27px 1px 9px; }
-    .section-head h2 { margin: 0; font-size: 15px; letter-spacing: -.012em; }
+    .action { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: baseline; margin-top: 9px; padding: 13px 16px; }
+    .action strong { color: var(--green); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
+    .action span { color: var(--muted); font-size: 11px; }
+
+    .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; margin: 30px 1px 10px; }
+    .section-head h2 { margin: 0; font-size: 16px; letter-spacing: -.015em; }
     .section-head p { margin: 0; color: var(--muted); font-size: 10px; text-align: right; }
-    .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 15px 16px 11px; border-bottom: 1px solid var(--line); }
-    .card-head strong { font-size: 12.5px; }
-    .card-head span { color: var(--muted); font-size: 9.5px; }
-    .split { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(320px, .85fr); gap: 10px; }
-
-    .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 18px; }
-    .flow-step { position: relative; min-width: 0; padding: 12px 26px 12px 12px; background: #f6f5ef; border-radius: 11px; }
-    .flow-step + .flow-step { margin-left: 19px; }
-    .flow-step + .flow-step::before { content: "→"; position: absolute; left: -17px; top: 50%; color: var(--faint); transform: translateY(-50%); }
-    .flow-step strong { display: block; font-size: 21px; letter-spacing: -.04em; }
-    .flow-step span { display: block; margin-top: 6px; font-size: 10px; font-weight: 800; }
-    .flow-step small { display: block; margin-top: 2px; color: var(--muted); font-size: 8.8px; }
-    .flow-note { padding: 10px 16px; color: var(--muted); background: #faf9f5; border-top: 1px solid var(--line); border-radius: 0 0 15px 15px; font-size: 9.5px; }
-
-    .source-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    .source { min-width: 0; padding: 16px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-    .source:nth-child(3n) { border-right: 0; }
-    .source:nth-last-child(-n+2) { border-bottom: 0; }
-    .source-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
-    .source-name { font-size: 11.5px; font-weight: 800; }
-    .source-role { margin-top: 3px; color: var(--muted); font-size: 9px; }
-    .pill { flex: 0 0 auto; padding: 4px 7px; color: var(--green); background: var(--green-soft); border-radius: 999px; font-size: 8.5px; font-weight: 800; }
-    .pill.warn { color: var(--amber); background: var(--amber-soft); }
-    .pill.bad { color: var(--red); background: var(--red-soft); }
-    .pill.neutral { color: var(--slate); background: var(--slate-soft); }
-    .source-stats { display: grid; grid-template-columns: 1fr auto; gap: 5px 10px; margin-top: 13px; color: var(--muted); font-size: 9px; }
-    .source-stats b { color: var(--ink); text-align: right; }
-    .source-error { margin-top: 10px; padding: 7px 8px; color: var(--red); background: var(--red-soft); border-radius: 7px; font-size: 8.5px; overflow-wrap: anywhere; }
-
-    .runtime { overflow: hidden; }
-    .runtime-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
-    .runtime-stat { min-width: 0; padding: 15px 16px; border-right: 1px solid var(--line); }
-    .runtime-stat:last-child { border-right: 0; }
-    .runtime-stat strong { display: block; font-size: 20px; line-height: 1; letter-spacing: -.04em; }
-    .runtime-stat span { display: block; margin-top: 6px; font-size: 9.5px; font-weight: 800; }
-    .runtime-stat small { display: block; margin-top: 2px; color: var(--muted); font-size: 8.5px; }
-    .provider-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .provider { min-width: 0; padding: 17px; border-right: 1px solid var(--line); }
-    .provider:last-child { border-right: 0; }
-    .provider-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-    .provider-title strong { display: block; font-size: 12px; }
-    .provider-title small { display: block; margin-top: 3px; color: var(--muted); font-size: 8.8px; }
-    .provider-stats { display: grid; grid-template-columns: 1fr auto; gap: 5px 10px; margin-top: 13px; color: var(--muted); font-size: 9px; }
-    .provider-stats b { color: var(--ink); text-align: right; }
-    .provider-note { margin-top: 11px; padding: 8px 9px; color: var(--muted); background: #f5f4ee; border-radius: 8px; font-size: 8.7px; }
-
-    .queue { padding: 7px 0; }
-    .queue-row { display: grid; grid-template-columns: 31px minmax(0,1fr) auto; gap: 10px; align-items: center; padding: 10px 15px; border-bottom: 1px solid #efeee8; }
-    .queue-row:last-child { border-bottom: 0; }
-    .queue-icon { display: grid; place-items: center; width: 31px; height: 31px; color: var(--green); background: var(--green-soft); border-radius: 9px; font-size: 11px; font-weight: 900; }
-    .queue-row.warn .queue-icon { color: var(--amber); background: var(--amber-soft); }
-    .queue-row.bad .queue-icon { color: var(--red); background: var(--red-soft); }
-    .queue-row strong { display: block; font-size: 10.5px; }
-    .queue-row span { display: block; margin-top: 2px; color: var(--muted); font-size: 8.8px; }
-    .queue-row b { font-size: 16px; }
-
-    .blockers { padding: 6px 0; }
-    .blocker { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 12px; padding: 9px 15px; border-bottom: 1px solid #efeee8; }
-    .blocker:last-child { border-bottom: 0; }
-    .blocker strong { display: block; font-size: 10.5px; }
-    .blocker small { display: block; margin-top: 2px; color: var(--muted); font-size: 8.8px; }
-    .blocker b { align-self: center; font-size: 13px; }
-    .empty { padding: 28px 15px; color: var(--muted); text-align: center; font-size: 10px; }
-
-    .coverage { display: grid; grid-template-columns: 1fr 1fr; }
-    .coverage-list { padding: 13px 16px 17px; }
-    .coverage-list + .coverage-list { border-left: 1px solid var(--line); }
-    .mini-title { margin-bottom: 9px; color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-    .mini-title.section-spacer { margin-top: 18px; }
-    .bar-row { display: grid; grid-template-columns: minmax(75px, 120px) 1fr 65px; gap: 9px; align-items: center; margin-top: 9px; font-size: 9.5px; }
-    .bar-track { height: 7px; overflow: hidden; background: #ecebe5; border-radius: 999px; }
-    .bar-track i { display: block; height: 100%; background: var(--green); border-radius: inherit; }
-    .bar-track i.low { background: var(--amber); }
-    .bar-row b { text-align: right; font-size: 9px; }
-    .field-note { margin-top: 14px; padding: 10px 11px; color: var(--muted); background: var(--blue-soft); border-radius: 9px; font-size: 9px; }
-    .field-note b { color: var(--blue); }
-    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-    .chip { padding: 6px 8px; background: #f0efe9; border-radius: 8px; font-size: 9px; }
-    .chip b { margin-left: 4px; }
-
     .catalog { overflow: hidden; }
-    .catalog-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 13px; border-bottom: 1px solid var(--line); }
-    .catalog-tools span { color: var(--muted); font-size: 9.5px; }
-    .search { width: min(290px, 48vw); padding: 8px 10px; outline: none; background: #fff; border: 1px solid var(--line); border-radius: 9px; font-size: 10.5px; }
-    .search:focus { border-color: #a8aaa1; }
-    .venues { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 11px; }
-    .venue { min-width: 0; padding: 13px; background: #fff; border: 1px solid var(--line); border-radius: 11px; }
-    .venue-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+    .catalog-tools { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+    .catalog-tools span { color: var(--muted); font-size: 10px; }
+    .search { width: min(320px, 48vw); padding: 9px 11px; outline: none; background: #fff; border: 1px solid var(--line); border-radius: 9px; font-size: 11px; }
+    .search:focus { border-color: #9fa89e; box-shadow: 0 0 0 3px rgba(33, 100, 70, .08); }
+    .venue-head, .venue { display: grid; grid-template-columns: minmax(180px, 1.1fr) minmax(260px, 1.7fr) auto; gap: 18px; align-items: center; }
+    .venue-head { padding: 9px 15px; color: var(--muted); background: #fafbf8; border-bottom: 1px solid var(--line); font-size: 8.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    .venue { padding: 13px 15px; border-bottom: 1px solid #eceee9; }
+    .venue:last-child { border-bottom: 0; }
     .venue-name { overflow: hidden; font-size: 11.5px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
-    .venue-type { margin-top: 3px; color: var(--muted); font-size: 9px; }
-    .venue-address { margin-top: 9px; overflow: hidden; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
-    .evidence { flex: 0 0 auto; padding: 3px 6px; color: var(--green); background: var(--green-soft); border-radius: 999px; font-size: 7.8px; font-weight: 850; }
-    .facts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 9px; }
-    .fact { padding: 3px 5px; color: var(--muted); background: #f2f1ec; border-radius: 5px; font-size: 7.8px; }
-    .fact.missing { color: var(--amber); background: var(--amber-soft); }
-    .fact.provider { color: var(--blue); background: var(--blue-soft); }
-    .fact.warm { color: var(--green); background: var(--green-soft); }
-    .load-wrap { padding: 0 11px 13px; text-align: center; }
-    .load { padding: 8px 13px; background: #fff; border: 1px solid var(--line); border-radius: 9px; font-size: 9.5px; }
+    .venue-type { margin-top: 2px; color: var(--muted); font-size: 9px; }
+    .venue-address { overflow: hidden; font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
+    .venue-area { margin-top: 2px; color: var(--muted); font-size: 9px; }
+    .detail { justify-self: end; padding: 4px 7px; color: var(--green); background: var(--green-soft); border-radius: 999px; font-size: 8.5px; font-weight: 800; white-space: nowrap; }
+    .detail.core { color: var(--muted); background: #edf0eb; }
+    .empty { grid-column: 1 / -1; padding: 34px 15px; color: var(--muted); text-align: center; font-size: 10px; }
+    .load-wrap { padding: 12px; border-top: 1px solid var(--line); text-align: center; }
+    .load-wrap[hidden] { display: none; }
+    .load { padding: 8px 14px; background: #fff; border: 1px solid var(--line); border-radius: 9px; font-size: 10px; }
     .load[hidden] { display: none; }
-    footer { display: flex; justify-content: space-between; gap: 16px; margin-top: 13px; color: var(--muted); font-size: 9px; }
+    footer { display: flex; justify-content: space-between; gap: 16px; margin-top: 14px; color: var(--muted); font-size: 9px; }
 
-    @media (max-width: 900px) {
-      .metrics { grid-template-columns: repeat(2, 1fr); }
-      .split { grid-template-columns: 1fr; }
-      .source-grid, .venues { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .source:nth-child(3n) { border-right: 1px solid var(--line); }
-      .source:nth-child(2n) { border-right: 0; }
-      .source:nth-last-child(-n+2) { border-bottom: 0; }
-    }
-    @media (max-width: 680px) {
-      .shell { width: min(100% - 20px, 1180px); padding-top: 22px; }
-      header { align-items: flex-start; flex-direction: column; gap: 8px; }
+    @media (max-width: 760px) {
+      .shell { width: min(100% - 20px, 1040px); padding-top: 24px; }
+      .top { align-items: flex-start; flex-direction: column; gap: 9px; }
       .updated { text-align: left; }
-      .statebar { grid-template-columns: auto minmax(0,1fr); }
-      .statebar span { white-space: normal; }
-      .statebar aside { display: none; }
-      .hero { grid-template-columns: 1fr; }
-      .hero-number { min-height: 170px; }
-      .flow { grid-template-columns: 1fr; gap: 7px; }
-      .flow-step + .flow-step { margin-left: 0; }
-      .flow-step + .flow-step::before { content: "↓"; left: 50%; top: -10px; transform: translateX(-50%); }
-      .source-grid, .venues, .coverage, .provider-grid, .runtime-summary { grid-template-columns: 1fr; }
-      .source { border-right: 0 !important; border-bottom: 1px solid var(--line) !important; }
-      .source:last-child { border-bottom: 0 !important; }
-      .coverage-list + .coverage-list { border-top: 1px solid var(--line); border-left: 0; }
-      .runtime-stat, .provider { border-right: 0; border-bottom: 1px solid var(--line); }
-      .runtime-stat:last-child, .provider:last-child { border-bottom: 0; }
+      .metrics { grid-template-columns: repeat(2, 1fr); }
+      .action { grid-template-columns: 1fr; gap: 3px; }
+      .venue-head { display: none; }
+      .venue { grid-template-columns: minmax(0, 1fr) auto; gap: 9px 12px; }
+      .venue-location { grid-column: 1 / -1; grid-row: 2; }
+      .detail { grid-column: 2; grid-row: 1; }
       .catalog-tools { align-items: stretch; flex-direction: column; }
       .search { width: 100%; }
+    }
+    @media (max-width: 440px) {
+      .metrics { grid-template-columns: 1fr 1fr; }
+      .metric { padding: 15px; }
+      .metric strong { font-size: 25px; }
+      .status { grid-template-columns: 1fr; }
+      .status-icon { width: 34px; height: 34px; }
+      .section-head { align-items: flex-start; flex-direction: column; gap: 4px; }
+      .section-head p { text-align: left; }
       footer { flex-direction: column; }
     }
   </style>
 </head>
 <body>
   <main class="shell">
-    <header>
-      <div><div class="eyebrow">Paloma data</div><h1>Catalog control room</h1></div>
-      <div class="updated"><strong id="updated">Connecting…</strong><span id="contractVersion">Bay Area drinking venues · loading contract</span></div>
+    <header class="top">
+      <div><div class="eyebrow">Paloma data</div><h1>Catalog status</h1></div>
+      <div class="updated"><strong id="updated">Connecting…</strong><span id="contractVersion">Loading publication contract</span></div>
     </header>
 
-    <div class="error" id="error"></div>
-    <section class="card statebar" aria-live="polite">
-      <i class="dot" id="statusDot"></i>
-      <div><strong id="statusTitle">Checking publication safety…</strong><span id="statusDetail"></span></div>
-      <aside id="statusAside"></aside>
-    </section>
-
-    <section class="card hero">
-      <div class="hero-copy">
-        <span class="tag" id="heroTag">Loading</span>
-        <h2 id="heroTitle">Only evidence-backed establishments belong in Paloma.</h2>
-        <p id="heroCopy">Loading catalog state…</p>
-      </div>
-      <div class="hero-number" id="heroNumber">
-        <strong id="safeLive">—</strong>
-        <span>safe, live establishments</span>
-        <small>Published + open + current contract + unexpired</small>
+    <div class="error" id="error" role="alert"></div>
+    <section class="card status" id="status" aria-live="polite">
+      <div class="status-icon" id="statusIcon">✓</div>
+      <div>
+        <div class="status-label" id="statusLabel">Checking</div>
+        <h2 id="statusTitle">Checking the public catalog…</h2>
+        <p id="statusDetail">Loading current publication state.</p>
+        <div class="status-meta"><span id="expiryMeta"></span><span id="detailMeta"></span></div>
       </div>
     </section>
 
-    <section class="metrics" aria-label="Safety summary">
-      <article class="card metric"><strong id="appVisible">—</strong><span>Rows the app can see</span><small>Must equal the safe count before launch</small></article>
-      <article class="card metric good"><strong id="providerReady">—</strong><span>Live-detail ready</span><small>Has at least one validated provider identity</small></article>
-      <article class="card metric" id="unsafeMetric"><strong id="unsafeCount">—</strong><span>Unsafe app-visible rows</span><small>Any publication-contract failure; target is zero</small></article>
-      <article class="card metric warn"><strong id="reviewCount">—</strong><span>Held for human review</span><small>Private candidates; never auto-published</small></article>
+    <section class="metrics" aria-label="Catalog summary">
+      <article class="card metric good"><strong id="safeLive">—</strong><span>Live establishments</span><small id="liveMeta">Published and safe</small></article>
+      <article class="card metric good" id="unsafeMetric"><strong id="unsafeCount">—</strong><span>Unsafe visible</span><small>Target: 0</small></article>
+      <article class="card metric good" id="sourceMetric"><strong id="sourceReady">—</strong><span>Required sources</span><small id="sourceMeta">Checking snapshots</small></article>
+      <article class="card metric warn"><strong id="reviewCount">—</strong><span>Identity reviews</span><small>Held outside the app</small></article>
     </section>
 
-    <div class="section-head"><h2>How a row reaches the app</h2><p>Discovery volume is not catalog size</p></div>
-    <section class="card">
-      <div class="flow">
-        <div class="flow-step"><strong id="sourceEvidence">—</strong><span>Current source records</span><small>Private evidence; never shown directly</small></div>
-        <div class="flow-step"><strong id="candidateTotal">—</strong><span>Distinct candidates</span><small>Conservative entity resolution</small></div>
-        <div class="flow-step"><strong id="verifiedFlow">—</strong><span>Verified + unexpired</span><small>Every hard fact is present</small></div>
-        <div class="flow-step"><strong id="publishedFlow">—</strong><span>Safe public rows</span><small>The only product establishments</small></div>
-      </div>
-      <div class="flow-note">FSQ OS supplies the consumer identity; California ABC supplies exact legal privileges. A license never creates a venue by itself. Optional enrichment never weakens the publication gate.</div>
-    </section>
+    <section class="card action"><strong>Next action</strong><span id="nextAction">Loading…</span></section>
 
-    <div class="section-head"><h2>Live detail layer</h2><p>Identity readiness, external-call protection, and cache policy</p></div>
-    <section class="card runtime">
-      <div class="runtime-summary" id="runtimeSummary"><div class="empty">Loading provider runtime…</div></div>
-      <div class="provider-grid" id="providers"></div>
-    </section>
-
-    <div class="section-head"><h2>Source snapshots</h2><p>A failed optional source cannot take down the truth path</p></div>
-    <section class="card"><div class="source-grid" id="sources"><div class="empty">Loading source health…</div></div></section>
-
-    <div class="section-head"><h2>Work and blockers</h2><p>What needs an operator versus what remains safely hidden</p></div>
-    <section class="split">
-      <article class="card">
-        <div class="card-head"><strong>Next operational work</strong><span id="nextAction">Loading…</span></div>
-        <div class="queue" id="workQueue"></div>
-      </article>
-      <article class="card">
-        <div class="card-head"><strong>Why candidates are held back</strong><span>Top hard-gate failures</span></div>
-        <div class="blockers" id="blockers"><div class="empty">Loading blockers…</div></div>
-      </article>
-    </section>
-
-    <div class="section-head"><h2>Establishment fields</h2><p>Durable truth is separate from licensed, on-demand detail</p></div>
-    <section class="card coverage">
-      <div class="coverage-list"><div class="mini-title">Stored on safe establishment rows</div><div id="fieldCoverage"></div><div class="field-note" id="fieldContract"></div></div>
-      <div class="coverage-list">
-        <div class="mini-title">Verification basis</div><div class="chips" id="tierBreakdown"></div>
-        <div class="mini-title section-spacer">Venue types</div><div id="typeBreakdown"></div>
-        <div class="mini-title section-spacer">Cities</div><div class="chips" id="cityBreakdown"></div>
-      </div>
-    </section>
-
-    <div class="section-head"><h2>Safe live catalog</h2><p>No private candidates or legal-name-only records are exposed here</p></div>
+    <div class="section-head"><h2>Published establishments</h2><p>Only rows currently safe for the app</p></div>
     <section class="card catalog">
-      <div class="catalog-tools"><span id="listMeta">Loading…</span><input class="search" id="search" type="search" placeholder="Search live name, address, city, neighborhood"></div>
-      <div class="venues" id="venues"><div class="empty">Loading safe establishments…</div></div>
-      <div class="load-wrap"><button class="load" id="loadMore" hidden type="button">Load more</button></div>
+      <div class="catalog-tools"><span id="listMeta">Loading…</span><input class="search" id="search" type="search" aria-label="Search published establishments" placeholder="Search name or location"></div>
+      <div class="venue-head" aria-hidden="true"><span>Establishment</span><span>Location</span><span>Details</span></div>
+      <div id="venues"><div class="empty">Loading establishments…</div></div>
+      <div class="load-wrap" id="loadWrap" hidden><button class="load" id="loadMore" hidden type="button">Load more</button></div>
     </section>
 
-    <footer><span>Operational data refreshes every 30 seconds</span><span>Accuracy beats coverage · unknown optional fields stay null</span></footer>
+    <footer><span>Refreshes every 30 seconds</span><span>Public catalog only · private candidates stay hidden</span></footer>
   </main>
 
   <script>
@@ -306,256 +158,131 @@
     let searchTimer = null;
     const fmt = value => nf.format(Number(value || 0));
     const num = value => Number(value || 0);
-    const esc = value => String(value ?? '').replace(/[&<>'"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[c]));
-    const human = value => String(value || '').replace(/:v\d+$/, '').replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
-    const ago = iso => {
-      if (!iso) return 'never';
-      const minutes = Math.max(0, (Date.now() - new Date(iso).getTime()) / 60000);
-      if (minutes < 1) return 'just now';
-      if (minutes < 60) return `${Math.round(minutes)} min ago`;
-      if (minutes < 1440) return `${Math.round(minutes / 60)} hr ago`;
-      return `${Math.round(minutes / 1440)} days ago`;
-    };
-    const until = iso => {
-      if (!iso) return 'none';
-      const minutes = (new Date(iso).getTime() - Date.now()) / 60000;
-      if (minutes <= 0) return 'expired';
-      if (minutes < 60) return `in ${Math.ceil(minutes)} min`;
-      if (minutes < 1440) return `in ${Math.ceil(minutes / 60)} hr`;
-      return `in ${Math.ceil(minutes / 1440)} days`;
-    };
+    const esc = value => String(value ?? '').replace(/[&<>'"]/g, character => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[character]));
+    const human = value => String(value || '').replace(/:v\d+$/, '').replaceAll('_', ' ').replace(/\b\w/g, character => character.toUpperCase());
     const setText = (id, value) => { document.getElementById(id).textContent = value; };
-
-    const REASONS = {
-      no_linked_sources: ['No linked evidence', 'The candidate has no currently valid source link'],
-      abc_license_not_active: ['ABC license is not active', 'Raw status is closed, missing, pending, or unknown'],
-      missing_exact_active_abc: ['No exact active ABC match', 'A consumer place exists, but legal evidence is missing'],
-      missing_current_fsq_os_anchor: ['No current FSQ OS identity', 'The consumer observation is absent, stale, or closed'],
-      consumer_type_not_supported: ['Unsupported consumer type', 'The current category is outside Paloma’s catalog'],
-      abc_license_incompatible_with_venue_type: ['License/type mismatch', 'ABC privileges do not support the consumer venue type'],
-      identity_below_publication_threshold: ['Identity needs review', 'Name, address, phone, website, or location do not agree strongly enough'],
-      current_verifier_failure: ['Current verifier failed', 'Recent evidence says one or more hard facts are false'],
-      verification_expired_or_not_storable: ['Verification cannot be retained', 'The pass expired or its license forbids server storage'],
-      missing_high_quality_verification: ['More access evidence required', 'Restaurant/manufacturer paths need licensed or manual verification'],
-      manufacturer_access_requires_hours_or_manual_attestation: ['Manufacturer access unproven', 'A production license is not proof of a public taproom or tasting room'],
-      missing_required_materialization_fields: ['Required product field missing', 'Name, type, address, city, or coordinates are incomplete'],
-      consumer_hard_negative: ['Consumer source rejected the place', 'Closed, duplicate, private, deleted, or nonexistent flag'],
-      possible_public_duplicate: ['Possible duplicate', 'A near-identical safe public row already exists'],
-      verification_expired: ['Verification lease expired', 'The place must be refreshed before returning to the app'],
+    const until = iso => {
+      if (!iso) return 'No active verification lease';
+      const days = Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000);
+      if (days <= 0) return 'Verification lease expired';
+      return `Next verification expiry in ${days} day${days === 1 ? '' : 's'}`;
     };
-    const reasonInfo = value => {
-      const key = String(value || '').replace(/:v\d+$/, '');
-      return REASONS[key] || [human(key || 'not evaluated'), 'Held safely outside the app'];
-    };
-
-    function renderReadiness(data) {
-      const r = data.readiness || {}, o = data.overall || {};
-      const legacy = data.schema_version !== 'catalog_v2';
-      const unsafe = o.unsafe_app_visible == null
-        ? num(o.unsafe_legacy_live) + num(o.unsafe_expired_live)
-        : num(o.unsafe_app_visible);
-      const dot = document.getElementById('statusDot');
-      const tag = document.getElementById('heroTag');
-      const hero = document.getElementById('heroNumber');
-      dot.className = 'dot'; tag.className = 'tag'; hero.className = 'hero-number';
-      if (legacy) {
-        dot.classList.add('bad'); tag.classList.add('bad'); hero.classList.add('bad');
-        tag.textContent = 'Migration required';
-        setText('statusTitle', 'The dashboard is seeing the legacy catalog');
-        setText('statusDetail', 'Those rows do not carry v2 verification leases and should not be treated as ground truth.');
-        setText('heroTitle', 'The current app-visible catalog is not production-safe.');
-        document.getElementById('heroCopy').innerHTML = `<b>${fmt(o.app_visible)} legacy rows may be visible.</b> Apply the additive migration, run the bounded trial, and cut over only to verified candidates.`;
-      } else if (unsafe > 0) {
-        dot.classList.add('bad'); tag.classList.add('bad'); hero.classList.add('bad');
-        tag.textContent = 'Cutover incomplete';
-        setText('statusTitle', `${fmt(unsafe)} unsafe row${unsafe === 1 ? '' : 's'} can still be seen by the app`);
-        setText('statusDetail', r.next_action || 'Remove legacy or expired rows before launch.');
-        setText('heroTitle', 'The v2 gate is working, but the old public catalog has not been replaced.');
-        document.getElementById('heroCopy').innerHTML = `<b>${fmt(o.safe_live)} rows pass every v2 hard gate.</b> ${fmt(unsafe)} legacy or expired rows must leave the consumer read path.`;
-      } else if (!r.required_sources_ready) {
-        dot.classList.add('warn'); tag.classList.add('warn'); hero.classList.add('warn');
-        tag.textContent = 'Source refresh due';
-        setText('statusTitle', 'A required source snapshot is missing or stale');
-        setText('statusDetail', r.next_action || 'Refresh California ABC and Foursquare OS.');
-        setText('heroTitle', 'Published leases remain fail-closed while source evidence is refreshed.');
-        document.getElementById('heroCopy').innerHTML = `<b>${fmt(o.safe_live)} rows currently have unexpired verification.</b> No new venue should publish until required snapshots are current.`;
-      } else {
-        tag.textContent = 'Production safe';
-        setText('statusTitle', 'Every app-visible row passes the current publication contract');
-        setText('statusDetail', r.next_action || 'No urgent operator action.');
-        setText('heroTitle', 'The live catalog is small because every establishment must be defensible.');
-        document.getElementById('heroCopy').innerHTML = `<b>${fmt(o.safe_live)} places are safe to show.</b> Required identity, type, public access, location, legal privilege, and verification facts are durable; licensed optional details stay transient.`;
-      }
-      setText('statusAside', o.next_expiry ? `Next lease expiry ${until(o.next_expiry)}` : 'No active lease');
-    }
-
-    function renderMetrics(data) {
-      const o = data.overall || {}, w = data.work_queue || {}, runtime = data.runtime || {};
-      const unsafe = o.unsafe_app_visible == null
-        ? num(o.unsafe_legacy_live) + num(o.unsafe_expired_live)
-        : num(o.unsafe_app_visible);
-      setText('safeLive', fmt(o.safe_live)); setText('appVisible', fmt(o.app_visible));
-      setText('providerReady', fmt(runtime.detail_ready)); setText('unsafeCount', fmt(unsafe));
-      setText('reviewCount', fmt(w.candidates_needing_review)); setText('verifiedFlow', fmt(w.unexpired_verified));
-      document.getElementById('unsafeMetric').className = `card metric ${unsafe ? 'bad' : 'good'}`;
-      setText('publishedFlow', fmt(o.safe_live));
-      const candidates = (data.candidates || []).reduce((sum, row) => sum + num(row.count), 0);
-      const sourceRecords = (data.sources || []).filter(row => ['ca_abc','fsq','datasf'].includes(row.source)).reduce((sum, row) => sum + num(row.record_count), 0);
-      setText('candidateTotal', fmt(candidates)); setText('sourceEvidence', fmt(sourceRecords));
-      setText('nextAction', data.readiness?.next_action || 'No action available');
-    }
-
-    function renderSources(data) {
-      const rows = data.sources || [];
-      const el = document.getElementById('sources');
-      if (!rows.length) { el.innerHTML = '<div class="empty">No source snapshots reported.</div>'; return; }
-      el.innerHTML = rows.map(source => {
-        const latest = source.latest_run || {};
-        const noSnapshot = !source.completed_at;
-        const stale = source.fresh === false && !noSnapshot;
-        const failed = latest.status === 'failed';
-        const cls = noSnapshot || (source.required && stale) ? 'bad' : failed || stale ? 'warn' : source.record_count ? '' : 'neutral';
-        const label = noSnapshot ? 'Not loaded' : stale ? 'Stale' : failed ? 'Refresh failed' : source.record_count ? 'Current' : 'Optional';
-        const role = source.required ? 'Required for publication' : source.source === 'overture' ? 'Optional corroboration only' : 'Optional enrichment/corroboration';
-        const error = failed && latest.error ? `<div class="source-error">Latest attempt: ${esc(latest.error)}</div>` : '';
-        return `<article class="source"><div class="source-top"><div><div class="source-name">${esc(source.label)}</div><div class="source-role">${esc(role)}</div></div><span class="pill ${cls}">${esc(label)}</span></div>
-          <div class="source-stats"><span>Current records</span><b>${fmt(source.record_count)}</b><span>Open records</span><b>${fmt(source.open_record_count)}</b><span>Completed snapshot</span><b>${esc(source.completed_at ? ago(source.completed_at) : 'never')}</b><span>Latest attempt</span><b>${esc(latest.started_at ? ago(latest.started_at) : 'never')}</b></div>${error}</article>`;
-      }).join('');
-    }
-
-    function renderRuntime(data) {
-      const runtime = data.runtime || {}, providers = runtime.providers || [];
-      const denominator = num(runtime.eligible_establishments);
-      const ready = num(runtime.detail_ready), warm = num(runtime.warm_establishments);
-      const stale = num(runtime.stale_or_ineligible_cache_rows);
-      const leases = num(runtime.active_refresh_leases);
-      document.getElementById('runtimeSummary').innerHTML = [
-        [denominator ? `${fmt(ready)} / ${fmt(denominator)}` : fmt(ready), 'Provider identity ready', 'A detail request can use a reviewed place ID'],
-        [fmt(warm), 'Warm shared responses', 'Details available without an external call'],
-        [fmt(stale), 'Stale or ineligible cache rows', 'Target is zero; stale content is never served'],
-        [fmt(leases), 'Refreshes in flight', 'Short leases collapse concurrent cold requests'],
-      ].map(row => `<div class="runtime-stat"><strong>${row[0]}</strong><span>${row[1]}</span><small>${row[2]}</small></div>`).join('');
-
-      const el = document.getElementById('providers');
-      if (!runtime.applied || !providers.length) {
-        el.innerHTML = '<div class="empty">The licensed detail runtime is not installed.</div>';
-        return;
-      }
-      el.innerHTML = providers.map(provider => {
-        const links = num(provider.active_links), percent = denominator ? Math.round(links / denominator * 100) : 0;
-        const held = num(provider.rejected) + num(provider.not_found);
-        const matchLine = provider.match_tracking
-          ? `${fmt(provider.matched)} matched · ${fmt(held)} rejected · ${fmt(provider.errors)} retry · ${fmt(provider.pending)} pending`
-          : 'Durable IDs inherited from verified catalog evidence';
-        const attemptLine = provider.match_tracking
-          ? `${fmt(provider.never_attempted)} untouched · last run ${ago(provider.last_attempted_at)} · next retry ${until(provider.next_retry_at)}`
-          : `Last validated ${ago(provider.last_validated_at)}`;
-        const cacheLine = num(provider.fresh_cache_rows)
-          ? `${fmt(provider.warm_establishments)} warm venue${num(provider.warm_establishments) === 1 ? '' : 's'} · expires ${until(provider.latest_expiry)}`
-          : provider.provider === 'foursquare'
-          ? 'No server cache by policy'
-          : 'Cold: the next detail request may call the provider';
-        const cls = links === denominator ? '' : links ? 'warn' : 'bad';
-        return `<article class="provider"><div class="provider-title"><div><strong>${esc(provider.label || human(provider.provider))}</strong><small>${esc(provider.detail_policy || '')}</small></div><span class="pill ${cls}">${fmt(links)} linked · ${percent}%</span></div>
-          <div class="provider-stats"><span>Identity decisions</span><b>${esc(matchLine)}</b><span>Incremental state</span><b>${esc(attemptLine)}</b><span>Response cache</span><b>${esc(cacheLine)}</b><span>Minimum link confidence</span><b>${provider.min_confidence == null ? '—' : `${Math.round(num(provider.min_confidence) * 100)}%`}</b></div>
-          <div class="provider-note">Provider values are an attributed display overlay only. They cannot create a venue, change publication, or overwrite Paloma's durable row.</div></article>`;
-      }).join('');
-    }
-
-    function renderWork(data) {
-      const w = data.work_queue || {}, o = data.overall || {};
-      const unsafe = o.unsafe_app_visible == null
-        ? num(o.unsafe_legacy_live) + num(o.unsafe_expired_live)
-        : num(o.unsafe_app_visible);
-      const providerExceptions = (data.runtime?.providers || []).reduce((sum, provider) =>
-        sum + num(provider.rejected) + num(provider.not_found) + num(provider.errors), 0);
-      const rows = [
-        { value: unsafe, cls: unsafe ? 'bad' : '', icon: unsafe ? '!' : '✓', title: 'Unsafe consumer rows', detail: 'Legacy or expired rows that must not remain app-visible' },
-        { value: w.candidates_needing_review, cls: num(w.candidates_needing_review) ? 'warn' : '', icon: '?', title: 'Candidates needing human review', detail: 'Identity, access, or evidence conflicts held outside the app' },
-        { value: w.candidates_needing_verification, cls: num(w.candidates_needing_verification) ? 'warn' : '', icon: '↻', title: 'Private candidates awaiting verification', detail: 'Discovery rows missing one or more hard publication facts' },
-        { value: w.leases_due, cls: num(w.leases_due) ? 'warn' : '', icon: '◷', title: 'Live leases due within 14 days', detail: 'Refresh before expiry or fail closed automatically' },
-        { value: providerExceptions, cls: providerExceptions ? 'warn' : '', icon: '↯', title: 'Provider identity exceptions', detail: 'Optional live-detail links rejected, not found, or waiting to retry' },
-        { value: w.ready_to_publish, cls: num(w.ready_to_publish) ? 'warn' : '', icon: '→', title: 'Verified but not materialized', detail: 'Safe private rows awaiting an explicit publish step' },
-      ];
-      document.getElementById('workQueue').innerHTML = rows.map(row => `<div class="queue-row ${row.cls}"><div class="queue-icon">${row.icon}</div><div><strong>${esc(row.title)}</strong><span>${esc(row.detail)}</span></div><b>${fmt(row.value)}</b></div>`).join('');
-    }
-
-    function renderBlockers(data) {
-      const rows = data.blockers || [], el = document.getElementById('blockers');
-      if (!rows.length) { el.innerHTML = '<div class="empty">No held candidates or v2 migration not yet applied.</div>'; return; }
-      el.innerHTML = rows.map(row => { const info = reasonInfo(row.reason); return `<div class="blocker"><span><strong>${esc(info[0])}</strong><small>${esc(info[1])}</small></span><b>${fmt(row.count)}</b></div>`; }).join('');
-    }
-
-    function renderCoverage(data) {
-      const coverage = data.coverage || {}, denominator = num(coverage.denominator);
-      const fields = [['Required core facts','core'],['Neighborhood','neighborhood'],['Phone','phone'],['Website','website'],['Hours','hours'],['Price','price'],['Setting','settings']];
-      document.getElementById('fieldCoverage').innerHTML = fields.map(([label,key]) => {
-        const count = key === 'core' ? denominator : num(coverage[key]), percent = denominator ? count / denominator * 100 : 0;
-        return `<div class="bar-row"><span>${label}</span><div class="bar-track"><i class="${percent < 60 ? 'low' : ''}" style="width:${percent.toFixed(1)}%"></i></div><b>${fmt(count)} · ${Math.round(percent)}%</b></div>`;
-      }).join('');
-      const routes = (data.runtime?.providers || []).map(provider => `${provider.label || human(provider.provider)} ${fmt(provider.active_links)}`).join(' · ');
-      document.getElementById('fieldContract').innerHTML = `<b>On-demand routes: ${esc(routes || 'none')}.</b> Bars above count only values Paloma may store durably. Licensed phone, hours, price, website, and objective settings can still appear on a detail screen when a provider returns them; they are not copied into the establishment row or counted as durable coverage.`;
-      const tiers = data.verification_tiers || [];
-      document.getElementById('tierBreakdown').innerHTML = tiers.length ? tiers.map(row => `<span class="chip">${esc(human(row.tier))}<b>${fmt(row.count)}</b></span>`).join('') : '<span class="chip">None yet</span>';
-      const types = data.published_types || [], max = Math.max(1, ...types.map(row => num(row.count)));
-      document.getElementById('typeBreakdown').innerHTML = types.length ? types.slice(0, 10).map(row => `<div class="bar-row"><span>${esc(row.name)}</span><div class="bar-track"><i style="width:${(num(row.count)/max*100).toFixed(1)}%"></i></div><b>${fmt(row.count)}</b></div>`).join('') : '<div class="empty">No safe published types.</div>';
-      const cities = data.published_cities || [];
-      document.getElementById('cityBreakdown').innerHTML = cities.length ? cities.map(row => `<span class="chip">${esc(row.city)}<b>${fmt(row.count)}</b></span>`).join('') : '<span class="chip">None yet</span>';
-    }
 
     function renderSummary(data) {
+      const overall = data.overall || {};
+      const readiness = data.readiness || {};
+      const work = data.work_queue || {};
+      const runtime = data.runtime || {};
+      const unsafe = overall.unsafe_app_visible == null
+        ? num(overall.unsafe_legacy_live) + num(overall.unsafe_expired_live)
+        : num(overall.unsafe_app_visible);
+      const required = (data.sources || []).filter(source => source.required);
+      const currentRequired = required.filter(source => source.fresh && source.completed_at).length;
+      const schemaReady = data.schema_version === 'catalog_v2';
+      const sourcesReady = readiness.required_sources_ready && currentRequired === required.length;
+      const status = document.getElementById('status');
+      status.className = 'card status';
+
+      if (!schemaReady || unsafe > 0) {
+        status.classList.add('bad');
+        setText('statusIcon', '!');
+        setText('statusLabel', 'Action required');
+        setText('statusTitle', `${fmt(unsafe)} unsafe row${unsafe === 1 ? '' : 's'} can be seen by the app`);
+        setText('statusDetail', 'Remove legacy or expired rows from the consumer read path before relying on the catalog.');
+      } else if (!sourcesReady) {
+        status.classList.add('warn');
+        setText('statusIcon', '↻');
+        setText('statusLabel', 'Refresh due');
+        setText('statusTitle', 'A required source snapshot is missing or stale');
+        setText('statusDetail', 'Published leases remain fail-closed while required evidence is refreshed.');
+      } else {
+        setText('statusIcon', '✓');
+        setText('statusLabel', 'Production safe');
+        setText('statusTitle', 'Every app-visible establishment passes the publication contract');
+        setText('statusDetail', `${fmt(overall.safe_live)} verified establishments are currently safe to show.`);
+      }
+
       setText('updated', `Updated ${new Date(data.generated_at).toLocaleTimeString([], { hour:'numeric', minute:'2-digit' })}`);
-      setText('contractVersion', `Bay Area drinking venues · decision ${data.decision_version || 'unknown'}`);
-      renderReadiness(data); renderMetrics(data); renderRuntime(data); renderSources(data); renderWork(data); renderBlockers(data); renderCoverage(data);
+      setText('contractVersion', `Decision ${data.decision_version || 'unknown'} · Bay Area drinking establishments`);
+      setText('expiryMeta', until(overall.next_expiry));
+      setText('detailMeta', `${fmt(runtime.detail_ready)} of ${fmt(runtime.eligible_establishments)} ready for live details`);
+      setText('safeLive', fmt(overall.safe_live));
+      setText('liveMeta', `${fmt(overall.app_visible)} visible to the app`);
+      setText('unsafeCount', fmt(unsafe));
+      setText('sourceReady', `${currentRequired}/${required.length}`);
+      setText('sourceMeta', required.map(source => source.label).join(' + ') || 'No required sources');
+      setText('reviewCount', fmt(work.candidates_needing_review));
+      setText('nextAction', readiness.next_action || 'No immediate operator action.');
+      document.getElementById('unsafeMetric').className = `card metric ${unsafe ? 'bad' : 'good'}`;
+      document.getElementById('sourceMetric').className = `card metric ${sourcesReady ? 'good' : 'bad'}`;
     }
 
-    function venueCard(item) {
-      const facts = [
-        [Boolean(item.phone_e164), 'phone'], [Boolean(item.website_url), 'website'],
-        [Boolean(item.neighborhood), 'neighborhood'], [Boolean(item.has_hours), 'hours'],
-        [Boolean(item.has_price), 'price'], [Boolean(item.has_settings), 'setting'],
-      ];
-      const providerFacts = (item.live_providers || []).map(provider => `<span class="fact provider">↗ ${esc(human(provider))}</span>`).join('');
-      const warm = item.has_warm_cache ? '<span class="fact warm">✓ warm details</span>' : '';
-      return `<article class="venue"><div class="venue-top"><div style="min-width:0"><div class="venue-name">${esc(item.name)}</div><div class="venue-type">${esc(item.primary_type_name || human(item.primary_type_slug))} · ${esc(item.city || '')}${item.neighborhood ? ` · ${esc(item.neighborhood)}` : ''}</div></div><span class="evidence">${esc(human(item.verification_tier))}</span></div><div class="venue-address">${esc(item.address || 'No address')}${item.region ? ` · ${esc(item.region)}` : ''}</div><div class="facts">${facts.map(([has,label]) => `<span class="fact ${has ? '' : 'missing'}">${has ? '✓' : '—'} ${label}</span>`).join('')}${providerFacts}${warm}</div></article>`;
+    function venueRow(item) {
+      const providers = item.live_providers || [];
+      const detail = providers.length
+        ? `${providers.length} live source${providers.length === 1 ? '' : 's'}`
+        : 'Core only';
+      const area = [item.neighborhood, item.city, item.region].filter(Boolean).join(' · ');
+      return `<article class="venue"><div><div class="venue-name">${esc(item.name)}</div><div class="venue-type">${esc(item.primary_type_name || human(item.primary_type_slug))}</div></div><div class="venue-location"><div class="venue-address">${esc(item.address || 'Address unavailable')}</div><div class="venue-area">${esc(area)}</div></div><span class="detail ${providers.length ? '' : 'core'}">${esc(detail)}</span></article>`;
     }
 
     function renderVenues() {
-      setText('listMeta', `${fmt(state.total)} safe live establishment${state.total === 1 ? '' : 's'}`);
-      document.getElementById('venues').innerHTML = state.items.length ? state.items.map(venueCard).join('') : '<div class="empty">No v2 establishment currently passes every publication gate.</div>';
-      document.getElementById('loadMore').hidden = state.items.length >= state.total;
+      setText('listMeta', `${fmt(state.total)} live establishment${state.total === 1 ? '' : 's'}`);
+      document.getElementById('venues').innerHTML = state.items.length
+        ? state.items.map(venueRow).join('')
+        : '<div class="empty">No published establishment matches this search.</div>';
+      const hasMore = state.items.length < state.total;
+      document.getElementById('loadMore').hidden = !hasMore;
+      document.getElementById('loadWrap').hidden = !hasMore;
     }
 
     async function loadVenues(reset = false) {
       if (state.loading) return;
       if (reset) { state.offset = 0; state.items = []; }
-      state.loading = true; document.getElementById('loadMore').disabled = true;
-      if (!state.items.length) document.getElementById('venues').innerHTML = '<div class="empty">Loading safe establishments…</div>';
+      state.loading = true;
+      document.getElementById('loadMore').disabled = true;
+      if (!state.items.length) document.getElementById('venues').innerHTML = '<div class="empty">Loading establishments…</div>';
       const params = new URLSearchParams({ view:'live', limit:'24', offset:String(state.offset) });
       if (state.q) params.set('q', state.q);
       try {
         const response = await fetch(`${ENDPOINT}?${params}`, { cache:'no-store' });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json(), next = data.list?.items || [];
-        state.total = num(data.list?.total); state.items = reset ? next : state.items.concat(next); state.offset = state.items.length; renderVenues();
+        const data = await response.json();
+        const next = data.list?.items || [];
+        state.total = num(data.list?.total);
+        state.items = reset ? next : state.items.concat(next);
+        state.offset = state.items.length;
+        renderVenues();
       } catch (error) {
-        document.getElementById('venues').innerHTML = `<div class="empty">Could not load the safe catalog: ${esc(error.message)}</div>`;
-      } finally { state.loading = false; document.getElementById('loadMore').disabled = false; }
+        document.getElementById('venues').innerHTML = `<div class="empty">Could not load establishments: ${esc(error.message)}</div>`;
+      } finally {
+        state.loading = false;
+        document.getElementById('loadMore').disabled = false;
+      }
     }
 
     async function refreshSummary() {
       try {
         const response = await fetch(ENDPOINT, { cache:'no-store' });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        renderSummary(await response.json()); document.getElementById('error').style.display = 'none';
+        renderSummary(await response.json());
+        document.getElementById('error').style.display = 'none';
       } catch (error) {
-        const el = document.getElementById('error'); el.textContent = `Could not load catalog operations: ${error.message}`; el.style.display = 'block'; setText('updated', 'Disconnected');
+        const element = document.getElementById('error');
+        element.textContent = `Could not load catalog status: ${error.message}`;
+        element.style.display = 'block';
+        setText('updated', 'Disconnected');
       }
     }
 
-    document.getElementById('search').addEventListener('input', event => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { state.q = event.target.value.trim(); loadVenues(true); }, 250); });
+    document.getElementById('search').addEventListener('input', event => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => { state.q = event.target.value.trim(); loadVenues(true); }, 250);
+    });
     document.getElementById('loadMore').addEventListener('click', () => loadVenues(false));
-    refreshSummary(); loadVenues(true); setInterval(refreshSummary, 30000);
+    refreshSummary();
+    loadVenues(true);
+    setInterval(refreshSummary, 30000);
   </script>
 </body>
 </html>
