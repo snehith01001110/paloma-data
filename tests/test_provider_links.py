@@ -5,6 +5,7 @@ from paloma_data.provider_links import (
     ProviderLinkRepository,
     ProviderLinkSync,
     ProviderMatchLease,
+    YelpProviderAudit,
     provider_match_identity_fingerprint,
 )
 
@@ -114,6 +115,11 @@ class _API:
             confidence=0.99,
         )
 
+    def audit_details(self, _provider_place_id, _place):
+        from paloma_data.adapters.yelp import YelpDetailsAudit
+
+        return YelpDetailsAudit(True, "matched", True, True, True, True)
+
 
 def test_sync_persists_only_the_durable_match_and_reports_api_calls():
     repository = _Repository()
@@ -126,3 +132,32 @@ def test_sync_persists_only_the_durable_match_and_reports_api_calls():
     assert result["matched"] == 1
     assert result["stored_provider_attributes"] is False
     assert repository.completed == []
+
+
+class _AuditRepository:
+    def active_yelp_links(self, _conn, *, city, limit):
+        assert city == "San Francisco"
+        assert limit == 100
+        return [(PLACE, "WavvLdfdP6g8aZTtbBQHTw")]
+
+    def rejected_yelp_candidates(self, _conn, *, city, limit):
+        assert city == "San Francisco"
+        assert limit == 100
+        return [(PLACE, "ambiguous_multiple_candidates")]
+
+
+def test_provider_audit_is_read_only_and_reports_only_field_presence():
+    result = YelpProviderAudit(_DB(), repository=_AuditRepository()).run(
+        _API(), city="San Francisco", limit=100
+    )
+
+    assert result["production_state_mutated"] is False
+    assert result["stored_provider_attributes"] is False
+    assert result["details"]["identity_compatible"] == 1
+    assert result["details"]["attribute_availability"] == {
+        "phone": 1,
+        "hours": 1,
+        "price": 1,
+        "venue_website": 0,
+    }
+    assert result["rejected_matches"]["decision_counts"] == {"matched": 1}

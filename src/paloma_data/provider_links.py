@@ -93,6 +93,80 @@ class ProviderLinkRepository:
             for row in rows
         ]
 
+    def active_yelp_links(
+        self,
+        conn: psycopg.Connection,
+        *,
+        city: str | None,
+        limit: int,
+    ) -> list[tuple[YelpMatchInput, str]]:
+        rows = conn.execute(
+            """
+            select
+              establishment.id::text as establishment_id,
+              establishment.name, establishment.address, establishment.city,
+              establishment.region, establishment.postal_code,
+              establishment.country_code,
+              ST_Y(establishment.location::geometry)::float as latitude,
+              ST_X(establishment.location::geometry)::float as longitude,
+              establishment.phone_e164,
+              yelp_link.provider_place_id
+            from public.establishments establishment
+            join ingest.runtime_provider_links yelp_link
+              on yelp_link.establishment_id = establishment.id
+             and yelp_link.provider = 'yelp'
+             and yelp_link.retired_at is null
+            where establishment.publication_state = 'published'
+              and establishment.status = 'open'
+              and (%s::text is null or lower(establishment.city) = lower(%s::text))
+            order by establishment.name, establishment.id
+            limit %s
+            """,
+            (city, city, limit),
+        ).fetchall()
+        return [(_yelp_match_input(row), str(row["provider_place_id"])) for row in rows]
+
+    def rejected_yelp_candidates(
+        self,
+        conn: psycopg.Connection,
+        *,
+        city: str | None,
+        limit: int,
+    ) -> list[tuple[YelpMatchInput, str]]:
+        rows = conn.execute(
+            """
+            select
+              establishment.id::text as establishment_id,
+              establishment.name, establishment.address, establishment.city,
+              establishment.region, establishment.postal_code,
+              establishment.country_code,
+              ST_Y(establishment.location::geometry)::float as latitude,
+              ST_X(establishment.location::geometry)::float as longitude,
+              establishment.phone_e164,
+              match_state.decision_reason
+            from public.establishments establishment
+            join ingest.provider_match_state match_state
+              on match_state.establishment_id = establishment.id
+             and match_state.provider = 'yelp'
+             and match_state.outcome = 'rejected'
+            left join ingest.runtime_provider_links yelp_link
+              on yelp_link.establishment_id = establishment.id
+             and yelp_link.provider = 'yelp'
+             and yelp_link.retired_at is null
+            where establishment.publication_state = 'published'
+              and establishment.status = 'open'
+              and yelp_link.id is null
+              and (%s::text is null or lower(establishment.city) = lower(%s::text))
+            order by establishment.name, establishment.id
+            limit %s
+            """,
+            (city, city, limit),
+        ).fetchall()
+        return [
+            (_yelp_match_input(row), str(row.get("decision_reason") or "unknown"))
+            for row in rows
+        ]
+
     def claim(
         self,
         conn: psycopg.Connection,
@@ -368,6 +442,132 @@ class ProviderLinkSync:
         }
 
 
+class YelpProviderAudit:
+    """Read-only, attribute-free audit of active and rejected Yelp identities."""
+
+    def __init__(
+        self,
+        db: Database,
+        *,
+        repository: ProviderLinkRepository | None = None,
+    ) -> None:
+        self.db = db
+        self.repository = repository or ProviderLinkRepository()
+
+    def run(
+        self,
+        api: YelpPlacesAPI,
+        *,
+        city: str | None,
+        limit: int,
+    ) -> dict[str, Any]:
+        if limit < 1:
+            raise ValueError("limit must be positive")
+        return {
+            "provider": "yelp",
+            "city": city,
+            "details": self._audit_details(api, city=city, limit=limit),
+            "rejected_matches": self._audit_rejected(api, city=city, limit=limit),
+            "production_state_mutated": False,
+            "stored_provider_attributes": False,
+        }
+
+    def _audit_details(
+        self,
+        api: YelpPlacesAPI,
+        *,
+        city: str | None,
+        limit: int,
+    ) -> dict[str, Any]:
+        with self.db.connection() as conn:
+            linked = self.repository.active_yelp_links(conn, city=city, limit=limit)
+        counts: Counter[str] = Counter()
+        errors: Counter[str] = Counter()
+        exceptions: list[dict[str, Any]] = []
+        for place, provider_place_id in linked:
+            counts["api_calls"] += 1
+            try:
+                audit = api.audit_details(provider_place_id, place)
+            except YelpAPIError as error:
+                errors[error.code] += 1
+                exceptions.append(
+                    {
+                        "establishment_id": place.establishment_id,
+                        "name": place.name,
+                        "outcome": "error",
+                        "reason": error.code,
+                    }
+                )
+                continue
+            for field in ("phone", "hours", "price"):
+                counts[f"has_{field}"] += int(getattr(audit, f"has_{field}"))
+            counts["identity_compatible"] += int(audit.identity_compatible)
+            counts["currently_operating"] += int(audit.currently_operating)
+            if not audit.identity_compatible or not audit.currently_operating:
+                exceptions.append(
+                    {
+                        "establishment_id": place.establishment_id,
+                        "name": place.name,
+                        "outcome": "failed",
+                        "reason": audit.identity_reason,
+                    }
+                )
+        return {
+            "linked_considered": len(linked),
+            "api_calls": counts["api_calls"],
+            "identity_compatible": counts["identity_compatible"],
+            "currently_operating": counts["currently_operating"],
+            "attribute_availability": {
+                "phone": counts["has_phone"],
+                "hours": counts["has_hours"],
+                "price": counts["has_price"],
+                "venue_website": 0,
+            },
+            "venue_website_note": "Yelp does not expose the venue website in this endpoint",
+            "errors": dict(sorted(errors.items())),
+            "exceptions": exceptions,
+        }
+
+    def _audit_rejected(
+        self,
+        api: YelpPlacesAPI,
+        *,
+        city: str | None,
+        limit: int,
+    ) -> dict[str, Any]:
+        with self.db.connection() as conn:
+            rejected = self.repository.rejected_yelp_candidates(
+                conn, city=city, limit=limit
+            )
+        counts: Counter[str] = Counter()
+        results: list[dict[str, Any]] = []
+        for place, prior_reason in rejected:
+            try:
+                selection = api.match(place)
+            except YelpAPIError as error:
+                outcome = "error"
+                reason = error.code
+            else:
+                outcome = selection.outcome
+                reason = selection.reason
+            counts[outcome] += 1
+            results.append(
+                {
+                    "establishment_id": place.establishment_id,
+                    "name": place.name,
+                    "prior_reason": prior_reason,
+                    "current_outcome": outcome,
+                    "current_reason": reason,
+                }
+            )
+        return {
+            "considered": len(rejected),
+            "api_calls": len(rejected),
+            "decision_counts": dict(sorted(counts.items())),
+            "results": results,
+        }
+
+
 def provider_match_identity_fingerprint(place: YelpMatchInput) -> str:
     canonical = _canonical_json(
         {
@@ -430,3 +630,18 @@ def _optional_text(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _yelp_match_input(row: dict[str, Any]) -> YelpMatchInput:
+    return YelpMatchInput(
+        establishment_id=str(row["establishment_id"]),
+        name=str(row["name"]),
+        address=str(row["address"]),
+        city=str(row["city"]),
+        region=_optional_text(row.get("region")),
+        postal_code=_optional_text(row.get("postal_code")),
+        country_code=str(row["country_code"]),
+        latitude=float(row["latitude"]),
+        longitude=float(row["longitude"]),
+        phone_e164=_optional_text(row.get("phone_e164")),
+    )
