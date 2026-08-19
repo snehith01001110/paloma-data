@@ -1,10 +1,10 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Paloma catalog control room</title>
-  <meta name="description" content="Operational truth for Paloma's verified Bay Area drinking-place catalog." />
+  <meta name="description" content="Operational truth for Paloma's verified Bay Area drinking-place catalog.">
   <style>
     :root {
       color-scheme: light;
@@ -108,6 +108,23 @@
     .source-stats b { color: var(--ink); text-align: right; }
     .source-error { margin-top: 10px; padding: 7px 8px; color: var(--red); background: var(--red-soft); border-radius: 7px; font-size: 8.5px; overflow-wrap: anywhere; }
 
+    .runtime { overflow: hidden; }
+    .runtime-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
+    .runtime-stat { min-width: 0; padding: 15px 16px; border-right: 1px solid var(--line); }
+    .runtime-stat:last-child { border-right: 0; }
+    .runtime-stat strong { display: block; font-size: 20px; line-height: 1; letter-spacing: -.04em; }
+    .runtime-stat span { display: block; margin-top: 6px; font-size: 9.5px; font-weight: 800; }
+    .runtime-stat small { display: block; margin-top: 2px; color: var(--muted); font-size: 8.5px; }
+    .provider-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .provider { min-width: 0; padding: 17px; border-right: 1px solid var(--line); }
+    .provider:last-child { border-right: 0; }
+    .provider-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+    .provider-title strong { display: block; font-size: 12px; }
+    .provider-title small { display: block; margin-top: 3px; color: var(--muted); font-size: 8.8px; }
+    .provider-stats { display: grid; grid-template-columns: 1fr auto; gap: 5px 10px; margin-top: 13px; color: var(--muted); font-size: 9px; }
+    .provider-stats b { color: var(--ink); text-align: right; }
+    .provider-note { margin-top: 11px; padding: 8px 9px; color: var(--muted); background: #f5f4ee; border-radius: 8px; font-size: 8.7px; }
+
     .queue { padding: 7px 0; }
     .queue-row { display: grid; grid-template-columns: 31px minmax(0,1fr) auto; gap: 10px; align-items: center; padding: 10px 15px; border-bottom: 1px solid #efeee8; }
     .queue-row:last-child { border-bottom: 0; }
@@ -130,11 +147,14 @@
     .coverage-list { padding: 13px 16px 17px; }
     .coverage-list + .coverage-list { border-left: 1px solid var(--line); }
     .mini-title { margin-bottom: 9px; color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    .mini-title.section-spacer { margin-top: 18px; }
     .bar-row { display: grid; grid-template-columns: minmax(75px, 120px) 1fr 65px; gap: 9px; align-items: center; margin-top: 9px; font-size: 9.5px; }
     .bar-track { height: 7px; overflow: hidden; background: #ecebe5; border-radius: 999px; }
     .bar-track i { display: block; height: 100%; background: var(--green); border-radius: inherit; }
     .bar-track i.low { background: var(--amber); }
     .bar-row b { text-align: right; font-size: 9px; }
+    .field-note { margin-top: 14px; padding: 10px 11px; color: var(--muted); background: var(--blue-soft); border-radius: 9px; font-size: 9px; }
+    .field-note b { color: var(--blue); }
     .chips { display: flex; flex-wrap: wrap; gap: 6px; }
     .chip { padding: 6px 8px; background: #f0efe9; border-radius: 8px; font-size: 9px; }
     .chip b { margin-left: 4px; }
@@ -154,6 +174,8 @@
     .facts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 9px; }
     .fact { padding: 3px 5px; color: var(--muted); background: #f2f1ec; border-radius: 5px; font-size: 7.8px; }
     .fact.missing { color: var(--amber); background: var(--amber-soft); }
+    .fact.provider { color: var(--blue); background: var(--blue-soft); }
+    .fact.warm { color: var(--green); background: var(--green-soft); }
     .load-wrap { padding: 0 11px 13px; text-align: center; }
     .load { padding: 8px 13px; background: #fff; border: 1px solid var(--line); border-radius: 9px; font-size: 9.5px; }
     .load[hidden] { display: none; }
@@ -179,10 +201,12 @@
       .flow { grid-template-columns: 1fr; gap: 7px; }
       .flow-step + .flow-step { margin-left: 0; }
       .flow-step + .flow-step::before { content: "↓"; left: 50%; top: -10px; transform: translateX(-50%); }
-      .source-grid, .venues, .coverage { grid-template-columns: 1fr; }
+      .source-grid, .venues, .coverage, .provider-grid, .runtime-summary { grid-template-columns: 1fr; }
       .source { border-right: 0 !important; border-bottom: 1px solid var(--line) !important; }
       .source:last-child { border-bottom: 0 !important; }
       .coverage-list + .coverage-list { border-top: 1px solid var(--line); border-left: 0; }
+      .runtime-stat, .provider { border-right: 0; border-bottom: 1px solid var(--line); }
+      .runtime-stat:last-child, .provider:last-child { border-bottom: 0; }
       .catalog-tools { align-items: stretch; flex-direction: column; }
       .search { width: 100%; }
       footer { flex-direction: column; }
@@ -193,7 +217,7 @@
   <main class="shell">
     <header>
       <div><div class="eyebrow">Paloma data</div><h1>Catalog control room</h1></div>
-      <div class="updated"><strong id="updated">Connecting…</strong><span>Bay Area drinking venues · decision v2</span></div>
+      <div class="updated"><strong id="updated">Connecting…</strong><span id="contractVersion">Bay Area drinking venues · loading contract</span></div>
     </header>
 
     <div class="error" id="error"></div>
@@ -212,15 +236,15 @@
       <div class="hero-number" id="heroNumber">
         <strong id="safeLive">—</strong>
         <span>safe, live establishments</span>
-        <small>Published + open + v2 verified + unexpired</small>
+        <small>Published + open + current contract + unexpired</small>
       </div>
     </section>
 
     <section class="metrics" aria-label="Safety summary">
       <article class="card metric"><strong id="appVisible">—</strong><span>Rows the app can see</span><small>Must equal the safe count before launch</small></article>
-      <article class="card metric good"><strong id="verifiedPool">—</strong><span>Unexpired verified pool</span><small>Includes already live and ready records</small></article>
-      <article class="card metric bad"><strong id="unsafeCount">—</strong><span>Unsafe app-visible rows</span><small>Legacy or expired; target is zero</small></article>
-      <article class="card metric warn"><strong id="readyCount">—</strong><span>Ready to publish</span><small>Verified privately, not yet materialized</small></article>
+      <article class="card metric good"><strong id="providerReady">—</strong><span>Live-detail ready</span><small>Has at least one validated provider identity</small></article>
+      <article class="card metric" id="unsafeMetric"><strong id="unsafeCount">—</strong><span>Unsafe app-visible rows</span><small>Any publication-contract failure; target is zero</small></article>
+      <article class="card metric warn"><strong id="reviewCount">—</strong><span>Held for human review</span><small>Private candidates; never auto-published</small></article>
     </section>
 
     <div class="section-head"><h2>How a row reaches the app</h2><p>Discovery volume is not catalog size</p></div>
@@ -232,6 +256,12 @@
         <div class="flow-step"><strong id="publishedFlow">—</strong><span>Safe public rows</span><small>The only product establishments</small></div>
       </div>
       <div class="flow-note">FSQ OS supplies the consumer identity; California ABC supplies exact legal privileges. A license never creates a venue by itself. Optional enrichment never weakens the publication gate.</div>
+    </section>
+
+    <div class="section-head"><h2>Live detail layer</h2><p>Identity readiness, external-call protection, and cache policy</p></div>
+    <section class="card runtime">
+      <div class="runtime-summary" id="runtimeSummary"><div class="empty">Loading provider runtime…</div></div>
+      <div class="provider-grid" id="providers"></div>
     </section>
 
     <div class="section-head"><h2>Source snapshots</h2><p>A failed optional source cannot take down the truth path</p></div>
@@ -249,19 +279,19 @@
       </article>
     </section>
 
-    <div class="section-head"><h2>Published data quality</h2><p>Coverage is measured only across safe, live rows</p></div>
+    <div class="section-head"><h2>Establishment fields</h2><p>Durable truth is separate from licensed, on-demand detail</p></div>
     <section class="card coverage">
-      <div class="coverage-list"><div class="mini-title">Optional field coverage</div><div id="fieldCoverage"></div></div>
+      <div class="coverage-list"><div class="mini-title">Stored on safe establishment rows</div><div id="fieldCoverage"></div><div class="field-note" id="fieldContract"></div></div>
       <div class="coverage-list">
         <div class="mini-title">Verification basis</div><div class="chips" id="tierBreakdown"></div>
-        <div class="mini-title" style="margin-top:18px">Venue types</div><div id="typeBreakdown"></div>
-        <div class="mini-title" style="margin-top:18px">Cities</div><div class="chips" id="cityBreakdown"></div>
+        <div class="mini-title section-spacer">Venue types</div><div id="typeBreakdown"></div>
+        <div class="mini-title section-spacer">Cities</div><div class="chips" id="cityBreakdown"></div>
       </div>
     </section>
 
     <div class="section-head"><h2>Safe live catalog</h2><p>No private candidates or legal-name-only records are exposed here</p></div>
     <section class="card catalog">
-      <div class="catalog-tools"><span id="listMeta">Loading…</span><input class="search" id="search" type="search" placeholder="Search live name, address, city, neighborhood" /></div>
+      <div class="catalog-tools"><span id="listMeta">Loading…</span><input class="search" id="search" type="search" placeholder="Search live name, address, city, neighborhood"></div>
       <div class="venues" id="venues"><div class="empty">Loading safe establishments…</div></div>
       <div class="load-wrap"><button class="load" id="loadMore" hidden type="button">Load more</button></div>
     </section>
@@ -321,7 +351,9 @@
     function renderReadiness(data) {
       const r = data.readiness || {}, o = data.overall || {};
       const legacy = data.schema_version !== 'catalog_v2';
-      const unsafe = num(o.unsafe_legacy_live) + num(o.unsafe_expired_live);
+      const unsafe = o.unsafe_app_visible == null
+        ? num(o.unsafe_legacy_live) + num(o.unsafe_expired_live)
+        : num(o.unsafe_app_visible);
       const dot = document.getElementById('statusDot');
       const tag = document.getElementById('heroTag');
       const hero = document.getElementById('heroNumber');
@@ -349,20 +381,23 @@
         document.getElementById('heroCopy').innerHTML = `<b>${fmt(o.safe_live)} rows currently have unexpired verification.</b> No new venue should publish until required snapshots are current.`;
       } else {
         tag.textContent = 'Production safe';
-        setText('statusTitle', 'The consumer catalog contains only current v2 establishments');
+        setText('statusTitle', 'Every app-visible row passes the current publication contract');
         setText('statusDetail', r.next_action || 'No urgent operator action.');
-        setText('heroTitle', 'Every live establishment has current consumer and legal evidence.');
-        document.getElementById('heroCopy').innerHTML = `<b>${fmt(o.safe_live)} places are safe to show.</b> Candidates with missing, conflicting, or unlicensed evidence remain private.`;
+        setText('heroTitle', 'The live catalog is small because every establishment must be defensible.');
+        document.getElementById('heroCopy').innerHTML = `<b>${fmt(o.safe_live)} places are safe to show.</b> Required identity, type, public access, location, legal privilege, and verification facts are durable; licensed optional details stay transient.`;
       }
       setText('statusAside', o.next_expiry ? `Next lease expiry ${until(o.next_expiry)}` : 'No active lease');
     }
 
     function renderMetrics(data) {
-      const o = data.overall || {}, w = data.work_queue || {};
-      const unsafe = num(o.unsafe_legacy_live) + num(o.unsafe_expired_live);
+      const o = data.overall || {}, w = data.work_queue || {}, runtime = data.runtime || {};
+      const unsafe = o.unsafe_app_visible == null
+        ? num(o.unsafe_legacy_live) + num(o.unsafe_expired_live)
+        : num(o.unsafe_app_visible);
       setText('safeLive', fmt(o.safe_live)); setText('appVisible', fmt(o.app_visible));
-      setText('verifiedPool', fmt(w.unexpired_verified)); setText('unsafeCount', fmt(unsafe));
-      setText('readyCount', fmt(w.ready_to_publish)); setText('verifiedFlow', fmt(w.unexpired_verified));
+      setText('providerReady', fmt(runtime.detail_ready)); setText('unsafeCount', fmt(unsafe));
+      setText('reviewCount', fmt(w.candidates_needing_review)); setText('verifiedFlow', fmt(w.unexpired_verified));
+      document.getElementById('unsafeMetric').className = `card metric ${unsafe ? 'bad' : 'good'}`;
       setText('publishedFlow', fmt(o.safe_live));
       const candidates = (data.candidates || []).reduce((sum, row) => sum + num(row.count), 0);
       const sourceRecords = (data.sources || []).filter(row => ['ca_abc','fsq','datasf'].includes(row.source)).reduce((sum, row) => sum + num(row.record_count), 0);
@@ -388,12 +423,58 @@
       }).join('');
     }
 
+    function renderRuntime(data) {
+      const runtime = data.runtime || {}, providers = runtime.providers || [];
+      const denominator = num(runtime.eligible_establishments);
+      const ready = num(runtime.detail_ready), warm = num(runtime.warm_establishments);
+      const stale = num(runtime.stale_or_ineligible_cache_rows);
+      const leases = num(runtime.active_refresh_leases);
+      document.getElementById('runtimeSummary').innerHTML = [
+        [denominator ? `${fmt(ready)} / ${fmt(denominator)}` : fmt(ready), 'Provider identity ready', 'A detail request can use a reviewed place ID'],
+        [fmt(warm), 'Warm shared responses', 'Details available without an external call'],
+        [fmt(stale), 'Stale or ineligible cache rows', 'Target is zero; stale content is never served'],
+        [fmt(leases), 'Refreshes in flight', 'Short leases collapse concurrent cold requests'],
+      ].map(row => `<div class="runtime-stat"><strong>${row[0]}</strong><span>${row[1]}</span><small>${row[2]}</small></div>`).join('');
+
+      const el = document.getElementById('providers');
+      if (!runtime.applied || !providers.length) {
+        el.innerHTML = '<div class="empty">The licensed detail runtime is not installed.</div>';
+        return;
+      }
+      el.innerHTML = providers.map(provider => {
+        const links = num(provider.active_links), percent = denominator ? Math.round(links / denominator * 100) : 0;
+        const held = num(provider.rejected) + num(provider.not_found);
+        const matchLine = provider.match_tracking
+          ? `${fmt(provider.matched)} matched · ${fmt(held)} rejected · ${fmt(provider.errors)} retry · ${fmt(provider.pending)} pending`
+          : 'Durable IDs inherited from verified catalog evidence';
+        const attemptLine = provider.match_tracking
+          ? `${fmt(provider.never_attempted)} untouched · last run ${ago(provider.last_attempted_at)} · next retry ${until(provider.next_retry_at)}`
+          : `Last validated ${ago(provider.last_validated_at)}`;
+        const cacheLine = num(provider.fresh_cache_rows)
+          ? `${fmt(provider.warm_establishments)} warm venue${num(provider.warm_establishments) === 1 ? '' : 's'} · expires ${until(provider.latest_expiry)}`
+          : provider.provider === 'foursquare'
+          ? 'No server cache by policy'
+          : 'Cold: the next detail request may call the provider';
+        const cls = links === denominator ? '' : links ? 'warn' : 'bad';
+        return `<article class="provider"><div class="provider-title"><div><strong>${esc(provider.label || human(provider.provider))}</strong><small>${esc(provider.detail_policy || '')}</small></div><span class="pill ${cls}">${fmt(links)} linked · ${percent}%</span></div>
+          <div class="provider-stats"><span>Identity decisions</span><b>${esc(matchLine)}</b><span>Incremental state</span><b>${esc(attemptLine)}</b><span>Response cache</span><b>${esc(cacheLine)}</b><span>Minimum link confidence</span><b>${provider.min_confidence == null ? '—' : `${Math.round(num(provider.min_confidence) * 100)}%`}</b></div>
+          <div class="provider-note">Provider values are an attributed display overlay only. They cannot create a venue, change publication, or overwrite Paloma's durable row.</div></article>`;
+      }).join('');
+    }
+
     function renderWork(data) {
-      const w = data.work_queue || {}, unsafe = num(data.overall?.unsafe_legacy_live) + num(data.overall?.unsafe_expired_live);
+      const w = data.work_queue || {}, o = data.overall || {};
+      const unsafe = o.unsafe_app_visible == null
+        ? num(o.unsafe_legacy_live) + num(o.unsafe_expired_live)
+        : num(o.unsafe_app_visible);
+      const providerExceptions = (data.runtime?.providers || []).reduce((sum, provider) =>
+        sum + num(provider.rejected) + num(provider.not_found) + num(provider.errors), 0);
       const rows = [
         { value: unsafe, cls: unsafe ? 'bad' : '', icon: unsafe ? '!' : '✓', title: 'Unsafe consumer rows', detail: 'Legacy or expired rows that must not remain app-visible' },
-        { value: w.pending_match_reviews, cls: num(w.pending_match_reviews) ? 'bad' : '', icon: num(w.pending_match_reviews) ? '?' : '✓', title: 'Identity decisions', detail: 'Ambiguous duplicates, rebrands, or source conflicts' },
-        { value: w.verification_due, cls: num(w.verification_due) ? 'warn' : '', icon: '↻', title: 'Verification work due', detail: 'New candidates and leases inside the refresh window' },
+        { value: w.candidates_needing_review, cls: num(w.candidates_needing_review) ? 'warn' : '', icon: '?', title: 'Candidates needing human review', detail: 'Identity, access, or evidence conflicts held outside the app' },
+        { value: w.candidates_needing_verification, cls: num(w.candidates_needing_verification) ? 'warn' : '', icon: '↻', title: 'Private candidates awaiting verification', detail: 'Discovery rows missing one or more hard publication facts' },
+        { value: w.leases_due, cls: num(w.leases_due) ? 'warn' : '', icon: '◷', title: 'Live leases due within 14 days', detail: 'Refresh before expiry or fail closed automatically' },
+        { value: providerExceptions, cls: providerExceptions ? 'warn' : '', icon: '↯', title: 'Provider identity exceptions', detail: 'Optional live-detail links rejected, not found, or waiting to retry' },
         { value: w.ready_to_publish, cls: num(w.ready_to_publish) ? 'warn' : '', icon: '→', title: 'Verified but not materialized', detail: 'Safe private rows awaiting an explicit publish step' },
       ];
       document.getElementById('workQueue').innerHTML = rows.map(row => `<div class="queue-row ${row.cls}"><div class="queue-icon">${row.icon}</div><div><strong>${esc(row.title)}</strong><span>${esc(row.detail)}</span></div><b>${fmt(row.value)}</b></div>`).join('');
@@ -407,11 +488,13 @@
 
     function renderCoverage(data) {
       const coverage = data.coverage || {}, denominator = num(coverage.denominator);
-      const fields = [['Phone','phone'],['Website','website'],['Neighborhood','neighborhood'],['Hours','hours'],['Price','price'],['Setting','settings']];
+      const fields = [['Required core facts','core'],['Neighborhood','neighborhood'],['Phone','phone'],['Website','website'],['Hours','hours'],['Price','price'],['Setting','settings']];
       document.getElementById('fieldCoverage').innerHTML = fields.map(([label,key]) => {
-        const count = num(coverage[key]), percent = denominator ? count / denominator * 100 : 0;
+        const count = key === 'core' ? denominator : num(coverage[key]), percent = denominator ? count / denominator * 100 : 0;
         return `<div class="bar-row"><span>${label}</span><div class="bar-track"><i class="${percent < 60 ? 'low' : ''}" style="width:${percent.toFixed(1)}%"></i></div><b>${fmt(count)} · ${Math.round(percent)}%</b></div>`;
       }).join('');
+      const routes = (data.runtime?.providers || []).map(provider => `${provider.label || human(provider.provider)} ${fmt(provider.active_links)}`).join(' · ');
+      document.getElementById('fieldContract').innerHTML = `<b>On-demand routes: ${esc(routes || 'none')}.</b> Bars above count only values Paloma may store durably. Licensed phone, hours, price, website, and objective settings can still appear on a detail screen when a provider returns them; they are not copied into the establishment row or counted as durable coverage.`;
       const tiers = data.verification_tiers || [];
       document.getElementById('tierBreakdown').innerHTML = tiers.length ? tiers.map(row => `<span class="chip">${esc(human(row.tier))}<b>${fmt(row.count)}</b></span>`).join('') : '<span class="chip">None yet</span>';
       const types = data.published_types || [], max = Math.max(1, ...types.map(row => num(row.count)));
@@ -422,7 +505,8 @@
 
     function renderSummary(data) {
       setText('updated', `Updated ${new Date(data.generated_at).toLocaleTimeString([], { hour:'numeric', minute:'2-digit' })}`);
-      renderReadiness(data); renderMetrics(data); renderSources(data); renderWork(data); renderBlockers(data); renderCoverage(data);
+      setText('contractVersion', `Bay Area drinking venues · decision ${data.decision_version || 'unknown'}`);
+      renderReadiness(data); renderMetrics(data); renderRuntime(data); renderSources(data); renderWork(data); renderBlockers(data); renderCoverage(data);
     }
 
     function venueCard(item) {
@@ -431,7 +515,9 @@
         [Boolean(item.neighborhood), 'neighborhood'], [Boolean(item.has_hours), 'hours'],
         [Boolean(item.has_price), 'price'], [Boolean(item.has_settings), 'setting'],
       ];
-      return `<article class="venue"><div class="venue-top"><div style="min-width:0"><div class="venue-name">${esc(item.name)}</div><div class="venue-type">${esc(item.primary_type_name || human(item.primary_type_slug))} · ${esc(item.city || '')}${item.neighborhood ? ` · ${esc(item.neighborhood)}` : ''}</div></div><span class="evidence">${esc(human(item.verification_tier))}</span></div><div class="venue-address">${esc(item.address || 'No address')}${item.region ? ` · ${esc(item.region)}` : ''}</div><div class="facts">${facts.map(([has,label]) => `<span class="fact ${has ? '' : 'missing'}">${has ? '✓' : '—'} ${label}</span>`).join('')}</div></article>`;
+      const providerFacts = (item.live_providers || []).map(provider => `<span class="fact provider">↗ ${esc(human(provider))}</span>`).join('');
+      const warm = item.has_warm_cache ? '<span class="fact warm">✓ warm details</span>' : '';
+      return `<article class="venue"><div class="venue-top"><div style="min-width:0"><div class="venue-name">${esc(item.name)}</div><div class="venue-type">${esc(item.primary_type_name || human(item.primary_type_slug))} · ${esc(item.city || '')}${item.neighborhood ? ` · ${esc(item.neighborhood)}` : ''}</div></div><span class="evidence">${esc(human(item.verification_tier))}</span></div><div class="venue-address">${esc(item.address || 'No address')}${item.region ? ` · ${esc(item.region)}` : ''}</div><div class="facts">${facts.map(([has,label]) => `<span class="fact ${has ? '' : 'missing'}">${has ? '✓' : '—'} ${label}</span>`).join('')}${providerFacts}${warm}</div></article>`;
     }
 
     function renderVenues() {
