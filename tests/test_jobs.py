@@ -77,7 +77,12 @@ def test_worker_drains_and_acknowledges_successful_jobs():
     assert result["drained"] is True
     assert queue.completions[0][2]["refreshed"] is True
     assert queue.failures == []
-    assert [event["event"] for event in events] == ["job_started", "job_succeeded"]
+    assert [event["event"] for event in events] == [
+        "job_started",
+        "job_succeeded",
+        "worker_finished",
+    ]
+    assert events[-1]["queue_metrics"] == {"queue_total": 0}
 
 
 def test_worker_retries_unexpected_errors_with_exponential_backoff():

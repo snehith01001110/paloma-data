@@ -384,14 +384,17 @@ class PipelineWorker:
                     self._emit("job_succeeded", job)
                 if max_jobs is not None and counts["claimed"] >= max_jobs:
                     break
-        return {
+        result = {
             **counts,
             "worker_id": self.worker_id,
             "drained": queue_drained,
             "timed_out": timed_out,
             "limit_reached": max_jobs is not None and counts["claimed"] >= max_jobs,
             "unresolved_retries": len(pending_retries),
+            "queue_metrics": self.queue.metrics(),
         }
+        self.event_sink({"event": "worker_finished", **result})
+        return result
 
     def _handle(self, job: PipelineJob) -> dict[str, Any]:
         if hasattr(self.handler, "handle"):
