@@ -8,7 +8,7 @@ on:
         required: true
         default: status
         type: choice
-        options: [status, audit, resolve-review, stage, neighborhoods, discover, trial, trial-verified, verify, reevaluate, publish, provider-links, queue-refresh, queue-work, queue-status, cutover]
+        options: [status, audit, resolve-review, stage, neighborhoods, discover, trial, trial-verified, verify, reevaluate, publish, provider-links, queue-refresh, queue-work, queue-status, deploy-worker, cutover]
       source:
         description: Source for stage
         required: false
@@ -157,8 +157,32 @@ jobs:
           fi
           paloma-data pipeline-status
 
+      - name: Authenticate deployment workflow to Google Cloud
+        if: github.event_name == 'workflow_dispatch' && inputs.action == 'deploy-worker'
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud CLI
+        if: github.event_name == 'workflow_dispatch' && inputs.action == 'deploy-worker'
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+
+      - name: Deploy managed pipeline worker
+        if: github.event_name == 'workflow_dispatch' && inputs.action == 'deploy-worker'
+        shell: bash
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+          GCP_ARTIFACT_REPOSITORY: ${{ vars.GCP_ARTIFACT_REPOSITORY }}
+          GCP_RUNTIME_SERVICE_ACCOUNT: ${{ vars.GCP_RUNTIME_SERVICE_ACCOUNT }}
+          GCP_DB_SECRET: ${{ vars.GCP_DB_SECRET }}
+          GCP_YELP_SECRET: ${{ vars.GCP_YELP_SECRET }}
+        run: deploy/gcp/deploy-worker.sh
+
       - name: Manual action
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && inputs.action != 'deploy-worker'
         shell: bash
         env:
           ACTION: ${{ inputs.action }}

@@ -1,7 +1,7 @@
 # Cloud Run worker deployment
 
-This directory is an optional concrete deployment of the portable worker contract. Replace every
-uppercase placeholder in `worker-job.yaml.example`; do not deploy the example unchanged.
+This directory preserves the provider-neutral reviewed job shape. The active, reproducible Google
+Cloud deployment now lives in `deploy/gcp/`; do not deploy this placeholder example unchanged.
 
 Requirements:
 
