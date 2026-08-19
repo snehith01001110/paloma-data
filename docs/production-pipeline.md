@@ -28,8 +28,9 @@ does not drift between scheduled runs.
 - Only fixed job handlers are dispatchable. Queue payloads cannot execute shell commands or name
   arbitrary Python functions.
 - `candidate_refresh` can refresh, republish, or suppress an establishment that was already
-  materialized. It cannot publish a new candidate. New publication still requires the explicit
-  `catalog-publish --confirm PUBLISH_VERIFIED` gate.
+  materialized. It cannot publish a new candidate. New publication requires a matching immutable
+  release authorization, a healthy `expansion-status`, the explicit CLI confirmation, and the
+  database trigger at the final write boundary.
 - Candidate refresh owns identity, verification, and publication state. Once the rights-aware
   field resolver has projected canonical attributes, rematerialization preserves that projection
   (including intentional `NULL` values) so routine identity refreshes cannot erase or resurrect
@@ -41,8 +42,7 @@ does not drift between scheduled runs.
 
 ## Apply and verify
 
-Apply `supabase/migrations/20260819054949_production_pipeline_jobs.sql` before starting a worker.
-Then run:
+Apply every checked-in Supabase migration before starting a worker. Then run:
 
 ```bash
 paloma-data pipeline-status
@@ -101,7 +101,7 @@ have snapshot-level completeness semantics. Do not split a complete source snaps
 independent record jobs unless the finalizer can prove every partition completed before absence
 reconciliation.
 
-## Scheduling during cutover
+## Maintenance and expansion scheduling
 
 While catalog expansion is paused, the checked-in GitHub workflow refreshes regulatory evidence
 twice weekly, refreshes the larger durable open-source snapshots monthly, and performs this sequence:
@@ -115,9 +115,9 @@ twice weekly, refreshes the larger durable open-source snapshots monthly, and pe
 5. Leave scheduled publication disabled. A separate daily action queues the expiry sweep, and the
    managed worker drains all queued work.
 
-Keep that path enabled until the managed worker has completed at least two clean weekly cycles.
-Afterward, remove only the scheduled queue-drain step from GitHub Actions. Retain its manual
-`queue-work` action as disaster recovery.
+Keep that path enabled. The managed worker drains the queue every 12 hours, while the maintenance
+workflow retains `queue-work` only as disaster recovery. Expansion has no schedule: its separate
+GitHub workflow uses the `catalog-expansion` environment and a versioned release ID.
 
 ## Alerts and operating thresholds
 

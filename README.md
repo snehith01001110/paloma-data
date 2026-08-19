@@ -175,41 +175,26 @@ Optional fields remain `NULL` when trustworthy evidence is unavailable:
 Completeness and truth are separate. A correct row with null price is publishable; a guessed price
 is not.
 
-## Initial backfill rollout
+## Controlled Bay Area expansion
 
-Apply the additive v2 migration first. It does not change the current public catalog.
+The initial San Francisco cohort is live. Expansion is a separate, fail-closed operation governed
+by `src/paloma_data/data/bay_area_expansion_v1.json`. The manifest records the official nine-county,
+101-jurisdiction target and defines small pilot releases; it does not authorize any release.
+County FIPS codes are retained for future boundary-based releases covering unincorporated areas;
+those releases must use reviewed county geometry rather than guessing coverage from mailing cities.
 
-```bash
-# 1. Load authoritative and preferred consumer evidence privately.
-paloma-data backfill ca_abc
-paloma-data backfill datasf
-paloma-data backfill fsq
-paloma-data sync-neighborhoods
+Every new public identity must pass three independent controls:
 
-# 2. Build only a small private trial set.
-paloma-data catalog-discover --city "San Francisco" --limit 20
+1. the ordinary identity, legal, access, freshness, and rights gates;
+2. a current append-only owner authorization whose manifest hash, city scope, source-freshness
+   policy, coverage acceptance, terms version, expiry, and publication cap match the code; and
+3. the database trigger on `public.establishments`, which rechecks health and attributes the new row
+   to the release even if an operator bypasses the CLI.
 
-# 3. Make at most 20 targeted detail calls. This never mutates the public catalog.
-paloma-data catalog-trial --city "San Francisco" --limit 20
-# Pre-cutover paid audit of only the current publishable set (up to 100).
-paloma-data catalog-trial --city "San Francisco" --limit 100 --verified-only
-
-# 4. Review the JSON results and match-review queue. Direct-public bars may already have an
-#    open-evidence lease. Only with specific server-retention rights, persist a rich provider pass.
-# paloma-data catalog-verify --city "San Francisco" --limit 20
-paloma-data catalog-status
-
-# 5. After the trial is manually accepted, replace the pre-launch junk table once.
-paloma-data catalog-cutover \
-  --confirm REPLACE_PUBLIC_CATALOG \
-  --minimum-verified 20
-```
-
-The cutover truncates rebuildable product interactions and the old public catalog, but preserves
-Auth identities, profiles, source snapshots, private candidates, verifications, and evaluation
-history. It refuses to run unless the requested number of unexpired verified candidates exists.
-
-After launch, use `catalog-publish --confirm PUBLISH_VERIFIED`; do not truncate user-linked data.
+Existing establishments can still refresh, republish, or suppress without an expansion release.
+There is no scheduled or environment-variable auto-publish path. Use `expansion-status` to inspect
+blockers and the manually protected `Controlled catalog expansion` GitHub workflow for all discovery
+and publication work. See [the expansion runbook](docs/expansion-runbook.md).
 
 ## Incremental operation
 
@@ -220,10 +205,8 @@ The workflow has three independent paths:
 - Monthly: replace the bounded FSQ OS snapshot, refresh civic neighborhood polygons, and create
   private candidates for newly discovered places. Overture is optional corroboration and cannot
   block the core job.
-- Weekly: reevaluate open evidence; optionally refresh a bounded set through a specifically
-  licensed provider; materialize passing candidates only when `PALOMA_CATALOG_AUTO_PUBLISH=true`;
-  resolve due Yelp business IDs without storing Yelp attributes; and suppress expired rows.
-  Auto-publish remains off until the initial cutover is approved.
+- Twice weekly: reevaluate open evidence, resolve due Yelp business IDs without storing Yelp
+  attributes, and suppress expired rows. New identities are never materialized by a schedule.
 
 No GitHub push runs ingestion. Deployment and data mutation are deliberately separate.
 
@@ -234,11 +217,11 @@ active-job deduplication, worker leases, bounded retries, attempt audits, and te
 live in `ingest.pipeline_*`. Queue functions are available only to the scoped `paloma_ingest`
 database role; clients cannot enqueue work through the Data API.
 
-GitHub Actions initially drains the same queue used by a managed container worker. This preserves
-the current recovery path while allowing compute to move without changing job semantics. A queued
+GitHub Actions retains a manual recovery drain for the same queue used by the managed Cloud Run
+worker. A queued
 candidate refresh may update or suppress an already materialized establishment but cannot publish
 a new identity. See [production pipeline operations](docs/production-pipeline.md) for deployment,
-cutover, alerting, and capacity guidance.
+alerting, and capacity guidance.
 
 ## Commands
 
@@ -255,7 +238,9 @@ paloma-data catalog-audit --city "San Francisco" --limit 500
 # Human-reviewed exception; both resolutions preserve the evidence and trigger reevaluation.
 paloma-data catalog-review-resolve --review-id 123 --resolution not_same_or_stale \
   --confirm RESOLVE_MATCH_REVIEW
-paloma-data catalog-publish --confirm PUBLISH_VERIFIED
+paloma-data expansion-status --release-id east-bay-pilot-v1
+paloma-data catalog-publish --release-id east-bay-pilot-v1 \
+  --confirm PUBLISH_VERIFIED --limit 25
 paloma-data provider-links-sync --provider yelp --city "San Francisco" --limit 25
 paloma-data pipeline-enqueue-catalog --city "San Francisco" --limit 5000
 paloma-data pipeline-worker --drain --max-jobs 5000 --fail-on-error
@@ -277,7 +262,6 @@ See `.env.example`. Required server-side values are:
 - `YELP_API_KEY` as both a Supabase Edge Function secret and GitHub Actions secret. The scheduled
   job retains only durable Yelp IDs; the Edge Function owns the 22-hour attribute cache;
 - `FSQ_SERVER_STORAGE_LICENSED=true` only under written server-retention/display rights;
-- `PALOMA_CATALOG_AUTO_PUBLISH=true` only after the initial cutover is approved;
 - `SF_NEIGHBORHOODS_URL` defaults to DataSF's public-domain SF Find GeoJSON feed.
 
 Generate an optional API service key in the Foursquare Developer Console and store it as a local or
@@ -298,11 +282,10 @@ operational role; enabling RLS without the ingest policy would stop scheduled jo
 ## Development
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e '.[dev]'
-ruff check .
-pytest -q
+python -m pip install 'uv==0.11.6'
+uv sync --frozen --extra dev
+uv run ruff check .
+uv run pytest -q
 ```
 
 Decision version: `v7` (v6 protections plus conclusive-negative semantics: incomplete, stale, or

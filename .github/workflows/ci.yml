@@ -5,23 +5,32 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.12'
           cache: pip
-      - uses: denoland/setup-deno@v2
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version: v2.9.5
-      - run: pip install -e '.[dev]'
-      - run: ruff check .
-      - run: pytest -q
-      - run: deno fmt --check supabase/functions/venue-live-details supabase/functions/paloma-data-progress/index.ts
-      - run: deno lint supabase/functions/venue-live-details supabase/functions/paloma-data-progress/index.ts
-      - run: deno check supabase/functions/venue-live-details/index.ts supabase/functions/venue-live-details/provider_cache.ts supabase/functions/paloma-data-progress/index.ts
+      - run: python -m pip install 'uv==0.11.6'
+      - run: uv sync --frozen --extra dev
+      - run: uv run ruff check .
+      - run: uv run pytest -q
+      - run: deno fmt --check supabase/functions
+      - run: deno lint supabase/functions
+      - run: deno check supabase/functions/venue-live-details/index.ts supabase/functions/venue-live-details/provider_cache.ts supabase/functions/paloma-data-progress/index.ts supabase/functions/paloma-data-credentials/index.ts supabase/functions/paloma-abc-export/index.ts
       - run: deno test supabase/functions/venue-live-details
       - run: node scripts/check_dashboard.mjs

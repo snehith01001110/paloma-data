@@ -33,9 +33,12 @@ state is a projection, not overwritten history.
 
 Regulatory evidence refreshes twice weekly; larger durable source snapshots run monthly;
 user/merchant corrections and incident refreshes are on-demand. The managed queue worker runs
-every 12 hours and scales to zero. Expansion remains disabled until
-all pending conflict and high-risk review items for the published cohort are resolved, coverage is
-accepted explicitly, contribution terms are approved, and scheduled runs are healthy.
+every 12 hours and scales to zero. Expansion remains disabled until an owner inserts a bounded,
+expiring, append-only release authorization. The database status function verifies that the
+manifest and scope match, all pending published-cohort conflict and high-risk items are resolved,
+coverage was accepted explicitly, contribution terms are active, source snapshots are fresh, and
+the worker has clean history across at least two calendar weeks. A trigger enforces the same gate
+for every new `public.establishments` row and records its release attribution.
 
 FSQ OS `date_refreshed` is the default current-operation lease for the consumer identity. When an
 unchanged place ages beyond that window, only a still-current verification bound to the exact FSQ

@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 from paloma_data.catalog import CATALOG_DECISION_VERSION, CatalogDecision
 from paloma_data.adapters.foursquare_api import FoursquarePlaceUnusableError
@@ -42,6 +43,18 @@ class _PublicationRepository:
     def materialize(self, _, candidate_id):
         self.materialized.append(candidate_id)
         return True
+
+
+class _ExpansionGate:
+    manifest = SimpleNamespace(sha256="a" * 64)
+
+    def arm(self, _connection, release_id):
+        assert release_id == "east-bay-pilot-v1"
+        release = SimpleNamespace(
+            cities=("Berkeley", "Oakland"),
+            maximum_new_publications=25,
+        )
+        return release, {"available_slots": 25}
 
 
 class _ReviewRepository:
@@ -207,27 +220,32 @@ def test_publish_rechecks_current_decision_and_skips_a_new_failure():
     pipeline = CatalogPipeline(_Database())
     repository = _PublicationRepository()
     pipeline.repo = repository
+    pipeline.expansion_gate = _ExpansionGate()
     pipeline._evaluate_candidate = lambda *_: _decision("needs_verification")
 
-    result = pipeline.publish(limit=10)
+    result = pipeline.publish(release_id="east-bay-pilot-v1", limit=10)
 
     assert repository.requested_version == CATALOG_DECISION_VERSION
     assert repository.materialized == []
-    assert result == {
-        "considered": 1,
-        "published": 0,
-        "skipped": 1,
-        "expired_withdrawn": 0,
-    }
+    assert result["release_id"] == "east-bay-pilot-v1"
+    assert result["manifest_sha256"] == "a" * 64
+    assert result["scope_cities"] == ["Berkeley", "Oakland"]
+    assert result["authorized_limit"] == 25
+    assert result["available_slots_before"] == 25
+    assert result["considered"] == 1
+    assert result["published"] == 0
+    assert result["skipped"] == 1
+    assert result["expired_withdrawn"] == 0
 
 
 def test_publish_materializes_only_after_current_decision_passes():
     pipeline = CatalogPipeline(_Database())
     repository = _PublicationRepository()
     pipeline.repo = repository
+    pipeline.expansion_gate = _ExpansionGate()
     pipeline._evaluate_candidate = lambda *_: _decision("verified")
 
-    result = pipeline.publish(limit=10)
+    result = pipeline.publish(release_id="east-bay-pilot-v1", limit=10)
 
     assert repository.requested_version == CATALOG_DECISION_VERSION
     assert repository.materialized == ["candidate-1"]

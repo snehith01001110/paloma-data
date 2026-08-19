@@ -20,6 +20,7 @@ from paloma_data.catalog import (
 )
 from paloma_data.catalog_repository import CatalogRepository
 from paloma_data.db import Database
+from paloma_data.expansion import ExpansionGate
 from paloma_data.models import SourceRecord
 from paloma_data.normalizers import normalize_address, normalize_name
 from paloma_data.taxonomy import BAR_TYPES
@@ -31,6 +32,7 @@ class CatalogPipeline:
     def __init__(self, db: Database) -> None:
         self.db = db
         self.repo = CatalogRepository(db)
+        self.expansion_gate = ExpansionGate(db)
 
     def discover(
         self,
@@ -355,13 +357,27 @@ class CatalogPipeline:
             "publication_mutated": publication_action != "unchanged",
         }
 
-    def publish(self, *, limit: int) -> dict[str, int]:
-        counters = {"considered": 0, "published": 0, "skipped": 0, "expired_withdrawn": 0}
+    def publish(self, *, release_id: str, limit: int) -> dict[str, Any]:
+        counters: dict[str, Any] = {
+            "release_id": release_id,
+            "considered": 0,
+            "published": 0,
+            "skipped": 0,
+            "expired_withdrawn": 0,
+        }
         with self.db.connection() as conn:
+            release, readiness = self.expansion_gate.arm(conn, release_id)
+            available_slots = int(readiness["available_slots"])
+            publish_limit = min(limit, available_slots)
+            counters["manifest_sha256"] = self.expansion_gate.manifest.sha256
+            counters["scope_cities"] = list(release.cities)
+            counters["authorized_limit"] = release.maximum_new_publications
+            counters["available_slots_before"] = available_slots
             counters["expired_withdrawn"] = self.repo.withdraw_expired(conn)
             ids = self.repo.candidate_ids(
                 conn,
-                limit=limit,
+                cities=release.cities,
+                limit=publish_limit,
                 states=("verified",),
                 decision_version=CATALOG_DECISION_VERSION,
             )
@@ -376,60 +392,6 @@ class CatalogPipeline:
                     counters["skipped"] += 1
             conn.commit()
         return counters
-
-    def cutover(self, *, minimum_verified: int = 1) -> dict[str, int]:
-        with self.db.connection() as conn:
-            conn.execute("select pg_advisory_xact_lock(hashtext('paloma_catalog_cutover'))")
-            # Recheck every row that could enter the replacement set before counting or deleting
-            # anything. A stale historical `verified` state is not a publication authorization.
-            recheck_ids = self.repo.candidate_ids(
-                conn,
-                limit=50_000,
-                states=("verified", "published"),
-            )
-            for candidate_id in recheck_ids:
-                self._evaluate_candidate(conn, candidate_id)
-            row = conn.execute(
-                """
-                select count(*) as count
-                from ingest.catalog_candidates
-                where candidate_state in ('verified', 'published')
-                  and decision_version = %s
-                  and verification_expires_at > now()
-                """,
-                (CATALOG_DECISION_VERSION,),
-            ).fetchone()
-            verified = int(row["count"] or 0)
-            if verified < minimum_verified:
-                raise RuntimeError(
-                    f"Cutover refused: {verified} verified candidates; "
-                    f"minimum is {minimum_verified}"
-                )
-            legacy_rows_removed = self.repo.reset_public_catalog(
-                conn,
-                minimum_verified=minimum_verified,
-            )
-            ids = self.repo.candidate_ids(
-                conn,
-                limit=max(verified, minimum_verified),
-                states=("verified",),
-                decision_version=CATALOG_DECISION_VERSION,
-            )
-            published = sum(self.repo.materialize(conn, candidate_id) for candidate_id in ids)
-            if published < minimum_verified:
-                raise RuntimeError(
-                    f"Cutover rolled back: only {published} non-duplicate candidates "
-                    f"materialized; minimum is {minimum_verified}"
-                )
-            conn.commit()
-        return {
-            "verified_before_cutover": verified,
-            "legacy_rows_removed": legacy_rows_removed,
-            "considered": len(ids),
-            "published": published,
-            "skipped": len(ids) - published,
-            "expired_withdrawn": 0,
-        }
 
     def _evaluate_candidate(
         self, conn, candidate_id: str

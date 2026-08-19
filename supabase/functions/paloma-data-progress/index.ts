@@ -851,13 +851,13 @@ function nextAction(args: {
     return "Remove app-visible rows that no longer satisfy every publication invariant.";
   }
   if (args.unsafeLegacy > 0) {
-    return "Run a bounded trial, approve it, then perform the one-time verified cutover.";
+    return "Quarantine legacy rows; destructive catalog cutover is no longer an operator path.";
   }
   if (args.detailReady < args.safeLive) {
     return "Restore live-detail routing for every existing published establishment.";
   }
   if (number(args.work?.ready_to_publish) > 0) {
-    return "Review the ready set, then publish only verified candidates.";
+    return "Keep verified candidates private until a bounded expansion release is fully authorized.";
   }
   if (number(args.work?.candidates_needing_review) > 0) {
     return "Review held identity conflicts when expanding coverage; the live catalog remains isolated.";
