@@ -231,6 +231,45 @@ def test_overture_and_a_license_cannot_replace_the_required_fsq_anchor():
     assert decision.reason == "missing_current_fsq_os_anchor:v7"
 
 
+def test_stale_fsq_anchor_requires_current_durable_verification():
+    stale_fsq = _fsq(source_updated_at=NOW - timedelta(days=366))
+
+    decision = decide_candidate(_links(stale_fsq, _abc()), [], now=NOW)
+
+    assert decision.state == "needs_verification"
+    assert decision.reason == "missing_current_fsq_os_anchor:v7"
+
+
+def test_current_manual_attestation_supersedes_stale_fsq_timestamp():
+    stale_fsq = _fsq(source_updated_at=NOW - timedelta(days=366))
+    manual = _verification(
+        verifier="manual",
+        verification_tier="manual",
+        storage_policy="manual",
+    )
+
+    decision = decide_candidate(_links(stale_fsq, _abc()), [manual], now=NOW)
+
+    assert decision.state == "verified"
+    assert decision.verification_tier == "manual"
+
+
+def test_expired_manual_attestation_cannot_supersede_stale_fsq_timestamp():
+    stale_fsq = _fsq(source_updated_at=NOW - timedelta(days=366))
+    manual = _verification(
+        verifier="manual",
+        verification_tier="manual",
+        storage_policy="manual",
+        verified_at=NOW - timedelta(days=91),
+        expires_at=NOW - timedelta(days=1),
+    )
+
+    decision = decide_candidate(_links(stale_fsq, _abc()), [manual], now=NOW)
+
+    assert decision.state == "needs_verification"
+    assert decision.reason == "missing_current_fsq_os_anchor:v7"
+
+
 def test_ephemeral_api_result_can_pass_a_trial_but_never_production():
     verification = _verification(storage_policy="ephemeral", permitted_snapshot={})
     abc = _abc(

@@ -35,3 +35,10 @@ user/merchant corrections and incident refreshes are on-demand. The managed queu
 every 12 hours and scales to zero. Expansion remains disabled until
 all pending conflict and high-risk review items for the published cohort are resolved, coverage is
 accepted explicitly, contribution terms are approved, and scheduled runs are healthy.
+
+FSQ OS `date_refreshed` is the default current-operation lease for the consumer identity. When an
+unchanged place ages beyond that window, only a still-current verification bound to the exact FSQ
+place ID may supersede it: a response retained under a written provider contract or an independently
+reviewed Paloma manual attestation. Ephemeral API responses never renew production publication.
+Manual attestations record their evidence trail, expire after a bounded lease, and do not copy
+third-party hours, price, or other restricted response attributes into the durable catalog.

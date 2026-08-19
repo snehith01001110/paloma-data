@@ -189,7 +189,6 @@ def decide_candidate(
         for record in consumer
         if record.source == "fsq"
         and record.source_status == "open"
-        and _fresh(record.source_updated_at, current_time, FSQ_OS_FRESHNESS_DAYS)
         and not (set(record.quality_flags) & HARD_NEGATIVE_FLAGS)
     ]
     if not fsq_records:
@@ -197,6 +196,7 @@ def decide_candidate(
     chosen = max(
         fsq_records,
         key=lambda record: (
+            _fresh(record.source_updated_at, current_time, FSQ_OS_FRESHNESS_DAYS),
             record.primary_type_slug in CONSUMER_VENUE_TYPES,
             record.classification_confidence or 0.0,
             _timestamp(record.source_updated_at),
@@ -249,6 +249,19 @@ def decide_candidate(
         )
         and (mode == "trial" or item.storage_policy in {"contract", "manual"})
     ]
+    # The monthly FSQ OS timestamp is the default current-operation signal. A current durable
+    # verification bound to this exact FSQ ID may supersede that timestamp: a contracted provider
+    # check or reviewed manual attestation is stronger, fresher evidence than an unchanged bulk
+    # row. Ephemeral API observations can do so only in trial mode and are never persisted.
+    if (
+        not _fresh(chosen.source_updated_at, current_time, FSQ_OS_FRESHNESS_DAYS)
+        and not passing
+    ):
+        return _decision(
+            "needs_verification",
+            "missing_current_fsq_os_anchor",
+            identity=identity_confidence,
+        )
     if passing:
         verification = max(passing, key=lambda item: _utc(item.verified_at))
     else:
