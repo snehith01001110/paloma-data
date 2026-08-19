@@ -283,7 +283,7 @@ operational role; enabling RLS without the ingest policy would stop scheduled jo
 
 ```bash
 python -m pip install 'uv==0.11.6'
-uv sync --frozen
+uv sync --frozen --extra dev
 uv run ruff check .
 uv run pytest -q
 ```

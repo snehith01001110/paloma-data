@@ -10,7 +10,7 @@ manually copied third-party facts.
 Before opening a pull request, run:
 
 ```bash
-uv sync --frozen
+uv sync --frozen --extra dev
 uv run ruff check .
 uv run pytest -q
 deno fmt --check supabase/functions
