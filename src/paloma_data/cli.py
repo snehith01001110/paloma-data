@@ -350,7 +350,7 @@ def pipeline_enqueue_catalog(
         help="Queue private candidates too; refresh still cannot publish a new identity",
     ),
     include_suppressed: bool = typer.Option(
-        True,
+        False,
         help="Also refresh previously materialized rows that are currently suppressed",
     ),
     max_attempts: int = typer.Option(5, min=1, max=25),

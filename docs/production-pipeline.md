@@ -48,8 +48,10 @@ paloma-data pipeline-status
 paloma-data catalog-status
 ```
 
-The first command should report an empty queue. The completed logical run should have no dead
-jobs, and the public catalog should still satisfy all verification invariants.
+The default refresh scope is published establishments only. Add `--include-suppressed` for an
+explicit recovery/republication pass. The first command should report an empty queue. The completed
+logical run should have no dead jobs, and the public catalog should still satisfy all verification
+invariants.
 
 To reevaluate private candidates without authorizing publication:
 
