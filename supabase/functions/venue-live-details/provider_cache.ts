@@ -1,4 +1,4 @@
-import postgres from "npm:postgres@3.4.7";
+import postgres, { type JSONValue } from "npm:postgres@3.4.7";
 import {
   isServerCacheEntryFresh,
   providerPolicy,
@@ -467,7 +467,10 @@ async function storeProviderResponse(
   const policy = providerPolicy(link.provider);
   assertPayloadSize(payload, policy.maxServerCachePayloadBytes);
   const expiresAt = serverCacheExpiresAt(link.provider, fetchedAt);
-  const serializedPayload = JSON.stringify(payload);
+  // Postgres.js serializes parameters typed as json/jsonb. Passing an already
+  // stringified value here would encode it a second time and turn the JSON
+  // object into a JSON string, which the database correctly rejects.
+  const payloadParameter = providerCacheJsonParameter(sql, payload);
 
   const rows = await sql`
     with owned_lease as (
@@ -486,7 +489,7 @@ async function storeProviderResponse(
     )
     select
       ${link.id}::bigint, ${link.provider}, ${endpoint}, ${requestFingerprint},
-      ${serializedPayload}::jsonb, ${fetchedAt.toISOString()}::timestamptz,
+      ${payloadParameter}, ${fetchedAt.toISOString()}::timestamptz,
       ${expiresAt.toISOString()}::timestamptz, now(), now()
     from owned_lease
     on conflict (provider_link_id, endpoint, request_fingerprint) do update set
@@ -506,6 +509,16 @@ async function storeProviderResponse(
     fetchedAt: new Date(String(row.fetched_at)),
     expiresAt: new Date(String(row.expires_at)),
   };
+}
+
+export function providerCacheJsonParameter<T>(
+  sql: { json(value: JSONValue): T },
+  payload: Record<string, unknown>,
+): T {
+  // Provider payloads enter through response.json()/JSON.parse and cached rows
+  // re-enter through Postgres JSONB, so objectPayload has already narrowed a
+  // JSON object at both boundaries.
+  return sql.json(payload as unknown as JSONValue);
 }
 
 async function abandonProviderRefresh(

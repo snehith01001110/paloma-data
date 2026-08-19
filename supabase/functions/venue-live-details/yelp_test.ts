@@ -4,6 +4,9 @@ import {
   validateYelpPlace,
   yelpApiErrorCodeForStatus,
   yelpAttributionUrl,
+  yelpBusinessDetailsUrl,
+  yelpBusinessSearchUrl,
+  yelpProviderErrorCode,
 } from "./yelp.ts";
 
 const expected = {
@@ -30,6 +33,18 @@ const business = {
       { day: 5, start: "1600", end: "0200", is_overnight: true },
     ],
   }],
+};
+
+const matchInput = {
+  name: "Dogpatch Saloon",
+  address: "2496 3rd St",
+  city: "San Francisco",
+  region: "ca",
+  postalCode: "94107",
+  countryCode: "us",
+  latitude: 37.757963,
+  longitude: -122.388534,
+  phoneE164: null,
 };
 
 Deno.test("validates and projects Yelp detail fields without relabeling its URL", () => {
@@ -95,7 +110,7 @@ Deno.test("fails closed on Yelp identity, closure, location, name, type, and att
   );
 });
 
-Deno.test("strict business match still rejects provider ambiguity", () => {
+Deno.test("candidate selection rejects provider ambiguity", () => {
   const matchExpected = {
     name: expected.name,
     latitude: expected.latitude,
@@ -156,6 +171,49 @@ Deno.test("classifies Yelp HTTP failures without retaining response bodies", () 
   assertEquals(yelpApiErrorCodeForStatus(404), "not_found");
   assertEquals(yelpApiErrorCodeForStatus(429), "rate_limited");
   assertEquals(yelpApiErrorCodeForStatus(503), "unavailable");
+  assertEquals(
+    yelpProviderErrorCode({
+      error: {
+        code: "VALIDATION_ERROR",
+        description: "match_threshold is invalid",
+      },
+    }),
+    "yelp_validation_error_match_threshold",
+  );
+  assertEquals(
+    yelpProviderErrorCode({
+      errors: [{
+        error_code: "FIELD_REQUIRED",
+        error_message: "state is required",
+      }],
+    }),
+    "yelp_field_required_state",
+  );
+  assertEquals(
+    yelpProviderErrorCode({ error: { description: "secret" } }),
+    null,
+  );
+});
+
+Deno.test("searches by exact consumer name near the verified coordinates", () => {
+  const url = yelpBusinessSearchUrl(matchInput);
+  assertEquals(url.pathname, "/v3/businesses/search");
+  assertEquals(Object.fromEntries(url.searchParams), {
+    term: "Dogpatch Saloon",
+    latitude: "37.757963",
+    longitude: "-122.388534",
+    radius: "500",
+    limit: "5",
+  });
+});
+
+Deno.test("uses only supported Business Details query parameters", () => {
+  const url = yelpBusinessDetailsUrl("dogpatch-saloon-san-francisco");
+  assertEquals(
+    url.pathname,
+    "/v3/businesses/dogpatch-saloon-san-francisco",
+  );
+  assertEquals(Object.fromEntries(url.searchParams), { locale: "en_US" });
 });
 
 function assert(value: unknown): asserts value {

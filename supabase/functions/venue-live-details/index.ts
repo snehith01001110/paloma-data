@@ -28,8 +28,8 @@ import {
 } from "./provider_match.ts";
 import { assertNoServerResponseCache } from "./provider_policy.ts";
 import {
+  fetchYelpBusinessCandidates,
   fetchYelpBusinessDetails,
-  fetchYelpBusinessMatch,
   projectYelpLiveDetails,
   selectYelpBusinessMatch,
   validateYelpPlace,
@@ -186,7 +186,7 @@ Deno.serve(async (request: Request) => {
     fsqApiKey,
   );
   if (shouldDiscoverYelp && yelpApiKey) {
-    // Business Match is user-triggered but does not delay the first detail
+    // Yelp discovery is user-triggered but does not delay the first detail
     // screen. It stores only the durable Yelp business ID; rich details are
     // fetched on a later user request and then cached within policy.
     EdgeRuntime.waitUntil(
@@ -364,7 +364,7 @@ async function yelpLiveDetails(
       provider: "yelp",
       endpoint: "business_details",
       apiVersion: "v3",
-      parameters: { locale: "en_US", device_platform: "ios" },
+      parameters: { locale: "en_US" },
     },
     async () => {
       if (!await consumeQuota(sql, userId)) {
@@ -466,7 +466,7 @@ async function discoverYelpLink(
       );
       return;
     }
-    const payload = await fetchYelpBusinessMatch(apiKey, matchInput);
+    const payload = await fetchYelpBusinessCandidates(apiKey, matchInput);
     const selection = selectYelpBusinessMatch(payload, {
       name: place.name,
       latitude: place.latitude,
@@ -505,7 +505,7 @@ async function discoverYelpLink(
       place.id,
       "yelp",
       businessId,
-      "api_business_match_strict_v1",
+      "api_business_search_verified_v1",
       selection.confidence,
       lease,
     );
@@ -739,7 +739,9 @@ function providerFailureCode(error: unknown): string {
   if (error instanceof ProviderPayloadRejectedError) {
     return `rejected_${error.reason}`;
   }
-  if (error instanceof YelpApiError) return error.code;
+  if (error instanceof YelpApiError) {
+    return error.providerCode ?? error.code;
+  }
   if (error instanceof ProviderQuotaExceededError) return "quota_exceeded";
   return safeErrorCode(error);
 }

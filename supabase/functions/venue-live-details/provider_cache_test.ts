@@ -1,6 +1,7 @@
 import {
   type CachedProviderResponse,
   loadProviderPayload,
+  providerCacheJsonParameter,
   type ProviderCacheStore,
   ProviderPayloadRejectedError,
   ProviderPayloadTooLargeError,
@@ -27,8 +28,23 @@ const request = {
   provider: "yelp" as const,
   endpoint: "business_details",
   apiVersion: "v3",
-  parameters: { locale: "en_US", device_platform: "ios" },
+  parameters: { locale: "en_US" },
 };
+
+Deno.test("cache writes preserve payloads as JSONB objects", () => {
+  const payload = { id: "yelp-business", price: "$$" };
+  let received: unknown;
+  const parameter = providerCacheJsonParameter({
+    json(value) {
+      received = value;
+      return { value, type: 3802 };
+    },
+  }, payload);
+
+  assert(received === payload);
+  assert(parameter.value === payload);
+  assertEquals(parameter.type, 3802);
+});
 
 Deno.test("canonical provider fingerprints ignore object key order", async () => {
   const left = await providerRequestFingerprint({

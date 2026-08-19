@@ -11,7 +11,30 @@ import {
 
 const YELP_API_BASE = "https://api.yelp.com/v3";
 const YELP_RESPONSE_LIMIT_BYTES = 512 * 1_024;
+const YELP_ERROR_RESPONSE_LIMIT_BYTES = 16 * 1_024;
 const YELP_TIMEOUT_MS = 3_500;
+const YELP_ERROR_CODE_PATTERN = /^[a-z][a-z0-9_]{0,63}$/;
+const YELP_REQUEST_FIELDS = [
+  "term",
+  "name",
+  "address1",
+  "address2",
+  "address3",
+  "city",
+  "state",
+  "country",
+  "postal_code",
+  "latitude",
+  "longitude",
+  "phone",
+  "yelp_business_id",
+  "limit",
+  "radius",
+  "sort_by",
+  "match_threshold",
+  "locale",
+  "device_platform",
+] as const;
 
 const YELP_ALCOHOL_CATEGORY_ALIASES = new Set([
   "bars",
@@ -98,45 +121,62 @@ export type YelpApiErrorCode =
   | "invalid_payload";
 
 export class YelpApiError extends Error {
-  constructor(readonly code: YelpApiErrorCode) {
+  constructor(
+    readonly code: YelpApiErrorCode,
+    readonly providerCode: string | null = null,
+  ) {
     super(`Yelp API error: ${code}`);
     this.name = "YelpApiError";
   }
 }
 
-export async function fetchYelpBusinessMatch(
+export async function fetchYelpBusinessCandidates(
   apiKey: string,
   input: YelpMatchInput,
 ): Promise<Record<string, unknown>> {
-  const url = new URL(`${YELP_API_BASE}/businesses/matches`);
-  url.searchParams.set("name", input.name);
-  url.searchParams.set("address1", input.address);
-  url.searchParams.set("city", input.city);
-  url.searchParams.set("country", input.countryCode.toUpperCase());
-  url.searchParams.set("match_threshold", "strict");
-  // More than one result lets Paloma reject ambiguity instead of accepting the
-  // first candidate merely because the provider ranked it first.
-  url.searchParams.set("limit", "3");
-  if (input.region) url.searchParams.set("state", input.region);
-  if (input.postalCode) url.searchParams.set("postal_code", input.postalCode);
-  if (Number.isFinite(input.latitude) && Number.isFinite(input.longitude)) {
-    url.searchParams.set("latitude", String(input.latitude));
-    url.searchParams.set("longitude", String(input.longitude));
+  return await yelpJson(yelpBusinessSearchUrl(input), apiKey);
+}
+
+export function yelpBusinessSearchUrl(input: YelpMatchInput): URL {
+  const name = input.name.trim();
+  if (name.length < 1 || name.length > 300) {
+    throw new YelpApiError("invalid_request", "invalid_search_input_name");
   }
-  if (input.phoneE164) url.searchParams.set("phone", input.phoneE164);
-  return await yelpJson(url, apiKey);
+  if (
+    !Number.isFinite(input.latitude) || Math.abs(input.latitude) > 90 ||
+    !Number.isFinite(input.longitude) || Math.abs(input.longitude) > 180
+  ) {
+    throw new YelpApiError(
+      "invalid_request",
+      "invalid_search_input_coordinates",
+    );
+  }
+
+  const url = new URL(`${YELP_API_BASE}/businesses/search`);
+  url.searchParams.set("term", name);
+  url.searchParams.set("latitude", String(input.latitude));
+  url.searchParams.set("longitude", String(input.longitude));
+  // Search a wider retrieval window than Paloma's acceptance boundary so
+  // provider ranking cannot turn small coordinate drift into a false negative.
+  // Candidate acceptance remains fail-closed at 100 metres below.
+  url.searchParams.set("radius", "500");
+  url.searchParams.set("limit", "5");
+  return url;
 }
 
 export async function fetchYelpBusinessDetails(
   apiKey: string,
   businessId: string,
 ): Promise<Record<string, unknown>> {
+  return await yelpJson(yelpBusinessDetailsUrl(businessId), apiKey);
+}
+
+export function yelpBusinessDetailsUrl(businessId: string): URL {
   const url = new URL(
     `${YELP_API_BASE}/businesses/${encodeURIComponent(businessId)}`,
   );
   url.searchParams.set("locale", "en_US");
-  url.searchParams.set("device_platform", "ios");
-  return await yelpJson(url, apiKey);
+  return url;
 }
 
 export function selectYelpBusinessMatch(
@@ -284,7 +324,12 @@ async function yelpJson(
   }
 
   const responseError = yelpApiErrorCodeForStatus(response.status);
-  if (responseError) throw new YelpApiError(responseError);
+  if (responseError) {
+    throw new YelpApiError(
+      responseError,
+      await yelpProviderErrorCodeFromResponse(response),
+    );
+  }
 
   const contentLength = Number(response.headers.get("content-length") ?? 0);
   if (
@@ -309,6 +354,51 @@ async function yelpJson(
     if (error instanceof YelpApiError) throw error;
     throw new YelpApiError("invalid_payload");
   }
+}
+
+async function yelpProviderErrorCodeFromResponse(
+  response: Response,
+): Promise<string | null> {
+  const contentLength = Number(response.headers.get("content-length") ?? 0);
+  if (
+    Number.isFinite(contentLength) &&
+    contentLength > YELP_ERROR_RESPONSE_LIMIT_BYTES
+  ) return null;
+  try {
+    const body = await response.text();
+    if (
+      new TextEncoder().encode(body).byteLength >
+        YELP_ERROR_RESPONSE_LIMIT_BYTES
+    ) return null;
+    return yelpProviderErrorCode(JSON.parse(body));
+  } catch {
+    return null;
+  }
+}
+
+export function yelpProviderErrorCode(value: unknown): string | null {
+  const payload = object(value);
+  const current = object(payload?.error);
+  const legacy = Array.isArray(payload?.errors)
+    ? object(payload.errors[0])
+    : null;
+  const rawCode = text(current?.code) ?? text(legacy?.error_code);
+  const description = text(current?.description) ??
+    text(legacy?.error_message);
+  const normalized = rawCode?.toLowerCase().replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "") ?? "";
+  if (!normalized) return null;
+
+  const lowerDescription = description?.toLowerCase() ?? "";
+  const field = YELP_REQUEST_FIELDS.find((candidate) =>
+    new RegExp(`(^|[^a-z0-9_])${candidate}([^a-z0-9_]|$)`).test(
+      lowerDescription,
+    )
+  );
+  const candidate = `yelp_${normalized}${field ? `_${field}` : ""}`
+    .slice(0, 64)
+    .replace(/_+$/g, "");
+  return YELP_ERROR_CODE_PATTERN.test(candidate) ? candidate : null;
 }
 
 export function yelpApiErrorCodeForStatus(
