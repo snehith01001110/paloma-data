@@ -30,6 +30,10 @@ does not drift between scheduled runs.
 - `candidate_refresh` can refresh, republish, or suppress an establishment that was already
   materialized. It cannot publish a new candidate. New publication still requires the explicit
   `catalog-publish --confirm PUBLISH_VERIFIED` gate.
+- Candidate refresh owns identity, verification, and publication state. Once the rights-aware
+  field resolver has projected canonical attributes, rematerialization preserves that projection
+  (including intentional `NULL` values) so routine identity refreshes cannot erase or resurrect
+  independently resolved phone, website, neighborhood, hours, price, or setting values.
 - Each job has an active deduplication key, a visibility lease, bounded attempts, immutable
   attempt records, exponential retry, and a terminal dead-letter state.
 - Provider network requests do not hold an open database transaction. Provider response-retention

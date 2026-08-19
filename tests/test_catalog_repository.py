@@ -1,6 +1,7 @@
 from paloma_data.catalog_repository import (
     POTENTIAL_SOURCE_EXCLUDED_FLAGS,
     CatalogRepository,
+    _overlay_public_field_projection,
 )
 from paloma_data.models import SourceRecord
 
@@ -197,3 +198,61 @@ def test_neighborhood_stays_blank_when_direct_and_consensus_resolution_fail():
         connection, "candidate-id", resolved
     )
     assert "neighborhood" not in resolved
+
+
+def test_materialization_preserves_the_rights_aware_public_field_projection():
+    resolved = {
+        "name": "Legal Entity Name",
+        "normalized_name": "legal entity name",
+        "phone_e164": "+14155550000",
+        "website_url": "https://stale.example",
+        "neighborhood": "Candidate Neighborhood",
+        "hours": {"stale": True},
+        "price_level": 4,
+        "field_sources": {"phone": "candidate"},
+        "field_confidences": {"phone": 0.95},
+    }
+    current = {
+        "name": "The Display Name",
+        "normalized_name": "the display name",
+        "display_name_source": "overture",
+        "display_name_confidence": 0.91,
+        "field_resolution_version": "v5-rights-aware",
+        "phone_e164": "+14155550123",
+        "phone_source": "overture",
+        "phone_confidence": 0.88,
+        "website_url": "https://example.com",
+        "website_source": "overture",
+        "website_confidence": 0.84,
+        "neighborhood": None,
+        "neighborhood_source": None,
+        "neighborhood_confidence": None,
+        "hours": None,
+        "hours_source": None,
+        "hours_confidence": None,
+        "price_level": None,
+        "price_source": None,
+        "price_confidence": None,
+    }
+
+    assert _overlay_public_field_projection(resolved, current)
+
+    assert resolved["name"] == "The Display Name"
+    assert resolved["phone_e164"] == "+14155550123"
+    assert resolved["website_url"] == "https://example.com"
+    assert resolved["neighborhood"] is None
+    assert resolved["hours"] is None
+    assert resolved["price_level"] is None
+    assert resolved["field_sources"]["phone"] == "overture"
+    assert resolved["field_confidences"]["website"] == 0.84
+
+
+def test_initial_catalog_materialization_still_uses_candidate_fields():
+    resolved = {"name": "Example Bar", "phone_e164": "+14155550123"}
+
+    assert not _overlay_public_field_projection(resolved, None)
+    assert not _overlay_public_field_projection(
+        resolved,
+        {"field_resolution_version": "v7"},
+    )
+    assert resolved == {"name": "Example Bar", "phone_e164": "+14155550123"}

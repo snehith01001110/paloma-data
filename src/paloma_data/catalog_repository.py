@@ -1019,6 +1019,27 @@ class CatalogRepository:
                 """,
                 (json.dumps(resolved, sort_keys=True), candidate_id),
             )
+        current_projection = conn.execute(
+            """
+            select name, normalized_name, data_quality_score,
+                   display_name_confidence, display_name_source,
+                   field_resolution_version,
+                   phone_e164, phone_source, phone_confidence,
+                   website_url, website_source, website_confidence,
+                   neighborhood, neighborhood_source, neighborhood_confidence,
+                   hours, hours_source, hours_confidence,
+                   price_level, price_source, price_confidence
+            from public.establishments
+            where id = %s::uuid
+            """,
+            (candidate_id,),
+        ).fetchone()
+        projection_owned = _overlay_public_field_projection(
+            resolved,
+            dict(current_projection) if current_projection else None,
+        )
+        field_sources = dict(resolved.get("field_sources") or {})
+        field_confidences = dict(resolved.get("field_confidences") or {})
         type_row = conn.execute(
             "select id from public.primary_types where slug = %s",
             (resolved.get("primary_type_slug"),),
@@ -1027,6 +1048,17 @@ class CatalogRepository:
             raise ValueError(f"Unknown primary type: {resolved.get('primary_type_slug')}")
         settings = list(resolved.get("setting_slugs") or ())
         identity = float(candidate["identity_confidence"] or 0.0)
+        data_quality = identity
+        display_name_confidence = 0.98
+        field_resolution_version = CATALOG_DECISION_VERSION
+        if projection_owned and current_projection:
+            data_quality = float(current_projection["data_quality_score"] or identity)
+            display_name_confidence = float(
+                current_projection["display_name_confidence"] or 0.98
+            )
+            field_resolution_version = str(
+                current_projection["field_resolution_version"]
+            )
 
         conn.execute("select pg_advisory_xact_lock(hashtext('paloma_catalog_materialize'))")
         duplicate = conn.execute(
@@ -1076,8 +1108,9 @@ class CatalogRepository:
               type_confidence, field_resolution_version,
               publication_state, publication_reason, access_mode,
               public_access_verified_at, publication_evaluated_at, published_at,
-              phone_source, phone_confidence, neighborhood_source,
-              neighborhood_confidence, hours_source, hours_confidence,
+              phone_source, phone_confidence, website_source,
+              website_confidence, neighborhood_source, neighborhood_confidence,
+              hours_source, hours_confidence,
               price_source, price_confidence, verification_tier,
               verification_expires_at, verification_version, updated_at
             ) values (
@@ -1086,12 +1119,12 @@ class CatalogRepository:
               ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography,
               %s, %s, %s, %s::jsonb, %s,
               null, 'open', %s, %s,
-              %s, 0.98, %s, 0.98, %s,
+              %s, %s, %s, 0.98, %s,
               'published', %s, 'walk_in',
               %s, now(), coalesce(
                 (select published_at from public.establishments where id = %s::uuid), now()
               ),
-              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now()
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now()
             )
             on conflict (id) do update set
               catalog_candidate_id = excluded.catalog_candidate_id,
@@ -1125,6 +1158,8 @@ class CatalogRepository:
               publication_evaluated_at = now(),
               phone_source = excluded.phone_source,
               phone_confidence = excluded.phone_confidence,
+              website_source = excluded.website_source,
+              website_confidence = excluded.website_confidence,
               neighborhood_source = excluded.neighborhood_source,
               neighborhood_confidence = excluded.neighborhood_confidence,
               hours_source = excluded.hours_source,
@@ -1159,33 +1194,45 @@ class CatalogRepository:
                 else None,
                 resolved.get("price_level"),
                 candidate["verified_at"],
+                data_quality,
                 identity,
-                identity,
+                display_name_confidence,
                 field_sources.get("name"),
-                CATALOG_DECISION_VERSION,
+                field_resolution_version,
                 f"all_hard_gates_passed:{CATALOG_DECISION_VERSION}",
                 candidate["verified_at"],
                 candidate_id,
                 field_sources.get("phone"),
-                0.95 if resolved.get("phone_e164") else None,
+                _projection_confidence(
+                    field_confidences, "phone", resolved.get("phone_e164")
+                ),
+                field_sources.get("website"),
+                _projection_confidence(
+                    field_confidences, "website", resolved.get("website_url")
+                ),
                 field_sources.get("neighborhood"),
                 field_confidences.get("neighborhood")
                 if resolved.get("neighborhood")
                 else None,
                 field_sources.get("hours"),
-                0.95 if resolved.get("hours") is not None else None,
+                _projection_confidence(
+                    field_confidences, "hours", resolved.get("hours")
+                ),
                 field_sources.get("price"),
-                0.95 if resolved.get("price_level") is not None else None,
+                _projection_confidence(
+                    field_confidences, "price", resolved.get("price_level")
+                ),
                 candidate["verification_tier"],
                 candidate["verification_expires_at"],
                 CATALOG_DECISION_VERSION,
             ),
         )
-        conn.execute(
-            "delete from public.establishment_settings where establishment_id = %s::uuid and source <> 'manual'",
-            (candidate_id,),
-        )
-        if settings:
+        if not projection_owned:
+            conn.execute(
+                "delete from public.establishment_settings where establishment_id = %s::uuid and source <> 'manual'",
+                (candidate_id,),
+            )
+        if settings and not projection_owned:
             conn.execute(
                 """
                 insert into public.establishment_settings (
@@ -1368,6 +1415,59 @@ class CatalogRepository:
             """
         )
         return int(row["legacy_rows_removed"])
+
+
+def _overlay_public_field_projection(
+    resolved: dict[str, Any],
+    current: dict[str, Any] | None,
+) -> bool:
+    """Keep the field resolver's public projection authoritative during identity refreshes.
+
+    Candidate materialization owns identity and publication state. Once the rights-aware field
+    resolver has projected canonical attributes, a later candidate refresh must preserve that
+    projection—including deliberate NULLs—until the resolver writes a newer projection.
+    """
+    if not current:
+        return False
+    resolver_version = str(current.get("field_resolution_version") or "")
+    if not resolver_version or resolver_version == CATALOG_DECISION_VERSION:
+        return False
+
+    resolved["name"] = current["name"]
+    resolved["normalized_name"] = current["normalized_name"]
+    field_sources = dict(resolved.get("field_sources") or {})
+    field_confidences = dict(resolved.get("field_confidences") or {})
+    field_sources["name"] = current.get("display_name_source")
+    field_confidences["name"] = current.get("display_name_confidence")
+
+    for resolved_key, source_key, confidence_key, provenance_key in (
+        ("phone_e164", "phone_source", "phone_confidence", "phone"),
+        ("website_url", "website_source", "website_confidence", "website"),
+        (
+            "neighborhood",
+            "neighborhood_source",
+            "neighborhood_confidence",
+            "neighborhood",
+        ),
+        ("hours", "hours_source", "hours_confidence", "hours"),
+        ("price_level", "price_source", "price_confidence", "price"),
+    ):
+        resolved[resolved_key] = current.get(resolved_key)
+        field_sources[provenance_key] = current.get(source_key)
+        field_confidences[provenance_key] = current.get(confidence_key)
+
+    resolved["field_sources"] = field_sources
+    resolved["field_confidences"] = field_confidences
+    return True
+
+
+def _projection_confidence(
+    field_confidences: dict[str, Any], field_name: str, value: Any
+) -> float | None:
+    if value is None:
+        return None
+    confidence = field_confidences.get(field_name)
+    return float(confidence) if confidence is not None else 0.95
 
 
 def _source_record(row: dict[str, Any]) -> SourceRecord:
