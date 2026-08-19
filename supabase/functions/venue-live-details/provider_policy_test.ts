@@ -18,12 +18,12 @@ Deno.test("Foursquare IDs are durable but its PAYG response cache is disabled", 
   );
 });
 
-Deno.test("Yelp cache entries expire after exactly the 23-hour safety window", () => {
+Deno.test("Yelp cache entries expire after exactly the 22-hour safety window", () => {
   const fetchedAt = new Date("2026-08-18T12:00:00.000Z");
   const expiresAt = serverCacheExpiresAt("yelp", fetchedAt);
   assertEquals(
     expiresAt.toISOString(),
-    "2026-08-19T11:00:00.000Z",
+    "2026-08-19T10:00:00.000Z",
   );
   assertEquals(
     providerPolicy("yelp").serverCacheTtlSeconds,
@@ -33,13 +33,13 @@ Deno.test("Yelp cache entries expire after exactly the 23-hour safety window", (
 
 Deno.test("cache freshness fails closed for overlong, expired, and FSQ rows", () => {
   const fetchedAt = new Date("2026-08-18T12:00:00.000Z");
-  const allowedExpiry = new Date("2026-08-19T11:00:00.000Z");
+  const allowedExpiry = new Date("2026-08-19T10:00:00.000Z");
   assert(
     isServerCacheEntryFresh(
       "yelp",
       fetchedAt,
       allowedExpiry,
-      new Date("2026-08-19T10:59:59.000Z"),
+      new Date("2026-08-19T09:59:59.000Z"),
     ),
   );
   assert(

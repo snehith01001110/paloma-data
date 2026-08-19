@@ -3,16 +3,19 @@ export type ProviderName = "foursquare" | "yelp";
 export type ProviderPolicy = Readonly<{
   provider: ProviderName;
   serverCacheTtlSeconds: number | null;
+  maxServerCachePayloadBytes: number | null;
   durableIdentifierKinds: readonly string[];
   policyReviewedOn: string;
 }>;
 
-export const YELP_SERVER_CACHE_TTL_SECONDS = 23 * 60 * 60;
+export const MAX_PROVIDER_CACHE_PAYLOAD_BYTES = 256 * 1_024;
+export const YELP_SERVER_CACHE_TTL_SECONDS = 22 * 60 * 60;
 
 const PROVIDER_POLICIES: Readonly<Record<ProviderName, ProviderPolicy>> = {
   foursquare: Object.freeze({
     provider: "foursquare",
     serverCacheTtlSeconds: null,
+    maxServerCachePayloadBytes: null,
     durableIdentifierKinds: Object.freeze([
       "fsq_place_id",
       "fsq_photo_id",
@@ -22,9 +25,10 @@ const PROVIDER_POLICIES: Readonly<Record<ProviderName, ProviderPolicy>> = {
   }),
   yelp: Object.freeze({
     provider: "yelp",
-    // Yelp permits at most 24 hours. Paloma uses 23 hours so clock and purge
-    // delays cannot accidentally extend a response beyond the contractual cap.
+    // Yelp permits at most 24 hours. Paloma serves for 22 hours, while a
+    // quarter-hour purge job provides additional storage-retention headroom.
     serverCacheTtlSeconds: YELP_SERVER_CACHE_TTL_SECONDS,
+    maxServerCachePayloadBytes: MAX_PROVIDER_CACHE_PAYLOAD_BYTES,
     durableIdentifierKinds: Object.freeze(["business_id"]),
     policyReviewedOn: "2026-08-18",
   }),

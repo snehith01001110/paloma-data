@@ -103,19 +103,30 @@ receive provider values, and the iOS client keeps them only in the open view's m
 global aggregate counters bound spend without recording which places were requested. Rich values
 must be accompanied by the required Foursquare venue link and visual credit in the client.
 
+When `YELP_API_KEY` is configured, the same endpoint adds a policy-bounded Yelp path. The first
+eligible detail view still returns through Foursquare while a user-triggered background Business
+Match records only a strictly validated Yelp business ID. A later view reads Business Details;
+valid raw JSON is cached once for all users, while concurrent misses share a single refresh lease.
+Cache hits do not consume paid-provider quota. Yelp data can fill phone, hours, and price in the
+transient overlay; Yelp's profile URL is attribution, never misrepresented as the venue website.
+
 Licensed runtime enrichment uses two deliberately separate storage paths:
 
 - `ingest.runtime_provider_links` retains only provider identifiers and Paloma-owned match
   metadata. Current terms permit indefinite retention of FSQ place IDs and Yelp business IDs.
 - `ingest.provider_response_cache` is a private, raw-payload cache that accepts only Yelp rows and
-  enforces a 23-hour maximum lifetime in both SQL and Edge Function code. A short refresh lease
-  collapses concurrent cold requests, and an hourly database job removes expired rows. Expired
-  content is never served as a stale fallback.
+  enforces a 22-hour maximum lifetime and a 256 KiB payload limit in both SQL and Edge Function
+  code. A short refresh lease collapses concurrent cold requests, and a fifteen-minute database
+  job removes expired rows. Expired content is never served as a stale fallback.
+- `ingest.provider_match_state` stores only Paloma-owned fingerprints, outcomes, cooldowns, and
+  short leases. It prevents repeated Business Match calls when Yelp has no safe match.
 
-Foursquare PAYG/Sandbox responses never enter that cache. The existing detail endpoint remains
-`no-store`, and Foursquare rich fields live only for the open detail-view session. Supporting a new
-cacheable provider requires both an explicit code policy and a reviewed database migration, so a
-future adapter cannot silently retain licensed data.
+Foursquare PAYG/Sandbox responses never enter that cache. Every client response remains
+`no-store`; Foursquare rich fields live only for the open detail-view session. The Edge Function
+assumes the no-login `paloma_runtime` role, which can read only eligible catalog evidence and manage
+the private runtime tables. Supporting a new cacheable provider requires an adapter, an explicit
+retention/payload policy, identity validation, attribution UI, tests, and a reviewed database
+migration. An unreviewed adapter therefore cannot silently retain licensed data.
 
 The durable no-contract path is still useful: direct-public bars can pass using complementary
 Apache-2.0 FSQ OS and California ABC evidence, and FSQ OS phone/website fields may be stored. Rich

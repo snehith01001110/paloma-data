@@ -180,7 +180,7 @@ function providerCoordinates(
   return { latitude, longitude };
 }
 
-function namesAreCompatible(left: string, right: string): boolean {
+export function namesAreCompatible(left: string, right: string): boolean {
   const leftTokens = nameTokens(left);
   const rightTokens = nameTokens(right);
   if (leftTokens.length === 0 || rightTokens.length === 0) return false;
@@ -278,7 +278,7 @@ function normalizedHours(value: unknown): { weekday_text: string[] } | null {
   return display ? { weekday_text: [`Hours: ${display}`] } : null;
 }
 
-function formattedTime(value: unknown): string | null {
+export function formattedTime(value: unknown): string | null {
   const raw = text(value);
   if (!raw) return null;
   const match = raw.match(/^\+?(\d{2}):?(\d{2})$/);
@@ -298,12 +298,12 @@ function openNow(value: unknown): boolean | null {
   return typeof row?.open_now === "boolean" ? row.open_now : null;
 }
 
-function e164(value: unknown): string | null {
+export function e164(value: unknown): string | null {
   const raw = text(value)?.replace(/[\s().-]/g, "") ?? "";
   return /^\+[1-9]\d{7,14}$/.test(raw) ? raw : null;
 }
 
-function safeHttpUrl(value: unknown): string | null {
+export function safeHttpUrl(value: unknown): string | null {
   const raw = text(value);
   if (!raw || raw.length > 2048) return null;
   try {
@@ -340,7 +340,7 @@ function finiteNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function haversineMeters(
+export function haversineMeters(
   latitude1: number,
   longitude1: number,
   latitude2: number,

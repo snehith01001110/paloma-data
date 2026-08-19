@@ -66,18 +66,26 @@ This improves optional-field coverage without allowing licensed data to determin
 membership or become database ground truth. It also requires Foursquare's venue link and visual
 credit whenever rich fields are shown.
 
-Yelp is eligible only as a future transient enrichment provider. Paloma may retain a matched Yelp
-business ID and may server-cache an unmodified API response for no more than 24 hours. The
-implementation uses a 23-hour safety window, stores raw responses outside the consumer schema,
+Yelp is an optional transient enrichment provider. Paloma may retain a matched Yelp business ID and
+may server-cache API content for no more than 24 hours. The implementation uses a 22-hour serving
+window plus a fifteen-minute purge schedule, stores raw responses outside the consumer schema,
 requires Yelp attribution at display time, and never feeds cached Yelp values into publication or
 the durable establishment row. A provider outage or expired response therefore falls back to
-Paloma's durable fields rather than stale Yelp content.
+Paloma's durable fields or the uncached Foursquare overlay rather than stale Yelp content.
+
+Yelp discovery is demand-driven, not a bulk backfill. After an authenticated user opens an already
+published venue, strict Business Match runs in the background and retains only a validated business
+ID. Paloma rejects ambiguous matches and enforces name, alcohol category, and 100-meter coordinate
+guards. Negative outcomes have bounded cooldowns so an absent or unsafe match does not spend one API
+call per view. Business Details is fetched only on a subsequent user request. Successful payloads
+are identity-validated before storage, capped at 256 KiB, and protected by a single-flight lease.
 
 The cache is policy-enforced rather than convention-based. SQL rejects every provider except Yelp,
-rejects expiry beyond 23 hours, and gives no client or ingest role access to cached payloads. Edge
-code applies the same TTL, uses a short single-flight lease for cold keys, and refuses Foursquare
-server caching before any database write can occur. Durable provider IDs are stored separately from
-licensed response bodies.
+rejects expiry beyond 22 hours and oversized payloads, and gives no client or ingest role access to
+cached payloads. Edge code derives canonical request fingerprints, validates identities before
+storage, uses a short single-flight lease for cold keys, and refuses Foursquare server caching before
+any database operation can occur. Durable provider IDs are stored separately from licensed response
+bodies, and the Edge Function assumes a no-login least-privilege database role.
 
 The current Places API response fields include phone, website, hours, price, attributes, and
 veracity rating, but not neighborhood. Neighborhood is therefore a separate civic-boundary fact,
