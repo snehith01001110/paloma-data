@@ -102,3 +102,24 @@ def test_runtime_provider_link_stores_only_the_allowed_foursquare_identifier():
     assert connection.params[0] == "candidate-id"
     assert set(connection.params[1]) == POTENTIAL_SOURCE_EXCLUDED_FLAGS
     assert connection.params[2:] == ("candidate-id", "candidate-id")
+
+
+def test_materialized_candidate_selection_is_scoped_to_publication_state():
+    connection = _RecordingConnection()
+    repository = CatalogRepository(db=None)
+
+    assert repository.materialized_candidate_ids(
+        connection,
+        city="San Francisco",
+        limit=200,
+        publication_states=("published", "suppressed"),
+    ) == []
+
+    assert "join public.establishments" in connection.query
+    assert "e.publication_state = any(%s::text[])" in connection.query
+    assert connection.params == (
+        "San Francisco",
+        "San Francisco",
+        ["published", "suppressed"],
+        200,
+    )

@@ -1,0 +1,12 @@
+.env
+.git
+.github
+.pytest_cache
+.ruff_cache
+.venv
+__pycache__
+docs
+scripts
+site
+supabase
+tests

@@ -1,0 +1,42 @@
+apiVersion: run.googleapis.com/v1
+kind: Job
+metadata:
+  name: paloma-pipeline-worker
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/secrets: >-
+          paloma-db-url:projects/PROJECT_NUMBER/secrets/PALOMA_DB_SECRET
+    spec:
+      taskCount: 1
+      parallelism: 1
+      template:
+        spec:
+          serviceAccountName: PALOMA_WORKER_SERVICE_ACCOUNT
+          maxRetries: 0
+          timeoutSeconds: "3600s"
+          containers:
+            - image: REGION-docker.pkg.dev/PROJECT_ID/REPOSITORY/paloma-data@sha256:DIGEST
+              args:
+                - pipeline-worker
+                - --drain
+                - --max-jobs
+                - "5000"
+                - --batch-size
+                - "1"
+                - --idle-timeout-seconds
+                - "120"
+                - --fail-on-error
+              env:
+                - name: PALOMA_PIPELINE_REQUESTER
+                  value: cloud_run_scheduler
+                - name: SUPABASE_DB_URL
+                  valueFrom:
+                    secretKeyRef:
+                      key: "1"
+                      name: paloma-db-url
+              resources:
+                limits:
+                  cpu: "1"
+                  memory: 1Gi

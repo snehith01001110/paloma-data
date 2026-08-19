@@ -8,7 +8,7 @@ on:
         required: true
         default: status
         type: choice
-        options: [status, audit, resolve-review, stage, neighborhoods, discover, trial, trial-verified, verify, reevaluate, publish, provider-links, cutover]
+        options: [status, audit, resolve-review, stage, neighborhoods, discover, trial, trial-verified, verify, reevaluate, publish, provider-links, queue-refresh, queue-work, queue-status, cutover]
       source:
         description: Source for stage
         required: false
@@ -80,7 +80,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: pip
+      - name: Install locked runtime
+        shell: bash
+        run: |
+          python -m pip install 'uv==0.11.6'
+          uv sync --frozen --no-dev --extra fsq
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
       - name: Exchange GitHub OIDC for scoped database credential
         shell: bash
         run: |
@@ -107,8 +112,6 @@ jobs:
           test -n "$SUPABASE_DB_URL"
           echo "::add-mask::$SUPABASE_DB_URL"
           printf 'SUPABASE_DB_URL=%s\n' "$SUPABASE_DB_URL" >> "$GITHUB_ENV"
-      - run: pip install '.[fsq]'
-
       - name: Weekday regulatory reconciliation
         if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 1-5'
         run: |
@@ -135,18 +138,24 @@ jobs:
           else
             echo "Licensed server retention is not configured; proprietary verification skipped"
           fi
-          paloma-data catalog-reevaluate
+          paloma-data pipeline-enqueue-catalog --include-unpublished --limit 50000
+          paloma-data pipeline-enqueue-sweep
+          if [ -n "$YELP_API_KEY" ]; then
+            paloma-data pipeline-enqueue-provider-links --limit 250
+          else
+            echo "Yelp is not configured; proactive durable-ID sync skipped"
+          fi
+          paloma-data pipeline-worker \
+            --drain \
+            --max-jobs 50000 \
+            --idle-timeout-seconds 600 \
+            --fail-on-error
           if [ "$PALOMA_CATALOG_AUTO_PUBLISH" = "true" ]; then
             paloma-data catalog-publish --confirm PUBLISH_VERIFIED --limit 2000
           else
             echo "Automatic publication is disabled until the initial cutover is approved"
           fi
-          if [ -n "$YELP_API_KEY" ]; then
-            paloma-data provider-links-sync --provider yelp --limit 250
-          else
-            echo "Yelp is not configured; proactive durable-ID sync skipped"
-          fi
-          paloma-data catalog-sweep
+          paloma-data pipeline-status
 
       - name: Manual action
         if: github.event_name == 'workflow_dispatch'
@@ -206,6 +215,18 @@ jobs:
                 --provider yelp \
                 --city "$CITY" \
                 --limit "$LIMIT"
+              ;;
+            queue-refresh)
+              paloma-data pipeline-enqueue-catalog --city "$CITY" --limit "$LIMIT"
+              ;;
+            queue-work)
+              paloma-data pipeline-worker \
+                --drain \
+                --max-jobs "$LIMIT" \
+                --fail-on-error
+              ;;
+            queue-status)
+              paloma-data pipeline-status
               ;;
             cutover)
               test "$CONFIRMATION" = "REPLACE_PUBLIC_CATALOG"

@@ -739,6 +739,45 @@ class CatalogRepository:
         ).fetchall()
         return [str(row["id"]) for row in rows]
 
+    def materialized_candidate_ids(
+        self,
+        conn: psycopg.Connection,
+        *,
+        city: str | None = None,
+        limit: int = 100,
+        publication_states: tuple[str, ...] = ("published",),
+    ) -> list[str]:
+        """Select product identities already materialized from verified candidates."""
+        rows = conn.execute(
+            """
+            select c.id::text
+            from ingest.catalog_candidates c
+            join public.establishments e on e.catalog_candidate_id = c.id
+            where (%s::text is null or lower(e.city) = lower(%s::text))
+              and e.publication_state = any(%s::text[])
+            order by e.updated_at, e.id
+            limit %s
+            """,
+            (city, city, list(publication_states), limit),
+        ).fetchall()
+        return [str(row["id"]) for row in rows]
+
+    def materialized_publication(
+        self,
+        conn: psycopg.Connection,
+        candidate_id: str,
+    ) -> dict[str, Any] | None:
+        row = conn.execute(
+            """
+            select e.id::text as establishment_id, e.publication_state
+            from public.establishments e
+            where e.catalog_candidate_id = %s::uuid
+            for update
+            """,
+            (candidate_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
     def verification_candidate_ids(
         self,
         conn: psycopg.Connection,
