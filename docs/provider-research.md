@@ -73,12 +73,14 @@ requires Yelp attribution at display time, and never feeds cached Yelp values in
 the durable establishment row. A provider outage or expired response therefore falls back to
 Paloma's durable fields or the uncached Foursquare overlay rather than stale Yelp content.
 
-Yelp discovery is demand-driven, not a bulk backfill. After an authenticated user opens an already
-published venue, strict Business Match runs in the background and retains only a validated business
-ID. Paloma rejects ambiguous matches and enforces name, alcohol category, and 100-meter coordinate
-guards. Negative outcomes have bounded cooldowns so an absent or unsafe match does not spend one API
-call per view. Business Details is fetched only on a subsequent user request. Successful payloads
-are identity-validated before storage, capped at 256 KiB, and protected by a single-flight lease.
+Yelp identity discovery is proactive but bounded. A weekly incremental job considers only currently
+published, verified walk-in venues and searches only new, changed, or due identities, with an
+explicit API-call cap. It retains the validated durable business ID and Paloma-owned match metadata,
+then discards the search response. Paloma rejects ambiguous matches and enforces strong consumer
+name, alcohol category, and 100-meter coordinate guards. Negative outcomes have bounded cooldowns;
+the Edge Function's user-triggered matcher remains a fallback, not the normal first-view path.
+Business Details stays on demand. Successful payloads are identity-validated before storage, capped
+at 256 KiB, and protected by a single-flight lease.
 
 The cache is policy-enforced rather than convention-based. SQL rejects every provider except Yelp,
 rejects expiry beyond 22 hours and oversized payloads, and gives no client or ingest role access to
@@ -99,6 +101,8 @@ not a value inferred from the provider or postal address.
 - Open FSQ OS + direct-public ABC: reevaluate weekly; leases are at most 45 days and never extend
   beyond the FSQ OS 365-day freshness deadline.
 - Specifically licensed Premium/API: target only new or due candidates; 45-day lease by default.
+- Yelp durable-ID sync: weekly and after publication; unchanged matched identities are rechecked at
+  most every 90 days, while negative/error cooldowns are shorter and bounded.
 - SF Find boundaries: monthly complete snapshot and point-in-polygon resolution; other cities stay
   null until their boundary feed has been reviewed.
 - Manual attestation: 90-day lease by default.

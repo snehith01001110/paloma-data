@@ -100,6 +100,7 @@ export type ExpectedYelpPlace = Readonly<{
   name: string;
   latitude: number;
   longitude: number;
+  phoneE164?: string | null;
 }>;
 
 export type YelpMatchSelection =
@@ -249,7 +250,14 @@ export function validateYelpPlace(
   }
 
   const providerName = text(raw.name);
-  if (!providerName || !namesAreCompatible(expected.name, providerName)) {
+  const exactPhone = Boolean(
+    expected.phoneE164 && e164(raw.phone) === expected.phoneE164,
+  );
+  if (
+    !providerName ||
+    !strongYelpNameMatch(expected.name, providerName) &&
+      !(exactPhone && namesAreCompatible(expected.name, providerName))
+  ) {
     return { ok: false, reason: "name_mismatch" };
   }
   if (!hasSupportedYelpCategory(raw.categories)) {
@@ -460,6 +468,33 @@ function hasSupportedYelpCategory(value: unknown): boolean {
     return YELP_ALCOHOL_CATEGORY_ALIASES.has(alias) ||
       YELP_ALCOHOL_CATEGORY_TERMS.some((term) => title.includes(term));
   });
+}
+
+function strongYelpNameMatch(left: string, right: string): boolean {
+  const leftTokens = yelpNameTokens(left);
+  const rightTokens = yelpNameTokens(right);
+  if (leftTokens.length === 0 || rightTokens.length === 0) return false;
+  const leftJoined = leftTokens.join(" ");
+  const rightJoined = rightTokens.join(" ");
+  if (
+    leftJoined === rightJoined || leftJoined.includes(rightJoined) ||
+    rightJoined.includes(leftJoined)
+  ) return true;
+  const rightSet = new Set(rightTokens);
+  const overlap = leftTokens.filter((token) => rightSet.has(token)).length;
+  return overlap / Math.min(leftTokens.length, rightTokens.length) >= 0.75;
+}
+
+function yelpNameTokens(value: string): string[] {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter((token) => token && !["the", "and", "at", "sf"].includes(token));
 }
 
 function object(value: unknown): Record<string, unknown> | null {

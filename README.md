@@ -103,10 +103,11 @@ receive provider values, and the iOS client keeps them only in the open view's m
 global aggregate counters bound spend without recording which places were requested. Rich values
 must be accompanied by the required Foursquare venue link and visual credit in the client.
 
-When `YELP_API_KEY` is configured, the same endpoint adds a policy-bounded Yelp path. The first
-eligible detail view still returns through Foursquare while a user-triggered background Business
-Match records only a strictly validated Yelp business ID. A later view reads Business Details;
-valid raw JSON is cached once for all users, while concurrent misses share a single refresh lease.
+When `YELP_API_KEY` is configured, the same endpoint adds a policy-bounded Yelp path. The scheduled
+`provider-links-sync` job resolves strictly validated Yelp business IDs for new or changed
+published venues before user traffic; a user-triggered matcher remains only as a fallback. The
+first detail request can therefore read Business Details immediately. Valid raw JSON is cached once
+for all users, while concurrent misses share a single refresh lease.
 Cache hits do not consume paid-provider quota. Yelp data can fill phone, hours, and price in the
 transient overlay; Yelp's profile URL is attribution, never misrepresented as the venue website.
 
@@ -216,7 +217,8 @@ The workflow has three independent paths:
   block the core job.
 - Weekly: reevaluate open evidence; optionally refresh a bounded set through a specifically
   licensed provider; materialize passing candidates only when `PALOMA_CATALOG_AUTO_PUBLISH=true`;
-  and suppress expired rows. Auto-publish remains off until the initial cutover is approved.
+  resolve due Yelp business IDs without storing Yelp attributes; and suppress expired rows.
+  Auto-publish remains off until the initial cutover is approved.
 
 No GitHub push runs ingestion. Deployment and data mutation are deliberately separate.
 
@@ -236,6 +238,7 @@ paloma-data catalog-audit --city "San Francisco" --limit 500
 paloma-data catalog-review-resolve --review-id 123 --resolution not_same_or_stale \
   --confirm RESOLVE_MATCH_REVIEW
 paloma-data catalog-publish --confirm PUBLISH_VERIFIED
+paloma-data provider-links-sync --provider yelp --city "San Francisco" --limit 25
 paloma-data catalog-sweep
 paloma-data catalog-status
 paloma-data sync-neighborhoods
@@ -249,6 +252,8 @@ See `.env.example`. Required server-side values are:
 - FSQ Places Portal Iceberg connection values for FSQ OS discovery;
 - optional `FSQ_PLACES_API_KEY` for a bounded, non-caching trial;
 - `FSQ_PLACES_API_KEY` as a Supabase Edge Function secret for transient consumer detail lookups;
+- `YELP_API_KEY` as both a Supabase Edge Function secret and GitHub Actions secret. The scheduled
+  job retains only durable Yelp IDs; the Edge Function owns the 22-hour attribute cache;
 - `FSQ_SERVER_STORAGE_LICENSED=true` only under written server-retention/display rights;
 - `PALOMA_CATALOG_AUTO_PUBLISH=true` only after the initial cutover is approved;
 - `SF_NEIGHBORHOODS_URL` defaults to DataSF's public-domain SF Find GeoJSON feed.

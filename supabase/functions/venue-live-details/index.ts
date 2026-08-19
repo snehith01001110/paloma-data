@@ -44,6 +44,7 @@ declare const EdgeRuntime: {
 
 const PLACES_API_VERSION = "2025-06-17";
 const MAX_BODY_BYTES = 1_024;
+const YELP_MATCH_METHOD = "api_business_search_verified_v2";
 const MAX_PROVIDER_RESPONSE_BYTES = 512 * 1_024;
 const USER_REQUESTS_PER_MINUTE = 20;
 const USER_REQUESTS_PER_DAY = 100;
@@ -356,6 +357,7 @@ async function yelpLiveDetails(
     name: place.name,
     latitude: place.latitude,
     longitude: place.longitude,
+    phoneE164: place.phoneE164,
   };
   const loaded = await loadProviderPayload(
     new PostgresProviderCacheStore(sql),
@@ -416,6 +418,7 @@ async function handleYelpLinkFailure(
     "rejected",
     missingBusiness ? 7 * 24 * 60 * 60 : 30 * 24 * 60 * 60,
     null,
+    missingBusiness ? "linked_business_not_found" : "linked_payload_rejected",
   );
 }
 
@@ -445,6 +448,7 @@ async function discoverYelpLink(
     const identityFingerprint = await providerMatchIdentityFingerprint(
       "yelp",
       matchInput,
+      YELP_MATCH_METHOD,
     );
     lease = await claimProviderMatch(
       sql,
@@ -463,6 +467,7 @@ async function discoverYelpLink(
         "error",
         60,
         "quota_exceeded",
+        "provider_error",
       );
       return;
     }
@@ -471,6 +476,7 @@ async function discoverYelpLink(
       name: place.name,
       latitude: place.latitude,
       longitude: place.longitude,
+      phoneE164: place.phoneE164,
     });
     if (!selection.ok) {
       const retrySeconds = selection.reason === "not_found"
@@ -483,6 +489,10 @@ async function discoverYelpLink(
         lease,
         selection.reason === "not_found" ? "not_found" : "rejected",
         retrySeconds,
+        null,
+        selection.reason === "ambiguous"
+          ? "ambiguous_multiple_candidates"
+          : selection.reason,
       );
       logProviderEvent("yelp_match", selection.reason);
       return;
@@ -497,6 +507,8 @@ async function discoverYelpLink(
         lease,
         "rejected",
         30 * 24 * 60 * 60,
+        null,
+        "invalid_provider_identity",
       );
       return;
     }
@@ -505,7 +517,7 @@ async function discoverYelpLink(
       place.id,
       "yelp",
       businessId,
-      "api_business_search_verified_v1",
+      YELP_MATCH_METHOD,
       selection.confidence,
       lease,
     );
@@ -518,6 +530,7 @@ async function discoverYelpLink(
         "error",
         300,
         "link_store_failed",
+        "provider_error",
       );
       return;
     }
@@ -533,6 +546,7 @@ async function discoverYelpLink(
           "error",
           providerMatchRetrySeconds(error),
           providerFailureCode(error),
+          "provider_error",
         );
       } catch {
         // The match lease expires on its own; preserve the original error code.

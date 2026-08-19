@@ -10,6 +10,8 @@ type Sql = ReturnType<typeof postgres>;
 const MATCH_LEASE_SECONDS = 15;
 const MATCHED_RECHECK_SECONDS = 90 * 24 * 60 * 60;
 const ERROR_CODE_PATTERN = /^[a-z][a-z0-9_]{0,63}$/;
+const DECISION_REASON_PATTERN = /^[a-z][a-z0-9_]{0,63}$/;
+const MATCHER_REVISION_PATTERN = /^[a-z][a-z0-9_]{0,99}$/;
 
 export type ProviderMatchIdentity = Readonly<{
   name: string;
@@ -33,12 +35,17 @@ export type ProviderMatchOutcome = "not_found" | "rejected" | "error";
 export async function providerMatchIdentityFingerprint(
   provider: ProviderName,
   identity: ProviderMatchIdentity,
+  matcherRevision: string,
 ): Promise<string> {
+  if (!MATCHER_REVISION_PATTERN.test(matcherRevision)) {
+    throw new TypeError("invalid provider matcher revision");
+  }
   return await providerRequestFingerprint({
     provider,
     endpoint: "business_match_identity",
     apiVersion: "v1",
     parameters: {
+      matcher_revision: matcherRevision,
       name: identity.name.trim(),
       address: identity.address.trim(),
       city: identity.city.trim(),
@@ -63,11 +70,11 @@ export async function claimProviderMatch(
     insert into ingest.provider_match_state as match_state (
       establishment_id, provider, identity_fingerprint, outcome,
       attempted_at, retry_after, lease_token, lease_expires_at,
-      last_error_code, updated_at
+      last_error_code, decision_reason, updated_at
     ) values (
       ${establishmentId}::uuid, ${provider}, ${identityFingerprint}, 'pending',
       now(), now(), ${token}::uuid,
-      now() + make_interval(secs => ${MATCH_LEASE_SECONDS}), null, now()
+      now() + make_interval(secs => ${MATCH_LEASE_SECONDS}), null, null, now()
     )
     on conflict (establishment_id, provider) do update set
       identity_fingerprint = excluded.identity_fingerprint,
@@ -77,6 +84,7 @@ export async function claimProviderMatch(
       lease_token = excluded.lease_token,
       lease_expires_at = excluded.lease_expires_at,
       last_error_code = null,
+      decision_reason = null,
       updated_at = now()
     where match_state.identity_fingerprint <> excluded.identity_fingerprint
        or (
@@ -142,6 +150,7 @@ export async function storeMatchedProviderLink(
           lease_token = null,
           lease_expires_at = null,
           last_error_code = null,
+          decision_reason = 'matched',
           updated_at = now()
       where establishment_id = ${establishmentId}::uuid
         and provider = ${provider}
@@ -176,12 +185,16 @@ export async function completeProviderMatch(
   outcome: ProviderMatchOutcome,
   retryAfterSeconds: number,
   errorCode: string | null = null,
+  decisionReason: string | null = null,
 ): Promise<void> {
   const boundedRetrySeconds = Math.max(
     60,
     Math.min(Math.floor(retryAfterSeconds), 90 * 24 * 60 * 60),
   );
   const safeErrorCode = validatedErrorCode(outcome, errorCode);
+  const safeDecisionReason = validatedDecisionReason(
+    decisionReason ?? outcome,
+  );
   await sql`
     update ingest.provider_match_state
     set outcome = ${outcome},
@@ -189,6 +202,7 @@ export async function completeProviderMatch(
         lease_token = null,
         lease_expires_at = null,
         last_error_code = ${safeErrorCode},
+        decision_reason = ${safeDecisionReason},
         updated_at = now()
     where establishment_id = ${establishmentId}::uuid
       and provider = ${provider}
@@ -204,12 +218,16 @@ export async function deferProviderRematch(
   outcome: ProviderMatchOutcome,
   retryAfterSeconds: number,
   errorCode: string | null = null,
+  decisionReason: string | null = null,
 ): Promise<void> {
   const boundedRetrySeconds = Math.max(
     60,
     Math.min(Math.floor(retryAfterSeconds), 90 * 24 * 60 * 60),
   );
   const safeErrorCode = validatedErrorCode(outcome, errorCode);
+  const safeDecisionReason = validatedDecisionReason(
+    decisionReason ?? outcome,
+  );
   await sql`
     update ingest.provider_match_state
     set outcome = ${outcome},
@@ -217,10 +235,15 @@ export async function deferProviderRematch(
         lease_token = null,
         lease_expires_at = null,
         last_error_code = ${safeErrorCode},
+        decision_reason = ${safeDecisionReason},
         updated_at = now()
     where establishment_id = ${establishmentId}::uuid
       and provider = ${provider}
   `;
+}
+
+function validatedDecisionReason(value: string): string {
+  return DECISION_REASON_PATTERN.test(value) ? value : "unclassified";
 }
 
 function validatedErrorCode(
