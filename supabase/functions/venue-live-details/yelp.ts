@@ -88,8 +88,12 @@ export type YelpMatchSelection =
   | { ok: false; reason: "not_found" | "ambiguous" | "rejected" };
 
 export type YelpApiErrorCode =
+  | "invalid_request"
+  | "unauthorized"
+  | "forbidden"
   | "not_found"
   | "rate_limited"
+  | "timeout"
   | "unavailable"
   | "invalid_payload";
 
@@ -269,15 +273,18 @@ async function yelpJson(
       cache: "no-store",
       signal: controller.signal,
     });
-  } catch {
-    throw new YelpApiError("unavailable");
+  } catch (error) {
+    throw new YelpApiError(
+      error instanceof Error && error.name === "AbortError"
+        ? "timeout"
+        : "unavailable",
+    );
   } finally {
     clearTimeout(timeout);
   }
 
-  if (response.status === 404) throw new YelpApiError("not_found");
-  if (response.status === 429) throw new YelpApiError("rate_limited");
-  if (!response.ok) throw new YelpApiError("unavailable");
+  const responseError = yelpApiErrorCodeForStatus(response.status);
+  if (responseError) throw new YelpApiError(responseError);
 
   const contentLength = Number(response.headers.get("content-length") ?? 0);
   if (
@@ -302,6 +309,18 @@ async function yelpJson(
     if (error instanceof YelpApiError) throw error;
     throw new YelpApiError("invalid_payload");
   }
+}
+
+export function yelpApiErrorCodeForStatus(
+  status: number,
+): YelpApiErrorCode | null {
+  if (status >= 200 && status < 300) return null;
+  if (status === 400) return "invalid_request";
+  if (status === 401) return "unauthorized";
+  if (status === 403) return "forbidden";
+  if (status === 404) return "not_found";
+  if (status === 429) return "rate_limited";
+  return "unavailable";
 }
 
 function normalizedYelpHours(

@@ -9,6 +9,7 @@ type Sql = ReturnType<typeof postgres>;
 
 const MATCH_LEASE_SECONDS = 15;
 const MATCHED_RECHECK_SECONDS = 90 * 24 * 60 * 60;
+const ERROR_CODE_PATTERN = /^[a-z][a-z0-9_]{0,63}$/;
 
 export type ProviderMatchIdentity = Readonly<{
   name: string;
@@ -61,11 +62,12 @@ export async function claimProviderMatch(
   const rows = await sql`
     insert into ingest.provider_match_state as match_state (
       establishment_id, provider, identity_fingerprint, outcome,
-      attempted_at, retry_after, lease_token, lease_expires_at, updated_at
+      attempted_at, retry_after, lease_token, lease_expires_at,
+      last_error_code, updated_at
     ) values (
       ${establishmentId}::uuid, ${provider}, ${identityFingerprint}, 'pending',
       now(), now(), ${token}::uuid,
-      now() + make_interval(secs => ${MATCH_LEASE_SECONDS}), now()
+      now() + make_interval(secs => ${MATCH_LEASE_SECONDS}), null, now()
     )
     on conflict (establishment_id, provider) do update set
       identity_fingerprint = excluded.identity_fingerprint,
@@ -74,6 +76,7 @@ export async function claimProviderMatch(
       retry_after = now(),
       lease_token = excluded.lease_token,
       lease_expires_at = excluded.lease_expires_at,
+      last_error_code = null,
       updated_at = now()
     where match_state.identity_fingerprint <> excluded.identity_fingerprint
        or (
@@ -138,6 +141,7 @@ export async function storeMatchedProviderLink(
           retry_after = now() + make_interval(secs => ${MATCHED_RECHECK_SECONDS}),
           lease_token = null,
           lease_expires_at = null,
+          last_error_code = null,
           updated_at = now()
       where establishment_id = ${establishmentId}::uuid
         and provider = ${provider}
@@ -171,17 +175,20 @@ export async function completeProviderMatch(
   lease: ProviderMatchLease,
   outcome: ProviderMatchOutcome,
   retryAfterSeconds: number,
+  errorCode: string | null = null,
 ): Promise<void> {
   const boundedRetrySeconds = Math.max(
     60,
     Math.min(Math.floor(retryAfterSeconds), 90 * 24 * 60 * 60),
   );
+  const safeErrorCode = validatedErrorCode(outcome, errorCode);
   await sql`
     update ingest.provider_match_state
     set outcome = ${outcome},
         retry_after = now() + make_interval(secs => ${boundedRetrySeconds}),
         lease_token = null,
         lease_expires_at = null,
+        last_error_code = ${safeErrorCode},
         updated_at = now()
     where establishment_id = ${establishmentId}::uuid
       and provider = ${provider}
@@ -196,21 +203,35 @@ export async function deferProviderRematch(
   provider: ProviderName,
   outcome: ProviderMatchOutcome,
   retryAfterSeconds: number,
+  errorCode: string | null = null,
 ): Promise<void> {
   const boundedRetrySeconds = Math.max(
     60,
     Math.min(Math.floor(retryAfterSeconds), 90 * 24 * 60 * 60),
   );
+  const safeErrorCode = validatedErrorCode(outcome, errorCode);
   await sql`
     update ingest.provider_match_state
     set outcome = ${outcome},
         retry_after = now() + make_interval(secs => ${boundedRetrySeconds}),
         lease_token = null,
         lease_expires_at = null,
+        last_error_code = ${safeErrorCode},
         updated_at = now()
     where establishment_id = ${establishmentId}::uuid
       and provider = ${provider}
   `;
+}
+
+function validatedErrorCode(
+  outcome: ProviderMatchOutcome,
+  errorCode: string | null,
+): string | null {
+  if (outcome !== "error") return null;
+  if (!errorCode || !ERROR_CODE_PATTERN.test(errorCode)) {
+    return "unclassified";
+  }
+  return errorCode;
 }
 
 function roundedCoordinate(value: number): number {

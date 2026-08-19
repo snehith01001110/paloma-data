@@ -390,6 +390,7 @@ async function yelpLiveDetails(
   return json({
     available: true,
     provider: "yelp",
+    cache_status: loaded.cacheStatus,
     fetched_at: loaded.fetchedAt.toISOString(),
     expires_at: loaded.expiresAt?.toISOString() ?? null,
     attribution: { name: "Yelp", url: attribution },
@@ -414,6 +415,7 @@ async function handleYelpLinkFailure(
     "yelp",
     "rejected",
     missingBusiness ? 7 * 24 * 60 * 60 : 30 * 24 * 60 * 60,
+    null,
   );
 }
 
@@ -453,7 +455,15 @@ async function discoverYelpLink(
     if (!lease) return;
 
     if (!await consumeQuota(sql, userId)) {
-      await completeProviderMatch(sql, place.id, "yelp", lease, "error", 60);
+      await completeProviderMatch(
+        sql,
+        place.id,
+        "yelp",
+        lease,
+        "error",
+        60,
+        "quota_exceeded",
+      );
       return;
     }
     const payload = await fetchYelpBusinessMatch(apiKey, matchInput);
@@ -500,7 +510,15 @@ async function discoverYelpLink(
       lease,
     );
     if (!link) {
-      await completeProviderMatch(sql, place.id, "yelp", lease, "error", 300);
+      await completeProviderMatch(
+        sql,
+        place.id,
+        "yelp",
+        lease,
+        "error",
+        300,
+        "link_store_failed",
+      );
       return;
     }
     logProviderEvent("yelp_match", "matched");
@@ -513,9 +531,8 @@ async function discoverYelpLink(
           "yelp",
           lease,
           "error",
-          error instanceof YelpApiError && error.code === "rate_limited"
-            ? 15 * 60
-            : 5 * 60,
+          providerMatchRetrySeconds(error),
+          providerFailureCode(error),
         );
       } catch {
         // The match lease expires on its own; preserve the original error code.
@@ -524,6 +541,23 @@ async function discoverYelpLink(
     logProviderEvent("yelp_match", providerFailureCode(error));
   } finally {
     await sql.end({ timeout: 1 });
+  }
+}
+
+function providerMatchRetrySeconds(error: unknown): number {
+  if (!(error instanceof YelpApiError)) return 5 * 60;
+  switch (error.code) {
+    case "unauthorized":
+    case "forbidden":
+      return 60 * 60;
+    case "invalid_request":
+      return 24 * 60 * 60;
+    case "rate_limited":
+      return 15 * 60;
+    case "invalid_payload":
+      return 30 * 60;
+    default:
+      return 5 * 60;
   }
 }
 
@@ -652,6 +686,7 @@ async function fetchFoursquareLiveDetails(
   return json({
     available: true,
     provider: "foursquare",
+    cache_status: "bypass",
     fetched_at: new Date().toISOString(),
     expires_at: null,
     attribution: {

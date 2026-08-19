@@ -2,6 +2,7 @@ import {
   projectYelpLiveDetails,
   selectYelpBusinessMatch,
   validateYelpPlace,
+  yelpApiErrorCodeForStatus,
   yelpAttributionUrl,
 } from "./yelp.ts";
 
@@ -145,6 +146,16 @@ Deno.test("drops malformed Yelp optional fields", () => {
       setting_slugs: [],
     },
   );
+});
+
+Deno.test("classifies Yelp HTTP failures without retaining response bodies", () => {
+  assertEquals(yelpApiErrorCodeForStatus(200), null);
+  assertEquals(yelpApiErrorCodeForStatus(400), "invalid_request");
+  assertEquals(yelpApiErrorCodeForStatus(401), "unauthorized");
+  assertEquals(yelpApiErrorCodeForStatus(403), "forbidden");
+  assertEquals(yelpApiErrorCodeForStatus(404), "not_found");
+  assertEquals(yelpApiErrorCodeForStatus(429), "rate_limited");
+  assertEquals(yelpApiErrorCodeForStatus(503), "unavailable");
 });
 
 function assert(value: unknown): asserts value {
