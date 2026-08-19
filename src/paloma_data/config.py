@@ -16,6 +16,7 @@ class Settings:
     fsq_places_table: str | None
     fsq_catalog_warehouse: str | None
     fsq_places_api_key: str | None
+    yelp_api_key: str | None
     fsq_server_storage_licensed: bool
     catalog_provider_lease_days: int
     allow_snapshot_shrink: bool
@@ -46,6 +47,7 @@ class Settings:
             fsq_places_table=os.getenv("FSQ_PLACES_TABLE"),
             fsq_catalog_warehouse=os.getenv("FSQ_CATALOG_WAREHOUSE"),
             fsq_places_api_key=os.getenv("FSQ_PLACES_API_KEY"),
+            yelp_api_key=os.getenv("YELP_API_KEY"),
             fsq_server_storage_licensed=_boolean(
                 os.getenv("FSQ_SERVER_STORAGE_LICENSED", "false")
             ),

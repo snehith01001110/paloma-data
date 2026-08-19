@@ -12,6 +12,7 @@ from paloma_data.adapters import (
     OvertureAdapter,
 )
 from paloma_data.adapters.foursquare_api import FoursquarePlacesAPI
+from paloma_data.adapters.yelp import YelpPlacesAPI
 from paloma_data.catalog import CATALOG_DECISION_VERSION
 from paloma_data.catalog_pipeline import CatalogPipeline
 from paloma_data.catalog_repository import (
@@ -22,6 +23,7 @@ from paloma_data.config import Settings
 from paloma_data.db import Database
 from paloma_data.geocoding import AddressGeocoder
 from paloma_data.neighborhoods import DataSFNeighborhoodAdapter, NeighborhoodStager
+from paloma_data.provider_links import ProviderLinkSync
 from paloma_data.staging import SourceStager
 
 
@@ -310,6 +312,23 @@ def catalog_sweep() -> None:
         withdrawn = repo.withdraw_expired(conn)
         conn.commit()
     typer.echo(json.dumps({"expired_withdrawn": withdrawn}, indent=2))
+
+
+@app.command("provider-links-sync")
+def provider_links_sync(
+    provider: str = typer.Option("yelp", help="Provider whose durable IDs should be synced"),
+    city: str | None = typer.Option(None, help="Optional exact city guardrail"),
+    limit: int = typer.Option(25, min=1, max=500, help="Maximum paid API calls"),
+) -> None:
+    """Resolve durable provider IDs ahead of user traffic; never retain search payloads."""
+    settings, db, _, _ = _components()
+    if provider != "yelp":
+        raise typer.BadParameter("yelp is the only proactive provider matcher currently reviewed")
+    if not settings.yelp_api_key:
+        raise typer.BadParameter("YELP_API_KEY is required")
+    with YelpPlacesAPI(settings.yelp_api_key) as api:
+        result = ProviderLinkSync(db).run(api, city=city, limit=limit)
+    typer.echo(json.dumps(result, indent=2, sort_keys=True))
 
 
 @app.command("catalog-status")

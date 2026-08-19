@@ -8,7 +8,7 @@ on:
         required: true
         default: status
         type: choice
-        options: [status, audit, resolve-review, stage, neighborhoods, discover, trial, trial-verified, verify, reevaluate, publish, cutover]
+        options: [status, audit, resolve-review, stage, neighborhoods, discover, trial, trial-verified, verify, reevaluate, publish, provider-links, cutover]
       source:
         description: Source for stage
         required: false
@@ -71,6 +71,7 @@ jobs:
       FSQ_PLACES_TABLE: ${{ vars.FSQ_PLACES_TABLE }}
       FSQ_CATALOG_WAREHOUSE: ${{ vars.FSQ_CATALOG_WAREHOUSE }}
       FSQ_PLACES_API_KEY: ${{ secrets.FSQ_PLACES_API_KEY }}
+      YELP_API_KEY: ${{ secrets.YELP_API_KEY }}
       FSQ_SERVER_STORAGE_LICENSED: ${{ vars.FSQ_SERVER_STORAGE_LICENSED }}
       PALOMA_CATALOG_AUTO_PUBLISH: ${{ vars.PALOMA_CATALOG_AUTO_PUBLISH }}
       CATALOG_PROVIDER_LEASE_DAYS: '45'
@@ -140,6 +141,11 @@ jobs:
           else
             echo "Automatic publication is disabled until the initial cutover is approved"
           fi
+          if [ -n "$YELP_API_KEY" ]; then
+            paloma-data provider-links-sync --provider yelp --limit 250
+          else
+            echo "Yelp is not configured; proactive durable-ID sync skipped"
+          fi
           paloma-data catalog-sweep
 
       - name: Manual action
@@ -194,6 +200,12 @@ jobs:
             publish)
               test "$CONFIRMATION" = "PUBLISH_VERIFIED"
               paloma-data catalog-publish --confirm "$CONFIRMATION" --limit "$LIMIT"
+              ;;
+            provider-links)
+              paloma-data provider-links-sync \
+                --provider yelp \
+                --city "$CITY" \
+                --limit "$LIMIT"
               ;;
             cutover)
               test "$CONFIRMATION" = "REPLACE_PUBLIC_CATALOG"

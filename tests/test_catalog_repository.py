@@ -84,3 +84,21 @@ def test_candidate_id_for_source_rechecks_exact_source_identity():
 
     assert "from ingest.candidate_source_links" in connection.query
     assert connection.params == ("fsq", "anchor")
+
+
+def test_runtime_provider_link_stores_only_the_allowed_foursquare_identifier():
+    connection = _RecordingConnection()
+    repository = CatalogRepository(db=None)
+
+    repository.upsert_runtime_provider_links(connection, "candidate-id")
+
+    assert "insert into ingest.runtime_provider_links" in connection.query
+    assert "'foursquare'" in connection.query
+    assert "csl.source_record_id" in connection.query
+    assert "source_record.consumer_facing" in connection.query
+    assert "source_record.public_access = 'walk_in'" in connection.query
+    assert "csl.identity_confidence >= 0.96" in connection.query
+    assert "not exists (select 1 from eligible)" in connection.query
+    assert connection.params[0] == "candidate-id"
+    assert set(connection.params[1]) == POTENTIAL_SOURCE_EXCLUDED_FLAGS
+    assert connection.params[2:] == ("candidate-id", "candidate-id")
