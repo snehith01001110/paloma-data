@@ -11,3 +11,4 @@ __pycache__/
 *.duckdb
 *.zip
 supabase/.temp/
+gha-creds-*.json
