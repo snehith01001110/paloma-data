@@ -116,6 +116,11 @@ class _UnusableAPI:
         raise FoursquarePlaceUnusableError(f"unusable {fsq_place_id}")
 
 
+class _NoVerificationFallbackRepository:
+    def verification_candidate_ids(self, *_args, **_kwargs):
+        raise AssertionError("an explicit empty scope must not expand to other candidates")
+
+
 class _VerificationConnection(_Connection):
     def execute(self, *_args, **_kwargs):
         return None
@@ -372,7 +377,7 @@ def test_verification_records_unusable_place_and_continues(monkeypatch):
     monkeypatch.setattr(
         pipeline,
         "_decide_candidate",
-        lambda *_args, **_kwargs: _decision("withdrawn"),
+        lambda *_args, **_kwargs: _decision("needs_verification"),
     )
 
     result = pipeline.verify_with_foursquare(
@@ -388,7 +393,26 @@ def test_verification_records_unusable_place_and_continues(monkeypatch):
     assert result["api_calls"] == 1
     assert result["api_unusable"] == 1
     assert result["api_not_found"] == 0
-    assert result["failed"] == 1
-    assert result["decisions"] == {"withdrawn": 1}
-    assert result["results"][0]["verification"] == "fail"
-    assert repository.evaluations[0][0:2] == ("candidate-1", "withdrawn")
+    assert result["failed"] == 0
+    assert result["inconclusive"] == 1
+    assert result["decisions"] == {"needs_verification": 1}
+    assert result["results"][0]["verification"] == "inconclusive"
+    assert repository.evaluations[0][0:2] == ("candidate-1", "needs_verification")
+
+
+def test_verification_respects_an_explicit_empty_candidate_scope():
+    pipeline = CatalogPipeline(_VerificationDatabase())
+    pipeline.repo = _NoVerificationFallbackRepository()
+
+    result = pipeline.verify_with_foursquare(
+        _UnusableAPI(),
+        city="San Francisco",
+        limit=250,
+        mode="trial",
+        lease_days=45,
+        candidate_ids=[],
+    )
+
+    assert result["considered"] == 0
+    assert result["api_calls"] == 0
+    assert result["decisions"] == {}

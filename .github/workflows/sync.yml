@@ -46,7 +46,7 @@ on:
     - cron: '30 16 * * 1-5'
     # FSQ OS publishes monthly; this discovers candidates but cannot publish them.
     - cron: '0 11 15 * *'
-    # Refresh a bounded set of due/new candidates, then materialize only passing verifications.
+    # Refresh only the existing published catalog while expansion is intentionally paused.
     - cron: '0 15 * * 1'
 
 permissions:
@@ -134,11 +134,11 @@ jobs:
         shell: bash
         run: |
           if [ -n "$FSQ_PLACES_API_KEY" ] && [ "$FSQ_SERVER_STORAGE_LICENSED" = "true" ]; then
-            paloma-data catalog-verify --limit 250
+            paloma-data catalog-verify --limit 250 --existing-only
           else
             echo "Licensed server retention is not configured; proprietary verification skipped"
           fi
-          paloma-data pipeline-enqueue-catalog --include-unpublished --limit 50000
+          paloma-data pipeline-enqueue-catalog --include-suppressed --limit 50000
           paloma-data pipeline-enqueue-sweep
           if [ -n "$YELP_API_KEY" ]; then
             paloma-data pipeline-enqueue-provider-links --limit 250
@@ -150,11 +150,7 @@ jobs:
             --max-jobs 50000 \
             --idle-timeout-seconds 600 \
             --fail-on-error
-          if [ "$PALOMA_CATALOG_AUTO_PUBLISH" = "true" ]; then
-            paloma-data catalog-publish --confirm PUBLISH_VERIFIED --limit 2000
-          else
-            echo "Automatic publication is disabled until the initial cutover is approved"
-          fi
+          echo "Scheduled publication is disabled while the existing catalog is refined"
           paloma-data pipeline-status
 
       - name: Authenticate deployment workflow to Google Cloud

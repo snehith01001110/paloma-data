@@ -128,13 +128,18 @@ class CatalogPipeline:
             "api_unusable": 0,
             "passed": 0,
             "failed": 0,
+            "inconclusive": 0,
             "decisions": defaultdict(int),
         }
         with self.db.connection() as conn:
-            ids = candidate_ids or self.repo.verification_candidate_ids(
-                conn,
-                city=city,
-                limit=limit,
+            ids = (
+                candidate_ids
+                if candidate_ids is not None
+                else self.repo.verification_candidate_ids(
+                    conn,
+                    city=city,
+                    limit=limit,
+                )
             )
         ids = list(dict.fromkeys(ids))[:limit]
 
@@ -151,8 +156,9 @@ class CatalogPipeline:
             try:
                 details = api.details(anchor.source_record_id)
             except FoursquarePlaceUnusableError:
-                # A 2xx response without enough identity data is a place-level hard failure,
-                # not a batch-level outage. Record it and keep auditing the remaining venues.
+                # A 2xx response without enough identity data is place-level inconclusive
+                # evidence, not proof that the establishment closed. Record it and keep
+                # auditing the remaining venues.
                 counters["api_unusable"] += 1
                 details = None
                 verification = _unusable_verification(
@@ -176,7 +182,12 @@ class CatalogPipeline:
                         lease_days=lease_days,
                     )
 
-            counters["passed" if verification.outcome == "pass" else "failed"] += 1
+            counter_key = {
+                "pass": "passed",
+                "fail": "failed",
+                "inconclusive": "inconclusive",
+            }[verification.outcome]
+            counters[counter_key] += 1
             with self.db.connection() as conn:
                 conn.execute(
                     "select pg_advisory_xact_lock(hashtext('paloma_candidate:' || %s))",
@@ -209,7 +220,8 @@ class CatalogPipeline:
                             links = self._validated_links(
                                 conn, candidate_id, current_anchor
                             )
-                    # A real 404 is negative current evidence and must supersede an older pass.
+                    # The latest result supersedes older provider evidence, but a stale/missing
+                    # provider ID is inconclusive and cannot withdraw the establishment.
                     self.repo.save_verification(conn, candidate_id, verification)
 
                 existing = self.repo.verifications(conn, candidate_id)
@@ -644,7 +656,7 @@ def _not_found_verification(
     return VerificationEvidence(
         verifier="fsq_premium",
         verifier_record_id=fsq_place_id,
-        outcome="fail",
+        outcome="inconclusive",
         verification_tier="provider",
         checks={key: False for key in (
             "identity", "currently_operating", "public_access", "display_name", "venue_type"

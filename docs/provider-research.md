@@ -25,11 +25,13 @@ Reviewed 2026-08-18. Primary sources:
 
 ## Decision
 
-Automated publication semantics are versioned as `v6`. This revision retains the v5 producer
-protections and additionally blocks publication when a current source presents a conflicting
-consumer name at the exact normalized premise address. Nearby venues remain non-blocking review
-hints; exact-premise conflicts require resolution. Generic `brewery`, `winery`, and `distillery`
-names remain access-unknown.
+Automated publication semantics are versioned as `v7`. This revision retains the v6 identity and
+producer protections and separates provider uncertainty from conclusive negative evidence. Missing
+hours, incomplete/unusable payloads, low provider veracity, reclassification, and stale provider
+IDs are inconclusive: they may require stronger evidence but cannot withdraw a listing as if the
+establishment had closed. Withdrawal remains fail-closed for identity-matched explicit closure,
+nonexistence, or private-access evidence. Generic `brewery`, `winery`, and `distillery` names
+remain access-unknown.
 
 Use California ABC for exact license state/privileges and Apache-2.0 FSQ OS for durable bulk
 discovery/name/address plus phone/website observations. Their complementary facts may verify only direct
@@ -73,6 +75,13 @@ requires Yelp attribution at display time, and never feeds cached Yelp values in
 the durable establishment row. A provider outage or expired response therefore falls back to
 Paloma's durable fields or the uncached Foursquare overlay rather than stale Yelp content.
 
+Runtime resolution is field-level rather than provider-level. Validated Yelp values have
+precedence for the fields Yelp exposes; Foursquare is requested only for remaining fields. The
+response carries per-field provenance and all attributions actually used. A mixed response cannot
+inherit Yelp's cache expiry and remains current-view-only because it contains an uncached
+Foursquare observation. Aggregate-safe logs record provider mode and returned field names, never
+venue IDs, provider IDs, URLs, payload values, or user identities.
+
 Yelp identity discovery is proactive but bounded. A weekly incremental job considers only currently
 published, verified walk-in venues and searches only new, changed, or due identities, with an
 explicit API-call cap. It retains the validated durable business ID and Paloma-owned match metadata,
@@ -94,6 +103,12 @@ veracity rating, but not neighborhood. Neighborhood is therefore a separate civi
 not a value inferred from the provider or postal address.
 
 ## Refresh policy
+
+Expansion is currently paused while the existing materialized cohort is refined. Scheduled
+verification and queue refreshes include only already-materialized published or suppressed
+identities, and scheduled publication is disabled. Source snapshots may continue so evidence stays
+fresh; adding a new establishment still requires a later explicit scope decision and manual
+publication action.
 
 - ABC: complete business-day snapshot; only exact `ACTIVE`; absence processed only after success.
 - FSQ OS: monthly complete Bay Area snapshot, with stable IDs and safe retirement; delta support is

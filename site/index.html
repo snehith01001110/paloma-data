@@ -148,7 +148,7 @@
       <div class="load-wrap" id="loadWrap" hidden><button class="load" id="loadMore" hidden type="button">Load more</button></div>
     </section>
 
-    <footer><span>Refreshes every 30 seconds</span><span>Public catalog only · private candidates stay hidden</span></footer>
+    <footer><span>Refreshes every 30 seconds</span><span>Existing published catalog only · expansion paused</span></footer>
   </main>
 
   <script>
@@ -180,6 +180,7 @@
       const currentRequired = required.filter(source => source.fresh && source.completed_at).length;
       const schemaReady = data.schema_version === 'catalog_v2';
       const sourcesReady = readiness.required_sources_ready && currentRequired === required.length;
+      const detailsReady = num(runtime.detail_ready) === num(runtime.eligible_establishments);
       const status = document.getElementById('status');
       status.className = 'card status';
 
@@ -195,6 +196,12 @@
         setText('statusLabel', 'Refresh due');
         setText('statusTitle', 'A required source snapshot is missing or stale');
         setText('statusDetail', 'Published leases remain fail-closed while required evidence is refreshed.');
+      } else if (!detailsReady) {
+        status.classList.add('warn');
+        setText('statusIcon', '↻');
+        setText('statusLabel', 'Details incomplete');
+        setText('statusTitle', 'Some published establishments cannot load optional live details');
+        setText('statusDetail', 'Restore a validated live provider route before treating app field coverage as complete.');
       } else {
         setText('statusIcon', '✓');
         setText('statusLabel', 'Production safe');
@@ -203,7 +210,7 @@
       }
 
       setText('updated', `Updated ${new Date(data.generated_at).toLocaleTimeString([], { hour:'numeric', minute:'2-digit' })}`);
-      setText('contractVersion', `Decision ${data.decision_version || 'unknown'} · Bay Area drinking establishments`);
+      setText('contractVersion', `Decision ${data.decision_version || 'unknown'} · expansion paused`);
       setText('expiryMeta', until(overall.next_expiry));
       setText('detailMeta', `${fmt(runtime.detail_ready)} of ${fmt(runtime.eligible_establishments)} ready for live details`);
       setText('safeLive', fmt(overall.safe_live));
