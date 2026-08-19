@@ -1272,7 +1272,7 @@ class CatalogRepository:
               order by csl.identity_confidence desc, csl.last_checked_at desc
               limit 1
             ), upserted as (
-              insert into ingest.runtime_provider_links as runtime_link (
+              insert into runtime.runtime_provider_links as runtime_link (
                 establishment_id, provider, provider_place_id, match_method,
                 match_confidence, matched_at, last_validated_at, retired_at, updated_at
               )
@@ -1293,7 +1293,7 @@ class CatalogRepository:
                 updated_at = now()
               returning establishment_id
             ), retired as (
-              update ingest.runtime_provider_links runtime_link
+              update runtime.runtime_provider_links runtime_link
               set retired_at = now(), updated_at = now()
               where runtime_link.establishment_id = %s::uuid
                 and runtime_link.provider = 'foursquare'

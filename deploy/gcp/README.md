@@ -52,14 +52,13 @@ deploy/gcp/configure-monitoring.sh
 
 The first invocation sends a Google Cloud verification code to the address. Until the recipient
 verifies that code, the channel exists but cannot deliver incidents. The policies alert on failed
-Cloud Run executions, a missing completion for 15 minutes, and structured worker telemetry showing
-dead work or a queue age above 15 minutes.
+Cloud Run executions, a missing completion for 23 hours, and structured worker telemetry showing
+dead work or a queue age above 36 hours.
 
-Keep GitHub's scheduled worker enabled during the initial overlap. The shared pgmq leases and
-deduplication keys make concurrent claims safe. After two clean weekly cycles, remove the scheduled
-GitHub drain while retaining its manual `queue-work` recovery action.
+GitHub enqueues scheduled work; the Cloud Run job is the scheduled consumer. The shared pgmq leases
+and deduplication keys keep manual recovery executions safe.
 
-The job claims one message at a time and processes at most 40 messages per invocation. This bounds
-the normal execution near the five-minute schedule at measured catalog-refresh latency. Delayed
+The job claims batches of ten and processes at most 5,000 messages per invocation. It runs every
+12 hours and scales to zero between runs. Delayed
 retries remain in pgmq for the next invocation, while unresolved retries or dead jobs make the
 Cloud Run execution fail visibly.

@@ -4,7 +4,7 @@ set -euo pipefail
 GCP_PROJECT_ID="${GCP_PROJECT_ID:-paloma-506006}"
 GCP_REGION="${GCP_REGION:-us-west1}"
 PALOMA_WORKER_JOB="${PALOMA_WORKER_JOB:-paloma-pipeline-worker}"
-PALOMA_SCHEDULER_JOB="${PALOMA_SCHEDULER_JOB:-paloma-pipeline-worker-every-5m}"
+PALOMA_SCHEDULER_JOB="${PALOMA_SCHEDULER_JOB:-paloma-pipeline-worker-daily}"
 GCP_SCHEDULER_SERVICE_ACCOUNT="${GCP_SCHEDULER_SERVICE_ACCOUNT:-paloma-pipeline-scheduler@${GCP_PROJECT_ID}.iam.gserviceaccount.com}"
 
 if ! gcloud run jobs describe "${PALOMA_WORKER_JOB}" \
@@ -24,7 +24,7 @@ scheduler_uri="https://run.googleapis.com/v2/projects/${GCP_PROJECT_ID}/location
 scheduler_common=(
   --project="${GCP_PROJECT_ID}"
   --location="${GCP_REGION}"
-  --schedule="*/5 * * * *"
+  --schedule="0 3,15 * * *"
   --time-zone="Etc/UTC"
   --uri="${scheduler_uri}"
   --http-method=POST
@@ -32,7 +32,7 @@ scheduler_common=(
   --oauth-token-scope="https://www.googleapis.com/auth/cloud-platform"
   --attempt-deadline=180s
   --max-retry-attempts=0
-  --description="Drain Paloma's durable pipeline queue every five minutes"
+  --description="Drain Paloma's durable pipeline queue every 12 hours"
 )
 
 if gcloud scheduler jobs describe "${PALOMA_SCHEDULER_JOB}" \
@@ -49,4 +49,4 @@ gcloud scheduler jobs resume "${PALOMA_SCHEDULER_JOB}" \
   --project="${GCP_PROJECT_ID}" \
   --location="${GCP_REGION}" >/dev/null 2>&1 || true
 
-echo "Scheduled ${PALOMA_WORKER_JOB} every five minutes with ${PALOMA_SCHEDULER_JOB}"
+echo "Scheduled ${PALOMA_WORKER_JOB} every 12 hours with ${PALOMA_SCHEDULER_JOB}"

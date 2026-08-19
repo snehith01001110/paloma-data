@@ -4,6 +4,7 @@ from paloma_data.adapters.foursquare import FoursquareAdapter
 from paloma_data.adapters.neighborhoods import OvertureNeighborhoodAdapter
 from paloma_data.adapters.osm import OSMAttributeAdapter
 from paloma_data.adapters.overture import OvertureAdapter
+from paloma_data.adapters.wikidata import WikidataAdapter
 
 __all__ = [
     "CaliforniaABCAdapter",
@@ -12,4 +13,5 @@ __all__ = [
     "OSMAttributeAdapter",
     "OvertureAdapter",
     "OvertureNeighborhoodAdapter",
+    "WikidataAdapter",
 ]

@@ -27,14 +27,14 @@ def test_worker_deploys_an_immutable_digest_with_scoped_secrets():
     assert "--max-retries=0" in DEPLOY
     assert "--parallelism=1" in DEPLOY
     assert "--batch-size,1" in DEPLOY
-    assert "--max-jobs,40" in DEPLOY
+    assert "--max-jobs,5000" in DEPLOY
 
 
 def test_scheduler_uses_a_dedicated_authenticated_invoker():
     assert "roles/run.invoker" in SCHEDULER
     assert "--oauth-service-account-email" in SCHEDULER
     assert "https://run.googleapis.com/v2/projects/" in SCHEDULER
-    assert '--schedule="*/5 * * * *"' in SCHEDULER
+    assert '--schedule="0 3,15 * * *"' in SCHEDULER
 
 
 def test_monitoring_covers_execution_failure_absence_and_queue_health():
@@ -49,4 +49,4 @@ def test_monitoring_covers_execution_failure_absence_and_queue_health():
     assert '"conditionAbsent"' in policy_text
     assert '"conditionMatchedLog"' in policy_text
     assert "jsonPayload.queue_metrics.jobs_dead_24h>0" in policy_text
-    assert "jsonPayload.queue_metrics.oldest_queued_seconds>900" in policy_text
+    assert "jsonPayload.queue_metrics.oldest_queued_seconds>129600" in policy_text

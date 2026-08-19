@@ -38,6 +38,7 @@ def test_overture_cocktail_bar_parses_as_corroboration_record():
                 {
                     "dataset": "meta",
                     "record_id": "abc",
+                    "property": "/websites/0",
                     "update_time": "2026-06-01T00:00:00Z",
                 }
             ],
@@ -56,6 +57,20 @@ def test_overture_cocktail_bar_parses_as_corroboration_record():
     assert record.longitude == -122.4194
     assert record.consumer_facing is True
     assert record.public_access == "walk_in"
+    assert record.field_provenance["website_url"] == {
+        "origin_keys": ["meta"],
+        "license_ids": ["CDLA-Permissive-2.0"],
+        "source_items": [
+            {
+                "dataset": "meta",
+                "record_id": "abc",
+                "property": "/websites/0",
+                "license": "CDLA-Permissive-2.0",
+                "update_time": "2026-06-01T00:00:00Z",
+            }
+        ],
+    }
+    assert "phone_e164" not in record.field_provenance
 
 
 def test_overture_mixed_timestamp_formats_are_normalized_to_utc():

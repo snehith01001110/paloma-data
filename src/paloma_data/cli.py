@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from typing import Any
 
 import typer
@@ -10,6 +11,7 @@ from paloma_data.adapters import (
     DataSFAdapter,
     FoursquareAdapter,
     OvertureAdapter,
+    WikidataAdapter,
 )
 from paloma_data.adapters.foursquare_api import FoursquarePlacesAPI
 from paloma_data.adapters.yelp import YelpPlacesAPI
@@ -20,8 +22,11 @@ from paloma_data.catalog_repository import (
     CatalogRepository,
 )
 from paloma_data.config import Settings
+from paloma_data.contributions import ContributionReviewer
 from paloma_data.db import Database
 from paloma_data.geocoding import AddressGeocoder
+from paloma_data.field_resolution import FieldResolver
+from paloma_data.field_review import FieldConflictReviewer
 from paloma_data.jobs import (
     JobRequest,
     PipelineJobHandler,
@@ -38,7 +43,7 @@ from paloma_data.staging import SourceStager
 
 
 app = typer.Typer(no_args_is_help=True, help="Paloma accuracy-first establishment catalog")
-SNAPSHOT_SOURCES = ("ca_abc", "datasf", "fsq", "overture")
+SNAPSHOT_SOURCES = ("ca_abc", "datasf", "fsq", "overture", "wikidata")
 
 
 def _components() -> tuple[Settings, Database, SourceStager, CatalogPipeline]:
@@ -56,7 +61,7 @@ def _components() -> tuple[Settings, Database, SourceStager, CatalogPipeline]:
 
 @app.command("stage-source")
 def stage_source(
-    source: str = typer.Argument(..., help="ca_abc, datasf, fsq, or overture"),
+    source: str = typer.Argument(..., help="ca_abc, datasf, fsq, overture, or wikidata"),
     mode: str = typer.Option("incremental", help="incremental or full"),
 ) -> None:
     """Refresh private source evidence only; never create a product establishment."""
@@ -86,7 +91,7 @@ def bootstrap() -> None:
 
 @app.command()
 def backfill(
-    source: str = typer.Argument(..., help="ca_abc, datasf, fsq, or overture"),
+    source: str = typer.Argument(..., help="ca_abc, datasf, fsq, overture, or wikidata"),
 ) -> None:
     """Full private source snapshot followed by private candidate discovery."""
     settings, _, stager, catalog = _components()
@@ -108,7 +113,7 @@ def backfill(
 
 @app.command()
 def sync(
-    source: str = typer.Argument(..., help="ca_abc, datasf, fsq, or overture"),
+    source: str = typer.Argument(..., help="ca_abc, datasf, fsq, overture, or wikidata"),
 ) -> None:
     """Refresh one complete source snapshot and reevaluate private candidates."""
     settings, _, stager, catalog = _components()
@@ -141,6 +146,106 @@ def sync_government() -> None:
     results["geocode"] = _geocode_only(catalog.db)
     results["reevaluation"] = catalog.reevaluate(city=None, limit=50_000)
     typer.echo(json.dumps(results, indent=2, sort_keys=True))
+
+
+@app.command("resolve-fields")
+def resolve_fields() -> None:
+    """Append admissible observations and re-resolve the existing catalog only."""
+    _, db, _, _ = _components()
+    result = FieldResolver(db).refresh_and_resolve()
+    typer.echo(json.dumps(result, indent=2, sort_keys=True, default=str))
+
+
+@app.command("field-coverage")
+def field_coverage() -> None:
+    """Report the published cohort's durable field coverage and pending conflicts."""
+    _, db, _, _ = _components()
+    with db.connection() as conn:
+        coverage = conn.execute(
+            """
+            select field_name, coverage_status, count(*) as establishments
+            from catalog.establishment_field_coverage
+            group by field_name, coverage_status
+            order by field_name, coverage_status
+            """
+        ).fetchall()
+        conflicts = conn.execute(
+            """
+            select field_name, priority, count(*) as conflicts
+            from review.field_conflicts
+            where state = 'pending'
+            group by field_name, priority
+            order by priority desc, field_name
+            """
+        ).fetchall()
+    typer.echo(
+        json.dumps(
+            {
+                "coverage": [dict(row) for row in coverage],
+                "pending_conflicts": [dict(row) for row in conflicts],
+            },
+            indent=2,
+            sort_keys=True,
+            default=str,
+        )
+    )
+
+
+@app.command("review-field-conflict")
+def review_field_conflict(
+    conflict_id: int = typer.Option(...),
+    reviewer: str = typer.Option(...),
+    notes: str = typer.Option(...),
+    selected_evidence_id: str | None = typer.Option(None),
+    confirm: str = typer.Option(""),
+) -> None:
+    """Select current evidence, or leave it omitted to record an audited unknown."""
+    if confirm != "REVIEW_FIELD_CONFLICT":
+        raise typer.BadParameter("Pass --confirm REVIEW_FIELD_CONFLICT")
+    _, db, _, _ = _components()
+    result = FieldConflictReviewer(db).review(
+        conflict_id,
+        reviewer=reviewer,
+        notes=notes,
+        selected_evidence_id=selected_evidence_id,
+    )
+    typer.echo(json.dumps(asdict(result), indent=2, sort_keys=True))
+
+
+@app.command("review-merchant-claim")
+def review_merchant_claim(
+    claim_id: str = typer.Option(...),
+    decision: str = typer.Option(..., help="verified or rejected"),
+    reviewer: str = typer.Option(...),
+    reason: str = typer.Option(...),
+    confirm: str = typer.Option(""),
+) -> None:
+    """Record a human merchant-claim decision with an immutable audit entry."""
+    if confirm != "REVIEW_MERCHANT_CLAIM":
+        raise typer.BadParameter("Pass --confirm REVIEW_MERCHANT_CLAIM")
+    _, db, _, _ = _components()
+    result = ContributionReviewer(db).review_merchant_claim(
+        claim_id, decision=decision, reviewer=reviewer, reason=reason
+    )
+    typer.echo(json.dumps(result, indent=2, sort_keys=True))
+
+
+@app.command("review-contribution")
+def review_contribution(
+    contribution_id: str = typer.Option(...),
+    decision: str = typer.Option(..., help="accepted or rejected"),
+    reviewer: str = typer.Option(...),
+    reason: str = typer.Option(...),
+    confirm: str = typer.Option(""),
+) -> None:
+    """Review a firsthand or merchant fact and append accepted evidence."""
+    if confirm != "REVIEW_CONTRIBUTION":
+        raise typer.BadParameter("Pass --confirm REVIEW_CONTRIBUTION")
+    _, db, _, _ = _components()
+    result = ContributionReviewer(db).review_contribution(
+        contribution_id, decision=decision, reviewer=reviewer, reason=reason
+    )
+    typer.echo(json.dumps(result, indent=2, sort_keys=True))
 
 
 @app.command("catalog-discover")
@@ -1137,6 +1242,8 @@ def _adapter(source: str, settings: Settings):
         return DataSFAdapter(settings.datasf_dataset_id)
     if source == "overture":
         return OvertureAdapter(settings.overture_bbox)
+    if source == "wikidata":
+        return WikidataAdapter(settings.overture_bbox)
     if source == "fsq":
         if not _fsq_bulk_configured(settings):
             raise typer.BadParameter(
@@ -1153,8 +1260,8 @@ def _adapter(source: str, settings: Settings):
 
 
 def _configured_sources(settings: Settings) -> tuple[str, ...]:
-    # Overture is optional corroboration. It must never take down the ABC + FSQ truth path.
-    values = ["ca_abc", "datasf"]
+    # Open corroboration is staged independently; source failures never weaken the legal anchors.
+    values = ["ca_abc", "datasf", "overture", "wikidata"]
     if _fsq_bulk_configured(settings):
         values.append("fsq")
     return tuple(values)

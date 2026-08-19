@@ -20,7 +20,7 @@ gcloud run jobs execute paloma-pipeline-worker --region REGION --wait
 ```
 
 Inspect `paloma-data pipeline-status` and the Cloud Run execution logs before adding a schedule.
-Then add a Cloud Scheduler trigger from the job's **Triggers** tab, initially every five minutes.
+Then add a Cloud Scheduler trigger from the job's **Triggers** tab, every 12 hours.
 The scheduler service account needs only permission to invoke this job.
 
 Cloud Run task retries are set to zero because the application queue owns bounded per-job retries;
@@ -28,6 +28,5 @@ stacking platform retries on top would make incident timing and provider usage h
 about. Multiple task executions are still safe because pgmq visibility leases and active-job
 deduplication coordinate them.
 
-Keep the GitHub Actions weekly worker enabled for two clean cycles. Once Cloud Run has drained the
-same queue reliably, remove only the scheduled `pipeline-worker` invocation from GitHub Actions;
-retain its manual `queue-work` action for recovery.
+GitHub queues monthly refresh work and a daily safety sweep. Cloud Run owns scheduled draining;
+retain GitHub's manual `queue-work` action for recovery.

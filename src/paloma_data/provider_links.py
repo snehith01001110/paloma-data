@@ -52,11 +52,11 @@ class ProviderLinkRepository:
             from public.establishments establishment
             join ingest.catalog_candidates candidate
               on candidate.id = establishment.catalog_candidate_id
-            left join ingest.runtime_provider_links yelp_link
+            left join runtime.runtime_provider_links yelp_link
               on yelp_link.establishment_id = establishment.id
              and yelp_link.provider = 'yelp'
              and yelp_link.retired_at is null
-            left join ingest.provider_match_state match_state
+            left join runtime.provider_match_state match_state
               on match_state.establishment_id = establishment.id
              and match_state.provider = 'yelp'
             where establishment.publication_state = 'published'
@@ -112,7 +112,7 @@ class ProviderLinkRepository:
               establishment.phone_e164,
               yelp_link.provider_place_id
             from public.establishments establishment
-            join ingest.runtime_provider_links yelp_link
+            join runtime.runtime_provider_links yelp_link
               on yelp_link.establishment_id = establishment.id
              and yelp_link.provider = 'yelp'
              and yelp_link.retired_at is null
@@ -145,11 +145,11 @@ class ProviderLinkRepository:
               establishment.phone_e164,
               match_state.decision_reason
             from public.establishments establishment
-            join ingest.provider_match_state match_state
+            join runtime.provider_match_state match_state
               on match_state.establishment_id = establishment.id
              and match_state.provider = 'yelp'
              and match_state.outcome = 'rejected'
-            left join ingest.runtime_provider_links yelp_link
+            left join runtime.runtime_provider_links yelp_link
               on yelp_link.establishment_id = establishment.id
              and yelp_link.provider = 'yelp'
              and yelp_link.retired_at is null
@@ -176,7 +176,7 @@ class ProviderLinkRepository:
         token = str(uuid.uuid4())
         row = conn.execute(
             """
-            insert into ingest.provider_match_state as match_state (
+            insert into runtime.provider_match_state as match_state (
               establishment_id, provider, identity_fingerprint, outcome,
               attempted_at, retry_after, lease_token, lease_expires_at,
               last_error_code, decision_reason, updated_at
@@ -224,14 +224,14 @@ class ProviderLinkRepository:
             """
             with owned_lease as (
               select establishment_id, provider
-              from ingest.provider_match_state
+              from runtime.provider_match_state
               where establishment_id = %s::uuid
                 and provider = 'yelp'
                 and identity_fingerprint = %s
                 and lease_token = %s::uuid
                 and lease_expires_at > now()
             ), upserted as (
-              insert into ingest.runtime_provider_links as runtime_link (
+              insert into runtime.runtime_provider_links as runtime_link (
                 establishment_id, provider, provider_place_id, match_method,
                 match_confidence, matched_at, last_validated_at, retired_at, updated_at
               )
@@ -249,7 +249,7 @@ class ProviderLinkRepository:
                 updated_at = now()
               returning establishment_id
             ), finished as (
-              update ingest.provider_match_state
+              update runtime.provider_match_state
               set outcome = 'matched',
                   retry_after = now() + interval '90 days',
                   lease_token = null,
@@ -293,7 +293,7 @@ class ProviderLinkRepository:
     ) -> bool:
         row = conn.execute(
             """
-            update ingest.provider_match_state
+            update runtime.provider_match_state
             set outcome = %s,
                 retry_after = now() + %s::interval,
                 lease_token = null,

@@ -112,7 +112,7 @@ def test_runtime_provider_link_stores_only_the_allowed_foursquare_identifier():
 
     repository.upsert_runtime_provider_links(connection, "candidate-id")
 
-    assert "insert into ingest.runtime_provider_links" in connection.query
+    assert "insert into runtime.runtime_provider_links" in connection.query
     assert "'foursquare'" in connection.query
     assert "csl.source_record_id" in connection.query
     assert "source_record.consumer_facing" in connection.query

@@ -46,8 +46,10 @@ CLI no longer calls that path, and code pushes no longer trigger data rebuilds.
 7. The resulting verification lease is unexpired and every persisted field has storage rights.
 8. Every required materialization field is present.
 
-Overture, DataSF, and OpenStreetMap may discover, corroborate, or enrich. None can publish a place
-on its own. Overture provenance is decomposed into upstream origin keys, so an Overture row copied
+Overture, DataSF, and Wikidata may discover, corroborate, or enrich. None can publish a place on
+its own. OpenStreetMap is explicitly excluded from the proprietary canonical database pending an
+ODbL product decision. Overture provenance is decomposed into property-level upstream origin keys,
+licenses, and SourceItems, so an Overture row copied
 from Foursquare is never counted as independent Foursquare corroboration. Legacy or unknown
 Overture lineage cannot corroborate a contact field at all.
 

@@ -87,10 +87,10 @@ measuring queue age, database connection use, provider quotas, and duplicate-rev
 database lease and deduplication rules make horizontal workers safe. Keep the claim batch at one
 unless the worker implementation also processes or renews every claimed job concurrently.
 
-The managed scheduler should invoke the job every one to five minutes. With an idle timeout, a
-drain invocation waits only when delayed messages remain; it exits immediately when the queue is
-empty. Without an idle timeout it exits when no message is immediately visible. Either mode allows
-the runtime to scale to zero, and delayed retries remain durable.
+The managed scheduler invokes the worker at 03:00 and 15:00 UTC. A drain invocation exits when the
+queue is empty, so the runtime scales to zero. The queue remains durable between invocations;
+on-demand runs are available for urgent corrections. Increase frequency only if measured queue
+latency or product requirements justify the added executions.
 
 Bulk ABC, DataSF, FSQ OS, and neighborhood snapshots remain separate container jobs because they
 have snapshot-level completeness semantics. Do not split a complete source snapshot into
@@ -99,14 +99,17 @@ reconciliation.
 
 ## Scheduling during cutover
 
-While catalog expansion is paused, the checked-in GitHub workflow performs this sequence weekly:
+While catalog expansion is paused, the checked-in GitHub workflow refreshes durable sources
+monthly and performs this sequence:
 
 1. Refresh specifically licensed verification evidence only for the existing materialized cohort
    when configured.
-2. Queue published/suppressed cohort refreshes, the expiry sweep, and a bounded provider-link sync.
-3. Drain the queue with the same production worker command.
-4. Leave scheduled publication disabled.
-5. Print queue status for the run log.
+2. Stage ABC, DataSF, FSQ OS when configured, Overture, Wikidata, and civic boundaries without
+   discovering or publishing new establishments.
+3. Append rights-approved observations, resolve the existing cohort, and report field coverage.
+4. Queue published/suppressed cohort refreshes and a bounded provider-link sync.
+5. Leave scheduled publication disabled. A separate daily action queues the expiry sweep, and the
+   managed worker drains all queued work.
 
 Keep that path enabled until the managed worker has completed at least two clean weekly cycles.
 Afterward, remove only the scheduled queue-drain step from GitHub Actions. Retain its manual
@@ -117,7 +120,7 @@ Afterward, remove only the scheduled queue-drain step from GitHub Actions. Retai
 Alert when any of these conditions is true:
 
 - `jobs_dead_24h > 0`;
-- the oldest queued job is older than 15 minutes for the frequent worker or one full schedule
+- the oldest queued job is older than 36 hours, or three full worker schedules
   interval for a bulk job;
 - a logical run finishes `partial` or `failed`;
 - a running lease remains expired after two worker invocations;

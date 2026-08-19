@@ -39,8 +39,9 @@ public-premises bars and explicit Type 75 brewpubs. Restaurant-license bars and 
 premise require stronger access evidence. A generic manufacturer always requires manual public
 access attestation; a specifically classified tasting room or taproom may use contracted provider
 hours. A data agreement must expressly permit server retention for any persisted provider fields.
-Use municipal polygons, OSM, DataSF, and Overture only as field-specific enrichment or
-corroboration.
+Use municipal polygons, DataSF, Overture, and Wikidata only as field-specific enrichment or
+corroboration. OSM is excluded from the proprietary canonical database pending a deliberate ODbL
+decision; no OSM-derived value is persisted or used by the resolver.
 
 FSQ OS `date_refreshed` does not assert field-level freshness. Open-evidence rows therefore omit a
 phone or website unless a second durable source with independent upstream lineage agrees. Civic
@@ -110,13 +111,14 @@ identities, and scheduled publication is disabled. Source snapshots may continue
 fresh; adding a new establishment still requires a later explicit scope decision and manual
 publication action.
 
-- ABC: complete business-day snapshot; only exact `ACTIVE`; absence processed only after success.
+- ABC: monthly complete snapshot plus on-demand correction; only exact `ACTIVE`; absence processed
+  only after success.
 - FSQ OS: monthly complete Bay Area snapshot, with stable IDs and safe retirement; delta support is
   the next optimization, not a correctness dependency.
-- Open FSQ OS + direct-public ABC: reevaluate weekly; leases are at most 45 days and never extend
+- Open FSQ OS + direct-public ABC: reevaluate monthly; leases are at most 45 days and never extend
   beyond the FSQ OS 365-day freshness deadline.
 - Specifically licensed Premium/API: target only new or due candidates; 45-day lease by default.
-- Yelp durable-ID sync: weekly and after publication; unchanged matched identities are rechecked at
+- Yelp durable-ID sync: monthly and after publication; unchanged matched identities are rechecked at
   most every 90 days, while negative/error cooldowns are shorter and bounded.
 - SF Find boundaries: monthly complete snapshot and point-in-polygon resolution; other cities stay
   null until their boundary feed has been reviewed.

@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from hashlib import sha256
 import json
 from typing import Any
 
 from paloma_data.db import Database, execute_many
+from paloma_data.evidence_ledger import append_linked_source_observations
 from paloma_data.normalizers import consumer_display_name, normalize_name
 
-RESOLUTION_VERSION = "v4"
+RESOLUTION_VERSION = "v5-rights-aware"
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,149 +97,18 @@ class FieldResolver:
         return result
 
     def refresh_source_evidence(self, conn) -> int:
-        policies = [
-            {"source": source, **asdict(policy)} for source, policy in SOURCE_POLICIES.items()
-        ]
-        cursor = conn.execute(
-            """
-            with policies as (
-              select *
-              from jsonb_to_recordset(%s::jsonb) as p(
-                source text,
-                name_kind text,
-                name_authority double precision,
-                address_authority double precision,
-                type_authority double precision,
-                status_authority double precision,
-                phone_authority double precision,
-                website_authority double precision,
-                location_authority double precision,
-                neighborhood_authority double precision,
-                hours_authority double precision,
-                price_authority double precision,
-                setting_authority double precision
-              )
-            ), linked as (
-              select es.establishment_id, es.source as claim_source, es.source_record_id,
-                     coalesce(es.match_confidence, 0.75)::double precision as identity_confidence,
-                     sr.name, sr.normalized_name, sr.address, sr.normalized_address,
-                     sr.phone_e164, sr.website_url, sr.primary_type_slug, sr.source_status,
-                     sr.latitude, sr.longitude, sr.neighborhood, sr.hours, sr.price_level,
-                     sr.setting_slugs, sr.source_updated_at, sr.classification_confidence,
-                     p.name_kind, p.name_authority, p.address_authority, p.type_authority,
-                     p.status_authority, p.phone_authority, p.website_authority,
-                     p.location_authority, p.neighborhood_authority, p.hours_authority,
-                     p.price_authority, p.setting_authority
-              from ingest.establishment_sources es
-              join ingest.source_records sr
-                on sr.source = es.source and sr.source_record_id = es.source_record_id
-              join policies p on p.source = es.source
-            ), scalar_claims as (
-              select l.establishment_id, claim.field_name, claim.value_text,
-                     claim.normalized_value, claim.value_json, l.claim_source as source,
-                     l.source_record_id, claim.claim_kind,
-                     claim.evidence_confidence, l.identity_confidence,
-                     claim.authority, l.source_updated_at, claim.metadata
-              from linked l
-              cross join lateral (
-                values
-                  (
-                    case when l.name_kind = 'display' then 'display_name'
-                         when l.name_kind = 'legal' then 'legal_name' end,
-                    l.name,
-                    l.normalized_name,
-                    null::jsonb,
-                    coalesce(l.name_kind, 'observed'),
-                    case when l.name_kind = 'display' then 0.92 else 0.98 end,
-                    l.name_authority,
-                    jsonb_build_object('role', coalesce(l.name_kind, 'observed') || '_name')
-                  ),
-                  ('address', l.address, l.normalized_address, null::jsonb, 'observed', 0.97, l.address_authority, '{}'::jsonb),
-                  ('phone_e164', l.phone_e164, l.phone_e164, null::jsonb, 'observed', 0.96, l.phone_authority, '{}'::jsonb),
-                  ('website_url', l.website_url, l.website_url, null::jsonb, 'observed', 0.92, l.website_authority, '{}'::jsonb),
-                  ('primary_type_slug', l.primary_type_slug, l.primary_type_slug, null::jsonb, 'observed', coalesce(l.classification_confidence, 0.75)::double precision, l.type_authority, '{}'::jsonb),
-                  ('status', l.source_status, l.source_status, null::jsonb, 'observed', 0.94, l.status_authority, '{}'::jsonb),
-                  ('latitude', l.latitude::text, l.latitude::text, null::jsonb, 'observed', 0.98, l.location_authority, '{}'::jsonb),
-                  ('longitude', l.longitude::text, l.longitude::text, null::jsonb, 'observed', 0.98, l.location_authority, '{}'::jsonb),
-                  ('neighborhood', l.neighborhood, lower(l.neighborhood), null::jsonb, 'observed', 0.96, l.neighborhood_authority, '{}'::jsonb),
-                  ('hours', l.hours::text, l.hours::text, l.hours, 'observed', 0.92, l.hours_authority, '{}'::jsonb),
-                  ('price_level', l.price_level::text, l.price_level::text, to_jsonb(l.price_level), 'observed', 0.92, l.price_authority, '{}'::jsonb)
-              ) as claim(
-                field_name, value_text, normalized_value, value_json, claim_kind,
-                evidence_confidence, authority, metadata
-              )
-              where claim.field_name is not null
-                and claim.value_text is not null
-                and claim.value_text <> ''
-                and claim.authority > 0
-            ), setting_claims as (
-              select l.establishment_id, 'setting_slug'::text as field_name,
-                     setting_slug as value_text, setting_slug as normalized_value,
-                     null::jsonb as value_json, l.claim_source as source,
-                     l.source_record_id || '#setting:' || setting_slug as source_record_id,
-                     'observed'::text as claim_kind, 0.90::double precision as evidence_confidence,
-                     l.identity_confidence, l.setting_authority as authority,
-                     l.source_updated_at, '{}'::jsonb as metadata
-              from linked l
-              cross join lateral unnest(l.setting_slugs) as setting_slug
-              where l.setting_authority > 0
-            ), claims as (
-              select * from scalar_claims
-              union all
-              select * from setting_claims
-            )
-            insert into ingest.establishment_field_evidence (
-              establishment_id, field_name, value_text, normalized_value, value_json,
-              source, source_record_id, claim_kind, evidence_confidence,
-              identity_confidence, authority, source_updated_at, metadata
-            )
-            select establishment_id, field_name, value_text, normalized_value, value_json,
-                   source, source_record_id, claim_kind, evidence_confidence,
-                   identity_confidence, authority, source_updated_at, metadata
-            from claims
-            on conflict (establishment_id, field_name, source, source_record_id) do update set
-              value_text = excluded.value_text,
-              normalized_value = excluded.normalized_value,
-              value_json = excluded.value_json,
-              claim_kind = excluded.claim_kind,
-              evidence_confidence = excluded.evidence_confidence,
-              identity_confidence = excluded.identity_confidence,
-              authority = excluded.authority,
-              source_updated_at = excluded.source_updated_at,
-              metadata = excluded.metadata,
-              selected = false,
-              resolution_score = null,
-              updated_at = now()
-            """,
-            (json.dumps(policies, sort_keys=True),),
-        )
-        count = max(0, int(cursor.rowcount or 0))
-
-        conn.execute(
-            """
-            insert into ingest.establishment_field_evidence (
-                establishment_id, field_name, value_text, normalized_value, source,
-                source_record_id, claim_kind, evidence_confidence, identity_confidence,
-                authority, metadata
-            )
-            select e.id, 'display_name', e.name, e.normalized_name, 'canonical_seed',
-                   'seed:v1', 'display', 0.65, 0.80, 0.55,
-                   jsonb_build_object('role', 'pre_resolver_canonical')
-            from public.establishments e
-            where exists (
-                select 1 from ingest.establishment_sources es where es.establishment_id = e.id
-            )
-            on conflict (establishment_id, field_name, source, source_record_id) do nothing
-            """
-        )
-        return count
+        return append_linked_source_observations(conn)
 
     def resolve(self, conn) -> dict[str, int]:
         establishments = conn.execute(
             """
             select e.id::text, e.name, e.normalized_name, e.phone_e164,
+                   e.website_url, e.address,
+                   ST_Y(e.location::geometry) as latitude,
+                   ST_X(e.location::geometry) as longitude,
                    e.neighborhood, e.hours, e.price_level,
-                   e.phone_source, e.neighborhood_source, e.hours_source, e.price_source,
+                   e.phone_source, e.website_source, e.neighborhood_source,
+                   e.hours_source, e.price_source,
                    pt.slug as primary_type_slug
             from public.establishments e
             join public.primary_types pt on pt.id = e.primary_type_id
@@ -260,18 +131,33 @@ class FieldResolver:
         ).fetchall()
         evidence_rows = conn.execute(
             """
-            select id::text as evidence_id, establishment_id::text, field_name,
+            select distinct on (
+                     establishment_id, field_name, source, source_record_id
+                   )
+                   id::text as evidence_id, establishment_id::text, field_name,
                    value_text, normalized_value, value_json, source,
                    evidence_confidence::float, identity_confidence::float,
-                   authority::float, source_updated_at
-            from ingest.establishment_field_evidence
-            where field_name in (
-              'display_name', 'primary_type_slug', 'phone_e164', 'neighborhood',
-              'hours', 'price_level', 'setting_slug'
-            )
+                   authority::float, source_updated_at, upstream_origin_keys
+            from catalog.field_observations
+            where observation_status = 'asserted'
+              and (expires_at is null or expires_at > now())
+              and field_name in (
+                'display_name', 'primary_type_slug', 'phone_e164', 'website_url',
+                'address', 'latitude', 'longitude', 'operating_status',
+                'neighborhood', 'hours', 'price_level', 'setting_slug'
+              )
+            order by establishment_id, field_name, source, source_record_id,
+                     observed_at desc, id desc
             """
         ).fetchall()
         setting_rows = conn.execute("select id, slug from public.settings").fetchall()
+        manual_review_rows = conn.execute(
+            """
+            select establishment_id::text, field_name, evidence_ids
+            from catalog.current_field_decisions
+            where resolver_version like 'manual-review-%'
+            """
+        ).fetchall()
 
         identities: dict[str, list[float]] = defaultdict(list)
         for row in identity_rows:
@@ -284,16 +170,13 @@ class FieldResolver:
         for row in evidence_rows:
             evidence[str(row["establishment_id"])][str(row["field_name"])].append(dict(row))
         setting_ids = {str(row["slug"]): int(row["id"]) for row in setting_rows}
+        manual_reviews = {
+            (str(row["establishment_id"]), str(row["field_name"])): {
+                str(value) for value in (row["evidence_ids"] or [])
+            }
+            for row in manual_review_rows
+        }
 
-        conn.execute(
-            """
-            update ingest.establishment_field_evidence
-            set selected = false, resolution_score = null
-            where establishment_id in (
-              select distinct establishment_id from ingest.establishment_sources
-            )
-            """
-        )
         conn.execute(
             "delete from public.establishment_settings where source <> 'manual'"
         )
@@ -304,18 +187,28 @@ class FieldResolver:
             "low_name_confidence": 0,
             "name_conflicts": 0,
             "phones": 0,
+            "websites": 0,
+            "operating_statuses": 0,
             "neighborhoods": 0,
             "hours": 0,
             "prices": 0,
             "settings": 0,
         }
         updates: list[tuple[Any, ...]] = []
-        selections: list[tuple[float, str]] = []
+        decisions: list[tuple[Any, ...]] = []
+        conflicts: list[tuple[Any, ...]] = []
         resolved_settings: list[tuple[str, int, str, float]] = []
 
         for establishment in establishments:
             establishment_id = str(establishment["id"])
             by_field = evidence[establishment_id]
+            protected_fields = {
+                field_name
+                for field_name, rows in by_field.items()
+                if _manual_review_covers_current_evidence(
+                    manual_reviews.get((establishment_id, field_name)), rows
+                )
+            }
             identity = _identity_confidence(identities[establishment_id])
             display = self._rank_evidence(by_field["display_name"])
             type_confidence = self._type_confidence(
@@ -353,7 +246,6 @@ class FieldResolver:
                     chosen_name = consumer_display_name(str(best["value_text"]))
                     chosen_source = str(best["best_source"])
                     name_confidence = min(0.995, best_score)
-                    selections.append((best_score, str(best["evidence_id"])))
                 else:
                     name_confidence = min(0.79, best_score)
                     metrics["name_conflicts"] += 1
@@ -364,18 +256,26 @@ class FieldResolver:
                 metrics["low_name_confidence"] += 1
 
             phone = self._select_attribute(by_field["phone_e164"], 0.68)
+            website = self._select_attribute(by_field["website_url"], 0.68)
+            address = self._select_attribute(by_field["address"], 0.68)
+            latitude = self._select_attribute(by_field["latitude"], 0.68)
+            longitude = self._select_attribute(by_field["longitude"], 0.68)
+            operating_status = self._select_attribute(
+                by_field["operating_status"], 0.68
+            )
             neighborhood = self._select_attribute(by_field["neighborhood"], 0.68)
             hours = self._select_attribute(by_field["hours"], 0.58)
             price = self._select_attribute(by_field["price_level"], 0.75)
             for selected, metric in (
                 (phone, "phones"),
+                (website, "websites"),
+                (operating_status, "operating_statuses"),
                 (neighborhood, "neighborhoods"),
                 (hours, "hours"),
                 (price, "prices"),
             ):
                 if selected:
                     metrics[metric] += 1
-                    selections.append((float(selected["score"]), str(selected["evidence_id"])))
 
             for candidate in self._rank_evidence(by_field["setting_slug"]):
                 slug = str(candidate["normalized_value"] or candidate["value_text"])
@@ -389,7 +289,9 @@ class FieldResolver:
                         float(candidate["score"]),
                     )
                 )
-                selections.append((float(candidate["score"]), str(candidate["evidence_id"])))
+                decisions.append(
+                    _decision_row(establishment_id, "setting_slug", candidate)
+                )
                 metrics["settings"] += 1
 
             overall_quality = min(identity, name_confidence, type_confidence)
@@ -407,6 +309,11 @@ class FieldResolver:
                     _selected_source(phone, establishment, "phone_source"),
                     _selected_score(phone),
                     _selected_text(
+                        website, establishment, "website_url", "website_source"
+                    ),
+                    _selected_source(website, establishment, "website_source"),
+                    _selected_score(website),
+                    _selected_text(
                         neighborhood, establishment, "neighborhood", "neighborhood_source"
                     ),
                     _selected_source(neighborhood, establishment, "neighborhood_source"),
@@ -420,6 +327,61 @@ class FieldResolver:
                     establishment_id,
                 )
             )
+            automatic_decisions = (
+                    _decision_row(
+                        establishment_id,
+                        "display_name",
+                        display[0] if chosen_source != "unresolved" and display else None,
+                        fallback_value=chosen_name,
+                        fallback_confidence=name_confidence,
+                    ),
+                    _decision_row(
+                        establishment_id,
+                        "primary_type_slug",
+                        self._select_attribute(by_field["primary_type_slug"], 0.58),
+                        fallback_value=str(establishment["primary_type_slug"]),
+                        fallback_confidence=type_confidence,
+                    ),
+                    _decision_row(establishment_id, "phone_e164", phone),
+                    _decision_row(establishment_id, "website_url", website),
+                    _decision_row(establishment_id, "address", address),
+                    _decision_row(establishment_id, "latitude", latitude),
+                    _decision_row(establishment_id, "longitude", longitude),
+                    _decision_row(
+                        establishment_id, "operating_status", operating_status
+                    ),
+                    _decision_row(establishment_id, "neighborhood", neighborhood),
+                    _decision_row(establishment_id, "hours", hours),
+                    _decision_row(establishment_id, "price_level", price),
+            )
+            decisions.extend(
+                row for row in automatic_decisions if row[1] not in protected_fields
+            )
+            for field_name, selected, high_risk in (
+                ("phone_e164", phone, False),
+                ("website_url", website, False),
+                ("address", address, False),
+                ("latitude", latitude, False),
+                ("longitude", longitude, False),
+                ("neighborhood", neighborhood, False),
+                ("operating_status", operating_status, True),
+                ("hours", hours, True),
+                ("price_level", price, False),
+            ):
+                if field_name in protected_fields:
+                    continue
+                reason = _review_reason(by_field[field_name], selected, high_risk)
+                if reason:
+                    evidence_ids = _conflict_evidence_ids(by_field[field_name])
+                    conflicts.append(
+                        (
+                            establishment_id,
+                            field_name,
+                            reason,
+                            evidence_ids,
+                            90 if high_risk else 70,
+                        )
+                    )
             metrics["resolved"] += 1
 
         execute_many(
@@ -437,6 +399,9 @@ class FieldResolver:
                 phone_e164 = %s,
                 phone_source = %s,
                 phone_confidence = %s,
+                website_url = %s,
+                website_source = %s,
+                website_confidence = %s,
                 neighborhood = %s,
                 neighborhood_source = %s,
                 neighborhood_confidence = %s,
@@ -451,15 +416,23 @@ class FieldResolver:
             """,
             updates,
         )
-        if selections:
+        _reapply_manual_projections(conn)
+        if decisions:
             execute_many(
                 conn,
                 """
-                update ingest.establishment_field_evidence
-                set selected = true, resolution_score = %s, updated_at = now()
-                where id = %s::uuid
+                insert into catalog.field_decisions (
+                  establishment_id, field_name, decision_status, value_text,
+                  normalized_value, value_json, confidence, resolver_version,
+                  evidence_ids, independent_origin_keys, reason_codes,
+                  decision_fingerprint
+                ) values (
+                  %s::uuid, %s, %s, %s, %s, %s::jsonb, %s, %s,
+                  %s::uuid[], %s, %s, %s
+                )
+                on conflict (decision_fingerprint) do nothing
                 """,
-                selections,
+                decisions,
             )
         if resolved_settings:
             execute_many(
@@ -472,6 +445,39 @@ class FieldResolver:
                 """,
                 resolved_settings,
             )
+        if conflicts:
+            execute_many(
+                conn,
+                """
+                insert into review.field_conflicts (
+                  establishment_id, field_name, reason, evidence_ids, priority
+                ) values (%s::uuid, %s, %s, %s::uuid[], %s)
+                on conflict (establishment_id, field_name, reason)
+                  where state = 'pending'
+                do update set evidence_ids = excluded.evidence_ids,
+                              priority = excluded.priority
+                """,
+                conflicts,
+            )
+        conn.execute(
+            """
+            update review.field_conflicts conflict
+            set state = 'resolved', resolved_at = now(),
+                resolved_by = %s,
+                resolution_notes = 'Resolver normalization produced an unambiguous selected decision.'
+            where conflict.state = 'pending'
+              and conflict.reason = 'conflicting_admissible_evidence'
+              and exists (
+                select 1
+                from catalog.current_field_decisions decision
+                where decision.establishment_id = conflict.establishment_id
+                  and decision.field_name = conflict.field_name
+                  and decision.decision_status = 'selected'
+                  and decision.decided_at >= conflict.created_at
+              )
+            """,
+            (RESOLUTION_VERSION,),
+        )
         return metrics
 
     def _rank_evidence(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -489,20 +495,36 @@ class FieldResolver:
                 reverse=True,
             )
             base_score, best = scored[0]
-            independent_families = {
-                _source_family(str(row["source"]))
+            value_row = best
+            if str(best.get("field_name")) == "website_url":
+                value_row = max(
+                    matching,
+                    key=lambda row: (
+                        str(row.get("value_text") or "").startswith("https://"),
+                        self._evidence_score(row),
+                    ),
+                )
+            independent_origins = {
+                str(origin)
                 for row in matching
-                if row["source"] != "canonical_seed"
+                for origin in (
+                    row.get("upstream_origin_keys")
+                    or (_source_family(str(row["source"])),)
+                )
             }
-            agreement_bonus = min(0.08, 0.04 * max(0, len(independent_families) - 1))
+            agreement_bonus = min(0.08, 0.04 * max(0, len(independent_origins) - 1))
             candidates.append(
                 {
                     "normalized_value": normalized_value,
-                    "value_text": best["value_text"],
-                    "value_json": best.get("value_json"),
-                    "evidence_id": best["evidence_id"],
-                    "best_source": best["source"],
-                    "source_count": len(independent_families),
+                    "value_text": value_row["value_text"],
+                    "value_json": value_row.get("value_json"),
+                    "evidence_id": value_row["evidence_id"],
+                    "evidence_ids": sorted(
+                        {str(row["evidence_id"]) for row in matching}
+                    ),
+                    "independent_origin_keys": sorted(independent_origins),
+                    "best_source": value_row["source"],
+                    "source_count": len(independent_origins),
                     "has_official_web": any(
                         row["source"] == "official_web" for row in matching
                     ),
@@ -524,6 +546,14 @@ class FieldResolver:
         if not ranked or float(ranked[0]["score"]) < minimum_score:
             return None
         if len(ranked) > 1 and float(ranked[0]["score"]) - float(ranked[1]["score"]) < 0.06:
+            first_origins = set(ranked[0].get("independent_origin_keys") or ())
+            second_origins = set(ranked[1].get("independent_origin_keys") or ())
+            if (
+                first_origins & second_origins
+                and _direct_origin_for_source(str(ranked[0]["best_source"]))
+                in first_origins
+            ):
+                return ranked[0]
             return None
         return ranked[0]
 
@@ -619,6 +649,199 @@ def _selected_score(selected: dict[str, Any] | None) -> float | None:
     return round(float(selected["score"]), 3) if selected else None
 
 
+def _decision_row(
+    establishment_id: str,
+    field_name: str,
+    selected: dict[str, Any] | None,
+    *,
+    fallback_value: str | None = None,
+    fallback_confidence: float | None = None,
+) -> tuple[Any, ...]:
+    if selected:
+        value_text = str(selected["value_text"])
+        normalized_value = str(selected["normalized_value"])
+        value_json = selected.get("value_json")
+        confidence = round(float(selected["score"]), 3)
+        evidence_ids = list(selected.get("evidence_ids") or [selected["evidence_id"]])
+        origin_keys = list(selected.get("independent_origin_keys") or ())
+        status = "selected"
+        reasons = ["highest_scoring_admissible_evidence"]
+    elif fallback_value is not None:
+        value_text = fallback_value
+        normalized_value = normalize_name(fallback_value) if field_name == "display_name" else fallback_value
+        value_json = None
+        confidence = round(float(fallback_confidence or 0.0), 3)
+        evidence_ids = []
+        origin_keys = []
+        status = "selected"
+        reasons = ["retained_existing_canonical_value"]
+    else:
+        value_text = normalized_value = value_json = confidence = None
+        evidence_ids = []
+        origin_keys = []
+        status = "unknown"
+        reasons = ["no_admissible_unconflicted_evidence"]
+    serialized_json = (
+        json.dumps(value_json, sort_keys=True, separators=(",", ":"))
+        if value_json is not None
+        else None
+    )
+    fingerprint_payload = json.dumps(
+        {
+            "establishment_id": establishment_id,
+            "field_name": field_name,
+            "status": status,
+            "value_text": value_text,
+            "value_json": value_json,
+            "confidence": confidence,
+            "evidence_ids": evidence_ids,
+            "resolver_version": RESOLUTION_VERSION,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return (
+        establishment_id,
+        field_name,
+        status,
+        value_text,
+        normalized_value,
+        serialized_json,
+        confidence,
+        RESOLUTION_VERSION,
+        evidence_ids,
+        origin_keys,
+        reasons,
+        sha256(fingerprint_payload.encode()).hexdigest(),
+    )
+
+
+def _review_reason(
+    rows: list[dict[str, Any]],
+    selected: dict[str, Any] | None,
+    high_risk: bool,
+) -> str | None:
+    distinct_values = {
+        str(row.get("normalized_value") or row.get("value_text"))
+        for row in rows
+        if row.get("normalized_value") or row.get("value_text")
+    }
+    if selected is None and len(distinct_values) > 1:
+        return "conflicting_admissible_evidence"
+    if high_risk and selected and len(selected.get("independent_origin_keys") or ()) < 2:
+        return "single_origin_high_risk_field"
+    return None
+
+
+def _conflict_evidence_ids(rows: list[dict[str, Any]]) -> list[str]:
+    return sorted(
+        {str(row["evidence_id"]) for row in rows if row.get("evidence_id")}
+    )
+
+
+def _manual_review_covers_current_evidence(
+    reviewed_evidence_ids: set[str] | None,
+    rows: list[dict[str, Any]],
+) -> bool:
+    if reviewed_evidence_ids is None:
+        return False
+    current_ids = set(_conflict_evidence_ids(rows))
+    return bool(current_ids) and current_ids <= reviewed_evidence_ids
+
+
+def _reapply_manual_projections(conn: Any) -> None:
+    """Keep reviewed durable values stable across catalog materialization/resolution."""
+    conn.execute(
+        """
+        with decisions as (
+          select * from catalog.current_field_decisions
+          where resolver_version like 'manual-review-%'
+            and field_name = 'phone_e164'
+        )
+        update public.establishments e
+        set phone_e164 = case when d.decision_status = 'selected' then d.value_text end,
+            phone_source = case when d.decision_status = 'selected' then 'manual' end,
+            phone_confidence = case when d.decision_status = 'selected' then d.confidence end,
+            updated_at = now()
+        from decisions d where d.establishment_id = e.id
+        """
+    )
+    conn.execute(
+        """
+        with decisions as (
+          select * from catalog.current_field_decisions
+          where resolver_version like 'manual-review-%'
+            and field_name = 'website_url'
+        )
+        update public.establishments e
+        set website_url = case when d.decision_status = 'selected' then d.value_text end,
+            website_source = case when d.decision_status = 'selected' then 'manual' end,
+            website_confidence = case when d.decision_status = 'selected' then d.confidence end,
+            updated_at = now()
+        from decisions d where d.establishment_id = e.id
+        """
+    )
+    conn.execute(
+        """
+        with decisions as (
+          select * from catalog.current_field_decisions
+          where resolver_version like 'manual-review-%'
+            and field_name = 'address' and decision_status = 'selected'
+        )
+        update public.establishments e
+        set address = d.value_text, updated_at = now()
+        from decisions d where d.establishment_id = e.id
+        """
+    )
+    conn.execute(
+        """
+        with decisions as (
+          select * from catalog.current_field_decisions
+          where resolver_version like 'manual-review-%'
+            and field_name = 'neighborhood'
+        )
+        update public.establishments e
+        set neighborhood = case when d.decision_status = 'selected' then d.value_text end,
+            neighborhood_source = case when d.decision_status = 'selected' then 'manual' end,
+            neighborhood_confidence = case when d.decision_status = 'selected' then d.confidence end,
+            updated_at = now()
+        from decisions d where d.establishment_id = e.id
+        """
+    )
+    conn.execute(
+        """
+        with decisions as (
+          select * from catalog.current_field_decisions
+          where resolver_version like 'manual-review-%'
+            and field_name = 'hours'
+        )
+        update public.establishments e
+        set hours = case when d.decision_status = 'selected' then d.value_json end,
+            hours_source = case when d.decision_status = 'selected' then 'manual' end,
+            hours_confidence = case when d.decision_status = 'selected' then d.confidence end,
+            updated_at = now()
+        from decisions d where d.establishment_id = e.id
+        """
+    )
+    conn.execute(
+        """
+        with decisions as (
+          select * from catalog.current_field_decisions
+          where resolver_version like 'manual-review-%'
+            and field_name = 'price_level'
+        )
+        update public.establishments e
+        set price_level = case
+              when d.decision_status = 'selected' then d.value_text::smallint
+            end,
+            price_source = case when d.decision_status = 'selected' then 'manual' end,
+            price_confidence = case when d.decision_status = 'selected' then d.confidence end,
+            updated_at = now()
+        from decisions d where d.establishment_id = e.id
+        """
+    )
+
+
 def _bounded(value: Any, default: float = 0.0) -> float:
     try:
         number = float(value)
@@ -664,3 +887,7 @@ def _source_family(source: str) -> str:
         "official_web": "first_party",
         "canonical_seed": "canonical_seed",
     }.get(source, source)
+
+
+def _direct_origin_for_source(source: str) -> str:
+    return {"fsq": "foursquare"}.get(source, source)

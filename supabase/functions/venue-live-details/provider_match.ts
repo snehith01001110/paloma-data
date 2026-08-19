@@ -67,7 +67,7 @@ export async function claimProviderMatch(
 ): Promise<ProviderMatchLease | null> {
   const token = crypto.randomUUID();
   const rows = await sql`
-    insert into ingest.provider_match_state as match_state (
+    insert into runtime.provider_match_state as match_state (
       establishment_id, provider, identity_fingerprint, outcome,
       attempted_at, retry_after, lease_token, lease_expires_at,
       last_error_code, decision_reason, updated_at
@@ -117,14 +117,14 @@ export async function storeMatchedProviderLink(
   const rows = await sql`
     with owned_lease as (
       select establishment_id, provider
-      from ingest.provider_match_state
+      from runtime.provider_match_state
       where establishment_id = ${establishmentId}::uuid
         and provider = ${provider}
         and identity_fingerprint = ${lease.identityFingerprint}
         and lease_token = ${lease.token}::uuid
         and lease_expires_at > now()
     ), upserted as (
-      insert into ingest.runtime_provider_links as runtime_link (
+      insert into runtime.runtime_provider_links as runtime_link (
         establishment_id, provider, provider_place_id, match_method,
         match_confidence, matched_at, last_validated_at, retired_at, updated_at
       )
@@ -144,7 +144,7 @@ export async function storeMatchedProviderLink(
         updated_at = now()
       returning id, establishment_id, provider, provider_place_id
     ), finished as (
-      update ingest.provider_match_state
+      update runtime.provider_match_state
       set outcome = 'matched',
           retry_after = now() + make_interval(secs => ${MATCHED_RECHECK_SECONDS}),
           lease_token = null,
@@ -196,7 +196,7 @@ export async function completeProviderMatch(
     decisionReason ?? outcome,
   );
   await sql`
-    update ingest.provider_match_state
+    update runtime.provider_match_state
     set outcome = ${outcome},
         retry_after = now() + make_interval(secs => ${boundedRetrySeconds}),
         lease_token = null,
@@ -229,7 +229,7 @@ export async function deferProviderRematch(
     decisionReason ?? outcome,
   );
   await sql`
-    update ingest.provider_match_state
+    update runtime.provider_match_state
     set outcome = ${outcome},
         retry_after = now() + make_interval(secs => ${boundedRetrySeconds}),
         lease_token = null,

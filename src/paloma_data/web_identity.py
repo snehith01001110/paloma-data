@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import sha1
 from html.parser import HTMLParser
 import json
 import re
@@ -180,58 +179,9 @@ class OfficialWebEnricher:
         evidence_confidence: float,
         metadata: dict[str, Any],
     ) -> None:
-        normalized_url = normalize_url(url) or url
-        source_record_id = sha1(normalized_url.encode("utf-8")).hexdigest()[:24]
-        payload = json.dumps({**metadata, "url": normalized_url}, sort_keys=True)
-        conn.execute(
-            """
-            insert into ingest.establishment_field_evidence (
-                establishment_id, field_name, value_text, normalized_value, source,
-                source_record_id, claim_kind, evidence_confidence, identity_confidence,
-                authority, observed_at, metadata
-            ) values (%s::uuid, 'display_name', %s, %s, 'official_web', %s,
-                      'display', %s, %s, 1.0, now(), %s::jsonb)
-            on conflict (establishment_id, field_name, source, source_record_id) do update set
-                value_text = excluded.value_text,
-                normalized_value = excluded.normalized_value,
-                evidence_confidence = excluded.evidence_confidence,
-                identity_confidence = excluded.identity_confidence,
-                authority = excluded.authority,
-                observed_at = now(),
-                metadata = excluded.metadata,
-                updated_at = now()
-            """,
-            (
-                establishment_id,
-                name.strip(),
-                normalize_name(name),
-                source_record_id,
-                round(evidence_confidence, 3),
-                round(identity_confidence, 3),
-                payload,
-            ),
-        )
-        conn.execute(
-            """
-            insert into ingest.establishment_field_evidence (
-                establishment_id, field_name, value_text, normalized_value, source,
-                source_record_id, claim_kind, evidence_confidence, identity_confidence,
-                authority, observed_at, metadata
-            ) values (%s::uuid, 'website_url', %s, %s, 'official_web', %s,
-                      'observed', 0.99, %s, 1.0, now(), %s::jsonb)
-            on conflict (establishment_id, field_name, source, source_record_id) do update set
-                value_text = excluded.value_text, normalized_value = excluded.normalized_value,
-                identity_confidence = excluded.identity_confidence, observed_at = now(),
-                metadata = excluded.metadata, updated_at = now()
-            """,
-            (establishment_id, normalized_url, normalized_url, source_record_id,
-             round(identity_confidence, 3), payload),
-        )
-        if identity_confidence >= 0.85:
-            conn.execute(
-                "update public.establishments set website_url = %s, updated_at = now() where id = %s::uuid",
-                (normalized_url, establishment_id),
-            )
+        # Website crawling remains an ephemeral identity check. A public page is not, by itself,
+        # a durable-storage license, so this method intentionally performs no database write.
+        _ = (conn, establishment_id, name, url, identity_confidence, evidence_confidence, metadata)
 
 
 class PageParser(HTMLParser):

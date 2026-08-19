@@ -59,6 +59,9 @@ class SourceRecord:
     provider_veracity: int | None = None
     category_evidence: dict[str, Any] = field(default_factory=dict)
     permitted_metadata: dict[str, Any] = field(default_factory=dict)
+    # Field-scoped upstream lineage and licenses. Aggregators such as Overture can attach a
+    # different source to each property, so record-level provenance is not sufficient.
+    field_provenance: dict[str, Any] = field(default_factory=dict)
 
     def stable_payload(self) -> dict[str, Any]:
         return _json_safe(
@@ -95,6 +98,7 @@ class SourceRecord:
                 "provider_veracity": self.provider_veracity,
                 "category_evidence": self.category_evidence,
                 "permitted_metadata": self.permitted_metadata,
+                "field_provenance": self.field_provenance,
             }
         )
 

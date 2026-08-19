@@ -323,7 +323,7 @@ export async function runtimeProviderLink(
       runtime_link.establishment_id::text,
       runtime_link.provider,
       runtime_link.provider_place_id
-    from ingest.runtime_provider_links runtime_link
+    from runtime.runtime_provider_links runtime_link
     join public.establishments establishment
       on establishment.id = runtime_link.establishment_id
     where runtime_link.establishment_id = ${establishmentId}::uuid
@@ -353,7 +353,7 @@ export async function touchRuntimeProviderLink(
   validatedAt: Date,
 ): Promise<void> {
   await sql`
-    update ingest.runtime_provider_links
+    update runtime.runtime_provider_links
     set last_validated_at = greatest(
           coalesce(last_validated_at, ${validatedAt.toISOString()}::timestamptz),
           ${validatedAt.toISOString()}::timestamptz
@@ -370,7 +370,7 @@ export async function retireRuntimeProviderLink(
   link: RuntimeProviderLink,
 ): Promise<void> {
   await sql`
-    update ingest.runtime_provider_links
+    update runtime.runtime_provider_links
     set retired_at = now(), updated_at = now()
     where id = ${link.id}::bigint
       and provider = ${link.provider}
@@ -390,8 +390,8 @@ async function freshProviderResponse(
 
   const rows = await sql`
     select cache.payload, cache.fetched_at, cache.expires_at
-    from ingest.provider_response_cache cache
-    join ingest.runtime_provider_links runtime_link
+    from runtime.provider_response_cache cache
+    join runtime.runtime_provider_links runtime_link
       on runtime_link.id = cache.provider_link_id
      and runtime_link.provider = cache.provider
     join public.establishments establishment
@@ -434,7 +434,7 @@ async function claimProviderRefresh(
 
   const token = crypto.randomUUID();
   const rows = await sql`
-    insert into ingest.provider_refresh_leases as leases (
+    insert into runtime.provider_refresh_leases as leases (
       provider_link_id, provider, endpoint, request_fingerprint,
       lease_token, lease_expires_at, updated_at
     ) values (
@@ -474,7 +474,7 @@ async function storeProviderResponse(
 
   const rows = await sql`
     with owned_lease as (
-      delete from ingest.provider_refresh_leases
+      delete from runtime.provider_refresh_leases
       where provider_link_id = ${link.id}::bigint
         and provider = ${link.provider}
         and endpoint = ${endpoint}
@@ -483,7 +483,7 @@ async function storeProviderResponse(
         and lease_expires_at > now()
       returning provider_link_id
     )
-    insert into ingest.provider_response_cache as cache (
+    insert into runtime.provider_response_cache as cache (
       provider_link_id, provider, endpoint, request_fingerprint,
       payload, fetched_at, expires_at, created_at, updated_at
     )
@@ -530,7 +530,7 @@ async function abandonProviderRefresh(
 ): Promise<void> {
   validateCacheKey(endpoint, requestFingerprint);
   await sql`
-    delete from ingest.provider_refresh_leases
+    delete from runtime.provider_refresh_leases
     where provider_link_id = ${link.id}::bigint
       and provider = ${link.provider}
       and endpoint = ${endpoint}
@@ -547,7 +547,7 @@ async function evictProviderResponse(
 ): Promise<void> {
   validateCacheKey(endpoint, requestFingerprint);
   await sql`
-    delete from ingest.provider_response_cache
+    delete from runtime.provider_response_cache
     where provider_link_id = ${link.id}::bigint
       and provider = ${link.provider}
       and endpoint = ${endpoint}

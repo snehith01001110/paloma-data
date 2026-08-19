@@ -9,6 +9,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from paloma_data.models import CanonicalCandidate, SourceRecord
+from paloma_data.hours import HoursFormatError, normalize_hours
 from paloma_data.normalizers import normalize_address, normalize_name, normalize_phone, normalize_url
 
 
@@ -20,6 +21,17 @@ def execute_many(
     """Run a Psycopg batch through a cursor; Connection has no executemany method."""
     with conn.cursor() as cursor:
         cursor.executemany(query, rows)
+
+
+def _normalized_hours_json(value: Any) -> str | None:
+    if value is None:
+        return None
+    try:
+        normalized = normalize_hours(value)
+    except HoursFormatError:
+        # Unstructured provider expressions are not silently guessed into canonical hours.
+        return None
+    return json.dumps(normalized, sort_keys=True) if normalized is not None else None
 
 
 class Database:
@@ -151,7 +163,7 @@ class Database:
                 source_family, consumer_facing, public_access, quality_flags,
                 origin_keys, data_license, storage_scope, provider_veracity,
                 last_seen_run_id, retired_at,
-                category_evidence, permitted_metadata
+                category_evidence, permitted_metadata, field_provenance
             ) values (
                 %(source)s, %(source_record_id)s, %(source_status)s, %(source_updated_at)s,
                 %(payload_hash)s, now(),
@@ -163,7 +175,8 @@ class Database:
                 %(source_family)s, %(consumer_facing)s, %(public_access)s, %(quality_flags)s,
                 %(origin_keys)s, %(data_license)s, %(storage_scope)s, %(provider_veracity)s,
                 %(last_seen_run_id)s::uuid, null,
-                %(category_evidence)s::jsonb, %(permitted_metadata)s::jsonb
+                %(category_evidence)s::jsonb, %(permitted_metadata)s::jsonb,
+                %(field_provenance)s::jsonb
             )
             on conflict (source, source_record_id) do update set
                 source_status = excluded.source_status,
@@ -260,6 +273,7 @@ class Database:
                 retired_at = null,
                 category_evidence = excluded.category_evidence,
                 permitted_metadata = excluded.permitted_metadata,
+                field_provenance = excluded.field_provenance,
                 updated_at = now()
             """,
             {
@@ -281,7 +295,7 @@ class Database:
                 "phone_e164": normalize_phone(record.phone, record.country_code),
                 "website_url": normalize_url(record.website_url),
                 "neighborhood": record.neighborhood,
-                "hours": json.dumps(record.hours, sort_keys=True) if record.hours is not None else None,
+                "hours": _normalized_hours_json(record.hours),
                 "price_level": record.price_level,
                 "setting_slugs": sorted(set(record.setting_slugs)),
                 "primary_type_slug": record.primary_type_slug,
@@ -297,6 +311,7 @@ class Database:
                 "last_seen_run_id": run_id,
                 "category_evidence": json.dumps(record.category_evidence, sort_keys=True),
                 "permitted_metadata": json.dumps(record.permitted_metadata, sort_keys=True),
+                "field_provenance": json.dumps(record.field_provenance, sort_keys=True),
             },
         )
         return outcome

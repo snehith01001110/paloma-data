@@ -597,7 +597,7 @@ function providerMatchRetrySeconds(error: unknown): number {
 
 async function consumeQuota(sql: Sql, userId: string): Promise<boolean> {
   const userRows = await sql`
-    insert into ingest.live_detail_user_limits as limits (
+    insert into runtime.live_detail_user_limits as limits (
       user_id, minute_started_at, minute_count, day_started_at, day_count, updated_at
     ) values (
       ${userId}::uuid, date_trunc('minute', now()), 1,
@@ -637,7 +637,7 @@ async function consumeQuota(sql: Sql, userId: string): Promise<boolean> {
   if (userRows.length === 0) return false;
 
   const globalRows = await sql`
-    insert into ingest.live_detail_global_limit as limits (
+    insert into runtime.live_detail_global_limit as limits (
       singleton, second_started_at, request_count, updated_at
     ) values (true, date_trunc('second', now()), 1, now())
     on conflict (singleton) do update set

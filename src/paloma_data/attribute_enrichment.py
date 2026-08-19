@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
+from hashlib import sha256
 import json
 from math import floor
 from typing import Any, Callable, Iterable
@@ -62,7 +63,10 @@ class OpenAttributeEnricher:
 
     def run(self) -> dict[str, dict[str, Any]]:
         return {
-            "osm": self._run_source("osm", self._osm_claims),
+            "osm": {
+                "status": "excluded",
+                "reason": "ODbL strategy is unresolved; OSM cannot enter the canonical ledger",
+            },
             "overture_divisions": self._run_source(
                 "overture_divisions", self._neighborhood_claims
             ),
@@ -81,7 +85,7 @@ class OpenAttributeEnricher:
             fetched, claims, ambiguous = loader()
             counters.update(fetched=fetched, updated=len(claims), review=ambiguous)
             with self.db.connection() as conn:
-                self._replace_evidence(conn, source, claims)
+                self._append_evidence(conn, source, claims)
                 self.db.finish_run(conn, run_id, status="succeeded", counters=counters)
                 conn.commit()
             return {"status": "succeeded", **counters}
@@ -246,39 +250,30 @@ class OpenAttributeEnricher:
             ).fetchall()
         return [CatalogPlace(**row) for row in rows]
 
-    def _replace_evidence(
+    def _append_evidence(
         self, conn, source: str, claims: Iterable[EvidenceClaim]
     ) -> None:
-        conn.execute(
-            "delete from ingest.establishment_field_evidence where source = %s",
-            (source,),
-        )
         rows = list(claims)
         if not rows:
             return
         execute_many(
             conn,
             """
-            insert into ingest.establishment_field_evidence (
+            insert into catalog.field_observations (
                 establishment_id, field_name, value_text, normalized_value, value_json,
-                source, source_record_id, claim_kind, evidence_confidence,
-                identity_confidence, authority, source_updated_at, metadata
+                value_hash, source, source_record_id, source_property, claim_kind,
+                evidence_confidence, identity_confidence, authority,
+                upstream_origin_keys, license_ids, source_items, source_policy_id,
+                source_updated_at, expires_at, observation_fingerprint, metadata
             ) values (
                 %s::uuid, %s, %s, %s, %s::jsonb,
-                %s, %s, 'observed', %s, %s, %s, %s, %s::jsonb
+                %s, %s, %s, %s, 'derived', %s, %s, %s,
+                %s, %s, '[]'::jsonb,
+                (select source_policy_id from governance.current_source_field_policies
+                 where source = %s and field_name = %s),
+                %s, now() + interval '365 days', %s, %s::jsonb
             )
-            on conflict (establishment_id, field_name, source, source_record_id) do update set
-                value_text = excluded.value_text,
-                normalized_value = excluded.normalized_value,
-                value_json = excluded.value_json,
-                evidence_confidence = excluded.evidence_confidence,
-                identity_confidence = excluded.identity_confidence,
-                authority = excluded.authority,
-                source_updated_at = excluded.source_updated_at,
-                metadata = excluded.metadata,
-                selected = false,
-                resolution_score = null,
-                updated_at = now()
+            on conflict (observation_fingerprint) do nothing
             """,
             [
                 (
@@ -289,17 +284,38 @@ class OpenAttributeEnricher:
                     json.dumps(row.value_json, sort_keys=True)
                     if row.value_json is not None
                     else None,
+                    _hash({"text": row.value_text, "json": row.value_json}),
                     row.source,
                     row.source_record_id,
+                    row.field_name,
                     row.evidence_confidence,
                     row.identity_confidence,
                     row.authority,
+                    ["overture:divisions"],
+                    ["Overture-source-licenses"],
+                    row.source,
+                    row.field_name,
                     row.source_updated_at,
+                    _hash(
+                        {
+                            "establishment_id": row.establishment_id,
+                            "field": row.field_name,
+                            "source": row.source,
+                            "source_record_id": row.source_record_id,
+                            "value": row.value_text,
+                            "source_updated_at": row.source_updated_at,
+                        }
+                    ),
                     json.dumps(row.metadata, sort_keys=True),
                 )
                 for row in rows
             ],
         )
+
+
+def _hash(value: Any) -> str:
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+    return sha256(payload.encode()).hexdigest()
 
 
 def _place_grid(places: Iterable[CatalogPlace]) -> dict[tuple[int, int], list[CatalogPlace]]:

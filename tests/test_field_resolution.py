@@ -1,6 +1,12 @@
 from datetime import datetime, timezone
 
-from paloma_data.field_resolution import FieldResolver, SOURCE_POLICIES
+from paloma_data.field_resolution import (
+    SOURCE_POLICIES,
+    FieldResolver,
+    _conflict_evidence_ids,
+    _manual_review_covers_current_evidence,
+    _reapply_manual_projections,
+)
 
 
 def test_government_names_are_legal_not_display_names():
@@ -40,3 +46,82 @@ def test_aggregator_name_cannot_look_like_099_field_confidence():
         }
     )
     assert score < 0.85
+
+
+def test_direct_upstream_wins_over_conflicting_overture_copy():
+    resolver = FieldResolver(None)
+    rows = [
+        {
+            "evidence_id": "direct",
+            "field_name": "phone_e164",
+            "value_text": "+14155550100",
+            "normalized_value": "+14155550100",
+            "value_json": None,
+            "source": "fsq",
+            "upstream_origin_keys": ["foursquare"],
+            "authority": 0.90,
+            "evidence_confidence": 0.96,
+            "identity_confidence": 1.0,
+            "source_updated_at": None,
+        },
+        {
+            "evidence_id": "copy",
+            "field_name": "phone_e164",
+            "value_text": "+14155550999",
+            "normalized_value": "+14155550999",
+            "value_json": None,
+            "source": "overture",
+            "upstream_origin_keys": ["foursquare"],
+            "authority": 0.88,
+            "evidence_confidence": 0.96,
+            "identity_confidence": 1.0,
+            "source_updated_at": None,
+        },
+    ]
+
+    selected = resolver._select_attribute(rows, 0.68)
+
+    assert selected is not None
+    assert selected["best_source"] == "fsq"
+
+
+def test_conflict_retains_every_evidence_id():
+    rows = [
+        {"evidence_id": "second"},
+        {"evidence_id": "first"},
+        {"evidence_id": "second"},
+    ]
+
+    assert _conflict_evidence_ids(rows) == ["first", "second"]
+
+
+def test_manual_review_is_preserved_until_new_evidence_arrives():
+    rows = [{"evidence_id": "first"}, {"evidence_id": "second"}]
+
+    assert _manual_review_covers_current_evidence({"first", "second"}, rows)
+    assert not _manual_review_covers_current_evidence({"first"}, rows)
+    assert not _manual_review_covers_current_evidence(None, rows)
+
+
+def test_manual_projection_reconciles_all_mutable_durable_fields():
+    class Connection:
+        def __init__(self):
+            self.statements = []
+
+        def execute(self, statement):
+            self.statements.append(statement)
+
+    connection = Connection()
+    _reapply_manual_projections(connection)
+
+    sql = "\n".join(connection.statements)
+    assert len(connection.statements) == 6
+    for field in (
+        "phone_e164",
+        "website_url",
+        "address",
+        "neighborhood",
+        "hours",
+        "price_level",
+    ):
+        assert field in sql

@@ -94,6 +94,7 @@ class OvertureAdapter:
             }
         )
         origin_keys = _origin_keys(source_datasets)
+        field_provenance = _field_provenance(sources)
         websites = properties.get("websites") or []
         phones = properties.get("phones") or []
         status = _canonical_status(properties.get("operating_status"))
@@ -139,6 +140,7 @@ class OvertureAdapter:
                 "operating_status": properties.get("operating_status"),
                 "source_datasets": source_datasets,
             },
+            field_provenance=field_provenance,
         )
 
 
@@ -310,3 +312,77 @@ def _origin_keys(source_datasets: list[str]) -> tuple[str, ...]:
         else:
             origins.add(f"overture:{token}")
     return tuple(sorted(origins or {"overture:unknown"}))
+
+
+_OVERTURE_FIELD_PATHS = {
+    "display_name": ("/names",),
+    "address": ("/addresses",),
+    "latitude": ("/geometry",),
+    "longitude": ("/geometry",),
+    "phone_e164": ("/phones",),
+    "website_url": ("/websites",),
+    "primary_type_slug": ("/basic_category", "/taxonomy", "/categories"),
+    "operating_status": ("/operating_status",),
+    "setting_slug": ("/basic_category", "/taxonomy", "/categories"),
+}
+
+
+def _field_provenance(value: Any) -> dict[str, Any]:
+    """Preserve SourceItem lineage at the property granularity Overture publishes."""
+    if not isinstance(value, list):
+        return {}
+    source_items = [_source_item(item) for item in value if isinstance(item, dict)]
+    source_items = [item for item in source_items if item is not None]
+    result: dict[str, Any] = {}
+    for field_name, paths in _OVERTURE_FIELD_PATHS.items():
+        relevant = [
+            item
+            for item in source_items
+            if item["property"] is None
+            or any(str(item["property"]).startswith(path) for path in paths)
+        ]
+        if not relevant:
+            continue
+        datasets = sorted({str(item["dataset"]) for item in relevant})
+        result[field_name] = {
+            "origin_keys": list(_origin_keys(datasets)),
+            "license_ids": sorted({str(item["license"]) for item in relevant}),
+            "source_items": relevant,
+        }
+    return result
+
+
+def _source_item(value: dict[str, Any]) -> dict[str, Any] | None:
+    dataset = value.get("dataset")
+    if not dataset:
+        return None
+    dataset_text = str(dataset)
+    return {
+        "dataset": dataset_text,
+        "record_id": str(value["record_id"]) if value.get("record_id") else None,
+        "property": str(value["property"]) if value.get("property") else None,
+        "license": str(value.get("license") or _overture_license(dataset_text)),
+        "update_time": str(value["update_time"]) if value.get("update_time") else None,
+    }
+
+
+def _overture_license(dataset: str) -> str:
+    token = dataset.casefold()
+    if "foursquare" in token or token.startswith("fsq"):
+        return "Apache-2.0"
+    if "alltheplaces" in token or token in {"overture", "overturemaps"}:
+        return "CC0-1.0"
+    if any(
+        provider in token
+        for provider in (
+            "brightquery",
+            "dac",
+            "krick",
+            "meta",
+            "microsoft",
+            "pinmeto",
+            "renderseo",
+        )
+    ):
+        return "CDLA-Permissive-2.0"
+    return "unknown"

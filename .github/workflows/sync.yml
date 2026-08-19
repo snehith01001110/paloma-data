@@ -8,13 +8,13 @@ on:
         required: true
         default: status
         type: choice
-        options: [status, audit, resolve-review, stage, neighborhoods, discover, trial, trial-verified, verify, reevaluate, publish, provider-links, provider-audit, queue-refresh, queue-work, queue-status, deploy-worker, cutover]
+        options: [status, coverage, resolve-fields, audit, resolve-review, stage, neighborhoods, discover, trial, trial-verified, verify, reevaluate, publish, provider-links, provider-audit, queue-refresh, queue-work, queue-status, deploy-worker, cutover]
       source:
         description: Source for stage
         required: false
         default: ca_abc
         type: choice
-        options: [ca_abc, datasf, fsq, overture]
+        options: [ca_abc, datasf, fsq, overture, wikidata]
       city:
         description: Exact city for discover/trial/verify
         required: false
@@ -42,12 +42,10 @@ on:
         type: choice
         options: [not_same_or_stale, same_place]
   schedule:
-    # ABC/DataSF are complete snapshots. A missing row is acted on only after a successful run.
-    - cron: '30 16 * * 1-5'
-    # FSQ OS publishes monthly; this discovers candidates but cannot publish them.
-    - cron: '0 11 15 * *'
-    # Refresh only the existing published catalog while expansion is intentionally paused.
-    - cron: '0 15 * * 1'
+    # Durable/open sources change slowly. Refresh monthly without discovering or publishing venues.
+    - cron: '30 14 1 * *'
+    # Queue the fail-closed lease sweep shortly before the daily managed worker runs.
+    - cron: '45 14 * * *'
 
 permissions:
   contents: read
@@ -112,46 +110,36 @@ jobs:
           test -n "$SUPABASE_DB_URL"
           echo "::add-mask::$SUPABASE_DB_URL"
           printf 'SUPABASE_DB_URL=%s\n' "$SUPABASE_DB_URL" >> "$GITHUB_ENV"
-      - name: Weekday regulatory reconciliation
-        if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 1-5'
+      - name: Monthly durable evidence refresh for the existing cohort
+        if: github.event_name == 'schedule' && github.event.schedule == '30 14 1 * *'
+        shell: bash
         run: |
           paloma-data sync-government
-          paloma-data catalog-sweep
-
-      - name: Monthly open-source discovery snapshot
-        if: github.event_name == 'schedule' && github.event.schedule == '0 11 15 * *'
-        shell: bash
-        run: |
           if [ -z "$FSQ_CATALOG_URI" ] || [ -z "$FSQ_CATALOG_TOKEN" ] || [ -z "$FSQ_PLACES_TABLE" ]; then
-            echo "FSQ OS is not configured; discovery intentionally skipped"
+            echo "FSQ OS is not configured; snapshot intentionally skipped"
           else
-            paloma-data sync fsq
+            paloma-data stage-source fsq --mode full
           fi
+          paloma-data stage-source overture --mode full
+          paloma-data stage-source wikidata --mode full
           paloma-data sync-neighborhoods
-
-      - name: Weekly verification refresh and guarded publication
-        if: github.event_name == 'schedule' && github.event.schedule == '0 15 * * 1'
-        shell: bash
-        run: |
           if [ -n "$FSQ_PLACES_API_KEY" ] && [ "$FSQ_SERVER_STORAGE_LICENSED" = "true" ]; then
             paloma-data catalog-verify --limit 250 --existing-only
           else
             echo "Licensed server retention is not configured; proprietary verification skipped"
           fi
+          paloma-data resolve-fields
           paloma-data pipeline-enqueue-catalog --include-suppressed --limit 50000
-          paloma-data pipeline-enqueue-sweep
           if [ -n "$YELP_API_KEY" ]; then
             paloma-data pipeline-enqueue-provider-links --limit 250
           else
             echo "Yelp is not configured; proactive durable-ID sync skipped"
           fi
-          paloma-data pipeline-worker \
-            --drain \
-            --max-jobs 50000 \
-            --idle-timeout-seconds 600 \
-            --fail-on-error
-          echo "Scheduled publication is disabled while the existing catalog is refined"
-          paloma-data pipeline-status
+          paloma-data field-coverage
+
+      - name: Daily safety sweep enqueue
+        if: github.event_name == 'schedule' && github.event.schedule == '45 14 * * *'
+        run: paloma-data pipeline-enqueue-sweep
 
       - name: Authenticate deployment workflow to Google Cloud
         if: github.event_name == 'workflow_dispatch' && inputs.action == 'deploy-worker'
@@ -193,6 +181,12 @@ jobs:
           case "$ACTION" in
             status)
               paloma-data catalog-status
+              ;;
+            coverage)
+              paloma-data field-coverage
+              ;;
+            resolve-fields)
+              paloma-data resolve-fields
               ;;
             audit)
               paloma-data catalog-audit --city "$CITY" --limit "$LIMIT"

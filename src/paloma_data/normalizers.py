@@ -14,7 +14,7 @@ _DISPLAY_LEGAL_SUFFIX = re.compile(
 )
 _NON_ALNUM = re.compile(r"[^\w\s]", re.UNICODE)
 _SPACE = re.compile(r"\s+")
-_TRACKING = re.compile(r"^(?:utm_|fbclid$|gclid$)", re.I)
+_TRACKING = re.compile(r"^(?:utm_|y_source$|fbclid$|gclid$)", re.I)
 
 
 def _clean_text(value: str | None) -> str:

@@ -103,10 +103,10 @@ Deno.serve(async (request: Request) => {
       select
         to_regclass('ingest.catalog_candidates') is not null as migration_applied,
         to_regclass('ingest.source_sync_state') is not null as sync_state_applied,
-        to_regclass('ingest.runtime_provider_links') is not null
-          and to_regclass('ingest.provider_match_state') is not null
-          and to_regclass('ingest.provider_response_cache') is not null
-          and to_regclass('ingest.provider_refresh_leases') is not null
+        to_regclass('runtime.runtime_provider_links') is not null
+          and to_regclass('runtime.provider_match_state') is not null
+          and to_regclass('runtime.provider_response_cache') is not null
+          and to_regclass('runtime.provider_refresh_leases') is not null
           as runtime_applied
     `;
     const migrationApplied = Boolean(schemaRows[0]?.migration_applied);
@@ -243,8 +243,8 @@ async function liveCatalogRows(
         select
           array_agg(distinct link.provider order by link.provider) as providers,
           bool_or(cache.expires_at > now()) as has_warm_cache
-        from ingest.runtime_provider_links link
-        left join ingest.provider_response_cache cache
+        from runtime.runtime_provider_links link
+        left join runtime.provider_response_cache cache
           on cache.provider_link_id = link.id
          and cache.provider = link.provider
         where link.establishment_id = e.id
@@ -536,21 +536,21 @@ async function v2Payload(sql: Sql, runtimeApplied: boolean) {
           and c.decision_version = e.verification_version
       ), provider_names as (
         select link.provider
-        from ingest.runtime_provider_links link
+        from runtime.runtime_provider_links link
         join safe on safe.id = link.establishment_id
         where link.retired_at is null
         union
         select match.provider
-        from ingest.provider_match_state match
+        from runtime.provider_match_state match
         join safe on safe.id = match.establishment_id
         union
-        select cache.provider from ingest.provider_response_cache cache
+        select cache.provider from runtime.provider_response_cache cache
       ), link_stats as (
         select link.provider,
                count(distinct link.establishment_id)::bigint as active_links,
                min(link.match_confidence) as min_confidence,
                max(link.last_validated_at) as last_validated_at
-        from ingest.runtime_provider_links link
+        from runtime.runtime_provider_links link
         join safe on safe.id = link.establishment_id
         where link.retired_at is null
         group by link.provider
@@ -566,7 +566,7 @@ async function v2Payload(sql: Sql, runtimeApplied: boolean) {
                min(match.retry_after) filter (
                  where match.outcome <> 'matched'
                ) as next_retry_at
-        from ingest.provider_match_state match
+        from runtime.provider_match_state match
         join safe on safe.id = match.establishment_id
         group by match.provider
       ), cache_stats as (
@@ -592,8 +592,8 @@ async function v2Payload(sql: Sql, runtimeApplied: boolean) {
                    and link.retired_at is null
                    and safe.id is not null
                ) as latest_expiry
-        from ingest.provider_response_cache cache
-        join ingest.runtime_provider_links link
+        from runtime.provider_response_cache cache
+        join runtime.runtime_provider_links link
           on link.id = cache.provider_link_id
          and link.provider = cache.provider
         left join safe on safe.id = link.establishment_id
@@ -603,7 +603,7 @@ async function v2Payload(sql: Sql, runtimeApplied: boolean) {
                count(*) filter (
                  where lease.lease_expires_at > now()
                )::bigint as active_leases
-        from ingest.provider_refresh_leases lease
+        from runtime.provider_refresh_leases lease
         group by lease.provider
       )
       select names.provider,
@@ -630,14 +630,14 @@ async function v2Payload(sql: Sql, runtimeApplied: boolean) {
              coalesce(leases.active_leases, 0)::bigint as active_leases,
              (
                select count(distinct link.establishment_id)
-               from ingest.runtime_provider_links link
+               from runtime.runtime_provider_links link
                join safe on safe.id = link.establishment_id
                where link.retired_at is null
              )::bigint as detail_ready,
              (
                select count(distinct warm_link.establishment_id)
-               from ingest.provider_response_cache warm_cache
-               join ingest.runtime_provider_links warm_link
+               from runtime.provider_response_cache warm_cache
+               join runtime.runtime_provider_links warm_link
                  on warm_link.id = warm_cache.provider_link_id
                 and warm_link.provider = warm_cache.provider
                join safe warm_safe on warm_safe.id = warm_link.establishment_id
@@ -646,8 +646,8 @@ async function v2Payload(sql: Sql, runtimeApplied: boolean) {
              )::bigint as warm_detail_ready,
              (
                select count(*)
-               from ingest.provider_response_cache all_cache
-               join ingest.runtime_provider_links all_link
+               from runtime.provider_response_cache all_cache
+               join runtime.runtime_provider_links all_link
                  on all_link.id = all_cache.provider_link_id
                 and all_link.provider = all_cache.provider
                left join safe all_safe on all_safe.id = all_link.establishment_id

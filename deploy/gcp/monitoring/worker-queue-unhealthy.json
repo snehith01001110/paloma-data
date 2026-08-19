@@ -1,7 +1,7 @@
 {
   "displayName": "Paloma pipeline queue unhealthy",
   "documentation": {
-    "content": "A worker completion reported a dead job in the last 24 hours or a queued job older than 15 minutes. Inspect `paloma-data pipeline-status`; enqueue a reviewed replacement for dead work rather than editing queue state directly.",
+    "content": "A worker completion reported a dead job in the last 24 hours or a queued job older than 36 hours. Inspect `paloma-data pipeline-status`; enqueue a reviewed replacement for dead work rather than editing queue state directly.",
     "mimeType": "text/markdown"
   },
   "userLabels": {
@@ -12,7 +12,7 @@
     {
       "displayName": "Worker reports dead or stale queued work",
       "conditionMatchedLog": {
-        "filter": "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"paloma-pipeline-worker\" AND resource.labels.location=\"us-west1\" AND jsonPayload.event=\"worker_finished\" AND (jsonPayload.queue_metrics.jobs_dead_24h>0 OR jsonPayload.queue_metrics.oldest_queued_seconds>900)"
+        "filter": "resource.type=\"cloud_run_job\" AND resource.labels.job_name=\"paloma-pipeline-worker\" AND resource.labels.location=\"us-west1\" AND jsonPayload.event=\"worker_finished\" AND (jsonPayload.queue_metrics.jobs_dead_24h>0 OR jsonPayload.queue_metrics.oldest_queued_seconds>129600)"
       }
     }
   ],

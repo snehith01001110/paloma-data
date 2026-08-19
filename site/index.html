@@ -59,10 +59,6 @@
     .metric.bad strong { color: var(--red); }
     .metric.warn strong { color: var(--amber); }
 
-    .action { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: baseline; margin-top: 9px; padding: 13px 16px; }
-    .action strong { color: var(--green); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
-    .action span { color: var(--muted); font-size: 11px; }
-
     .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; margin: 30px 1px 10px; }
     .section-head h2 { margin: 0; font-size: 16px; letter-spacing: -.015em; }
     .section-head p { margin: 0; color: var(--muted); font-size: 10px; text-align: right; }
@@ -71,7 +67,7 @@
     .catalog-tools span { color: var(--muted); font-size: 10px; }
     .search { width: min(320px, 48vw); padding: 9px 11px; outline: none; background: #fff; border: 1px solid var(--line); border-radius: 9px; font-size: 11px; }
     .search:focus { border-color: #9fa89e; box-shadow: 0 0 0 3px rgba(33, 100, 70, .08); }
-    .venue-head, .venue { display: grid; grid-template-columns: minmax(180px, 1.1fr) minmax(260px, 1.7fr) auto; gap: 18px; align-items: center; }
+    .venue-head, .venue { display: grid; grid-template-columns: minmax(180px, 1.1fr) minmax(260px, 1.7fr); gap: 18px; align-items: center; }
     .venue-head { padding: 9px 15px; color: var(--muted); background: #fafbf8; border-bottom: 1px solid var(--line); font-size: 8.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
     .venue { padding: 13px 15px; border-bottom: 1px solid #eceee9; }
     .venue:last-child { border-bottom: 0; }
@@ -79,8 +75,6 @@
     .venue-type { margin-top: 2px; color: var(--muted); font-size: 9px; }
     .venue-address { overflow: hidden; font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
     .venue-area { margin-top: 2px; color: var(--muted); font-size: 9px; }
-    .detail { justify-self: end; padding: 4px 7px; color: var(--green); background: var(--green-soft); border-radius: 999px; font-size: 8.5px; font-weight: 800; white-space: nowrap; }
-    .detail.core { color: var(--muted); background: #edf0eb; }
     .empty { grid-column: 1 / -1; padding: 34px 15px; color: var(--muted); text-align: center; font-size: 10px; }
     .load-wrap { padding: 12px; border-top: 1px solid var(--line); text-align: center; }
     .load-wrap[hidden] { display: none; }
@@ -93,11 +87,9 @@
       .top { align-items: flex-start; flex-direction: column; gap: 9px; }
       .updated { text-align: left; }
       .metrics { grid-template-columns: repeat(2, 1fr); }
-      .action { grid-template-columns: 1fr; gap: 3px; }
       .venue-head { display: none; }
-      .venue { grid-template-columns: minmax(0, 1fr) auto; gap: 9px 12px; }
+      .venue { grid-template-columns: minmax(0, 1fr); gap: 9px 12px; }
       .venue-location { grid-column: 1 / -1; grid-row: 2; }
-      .detail { grid-column: 2; grid-row: 1; }
       .catalog-tools { align-items: stretch; flex-direction: column; }
       .search { width: 100%; }
     }
@@ -127,23 +119,21 @@
         <div class="status-label" id="statusLabel">Checking</div>
         <h2 id="statusTitle">Checking the public catalog…</h2>
         <p id="statusDetail">Loading current publication state.</p>
-        <div class="status-meta"><span id="expiryMeta"></span><span id="detailMeta"></span></div>
+        <div class="status-meta"><span id="expiryMeta"></span></div>
       </div>
     </section>
 
     <section class="metrics" aria-label="Catalog summary">
-      <article class="card metric good"><strong id="safeLive">—</strong><span>Live establishments</span><small id="liveMeta">Published and safe</small></article>
-      <article class="card metric good" id="unsafeMetric"><strong id="unsafeCount">—</strong><span>Unsafe visible</span><small>Target: 0</small></article>
-      <article class="card metric good" id="sourceMetric"><strong id="sourceReady">—</strong><span>Required sources</span><small id="sourceMeta">Checking snapshots</small></article>
-      <article class="card metric warn"><strong id="reviewCount">—</strong><span>Identity reviews</span><small>Held outside the app</small></article>
+      <article class="card metric good"><strong id="safeLive">—</strong><span>Live establishments</span><small>Verified and safe</small></article>
+      <article class="card metric"><strong id="phoneCount">—</strong><span>With phone</span><small id="phoneMeta">Durable coverage</small></article>
+      <article class="card metric"><strong id="websiteCount">—</strong><span>With website</span><small id="websiteMeta">Durable coverage</small></article>
+      <article class="card metric"><strong id="hoursCount">—</strong><span>With hours</span><small id="hoursMeta">Durable coverage</small></article>
     </section>
-
-    <section class="card action"><strong>Next action</strong><span id="nextAction">Loading…</span></section>
 
     <div class="section-head"><h2>Published establishments</h2><p>Only rows currently safe for the app</p></div>
     <section class="card catalog">
       <div class="catalog-tools"><span id="listMeta">Loading…</span><input class="search" id="search" type="search" aria-label="Search published establishments" placeholder="Search name or location"></div>
-      <div class="venue-head" aria-hidden="true"><span>Establishment</span><span>Location</span><span>Details</span></div>
+      <div class="venue-head" aria-hidden="true"><span>Establishment</span><span>Location</span></div>
       <div id="venues"><div class="empty">Loading establishments…</div></div>
       <div class="load-wrap" id="loadWrap" hidden><button class="load" id="loadMore" hidden type="button">Load more</button></div>
     </section>
@@ -171,8 +161,7 @@
     function renderSummary(data) {
       const overall = data.overall || {};
       const readiness = data.readiness || {};
-      const work = data.work_queue || {};
-      const runtime = data.runtime || {};
+      const coverage = data.coverage || {};
       const unsafe = overall.unsafe_app_visible == null
         ? num(overall.unsafe_legacy_live) + num(overall.unsafe_expired_live)
         : num(overall.unsafe_app_visible);
@@ -180,7 +169,6 @@
       const currentRequired = required.filter(source => source.fresh && source.completed_at).length;
       const schemaReady = data.schema_version === 'catalog_v2';
       const sourcesReady = readiness.required_sources_ready && currentRequired === required.length;
-      const detailsReady = num(runtime.detail_ready) === num(runtime.eligible_establishments);
       const status = document.getElementById('status');
       status.className = 'card status';
 
@@ -196,12 +184,6 @@
         setText('statusLabel', 'Refresh due');
         setText('statusTitle', 'A required source snapshot is missing or stale');
         setText('statusDetail', 'Published leases remain fail-closed while required evidence is refreshed.');
-      } else if (!detailsReady) {
-        status.classList.add('warn');
-        setText('statusIcon', '↻');
-        setText('statusLabel', 'Details incomplete');
-        setText('statusTitle', 'Some published establishments cannot load optional live details');
-        setText('statusDetail', 'Restore a validated live provider route before treating app field coverage as complete.');
       } else {
         setText('statusIcon', '✓');
         setText('statusLabel', 'Production safe');
@@ -212,25 +194,17 @@
       setText('updated', `Updated ${new Date(data.generated_at).toLocaleTimeString([], { hour:'numeric', minute:'2-digit' })}`);
       setText('contractVersion', `Decision ${data.decision_version || 'unknown'} · expansion paused`);
       setText('expiryMeta', until(overall.next_expiry));
-      setText('detailMeta', `${fmt(runtime.detail_ready)} of ${fmt(runtime.eligible_establishments)} ready for live details`);
       setText('safeLive', fmt(overall.safe_live));
-      setText('liveMeta', `${fmt(overall.app_visible)} visible to the app`);
-      setText('unsafeCount', fmt(unsafe));
-      setText('sourceReady', `${currentRequired}/${required.length}`);
-      setText('sourceMeta', required.map(source => source.label).join(' + ') || 'No required sources');
-      setText('reviewCount', fmt(work.candidates_needing_review));
-      setText('nextAction', readiness.next_action || 'No immediate operator action.');
-      document.getElementById('unsafeMetric').className = `card metric ${unsafe ? 'bad' : 'good'}`;
-      document.getElementById('sourceMetric').className = `card metric ${sourcesReady ? 'good' : 'bad'}`;
+      const denominator = num(coverage.denominator);
+      for (const [field, count] of [['phone', coverage.phone], ['website', coverage.website], ['hours', coverage.hours]]) {
+        setText(`${field}Count`, fmt(count));
+        setText(`${field}Meta`, `of ${fmt(denominator)} live`);
+      }
     }
 
     function venueRow(item) {
-      const providers = item.live_providers || [];
-      const detail = providers.length
-        ? `${providers.length} live source${providers.length === 1 ? '' : 's'}`
-        : 'Core only';
       const area = [item.neighborhood, item.city, item.region].filter(Boolean).join(' · ');
-      return `<article class="venue"><div><div class="venue-name">${esc(item.name)}</div><div class="venue-type">${esc(item.primary_type_name || human(item.primary_type_slug))}</div></div><div class="venue-location"><div class="venue-address">${esc(item.address || 'Address unavailable')}</div><div class="venue-area">${esc(area)}</div></div><span class="detail ${providers.length ? '' : 'core'}">${esc(detail)}</span></article>`;
+      return `<article class="venue"><div><div class="venue-name">${esc(item.name)}</div><div class="venue-type">${esc(item.primary_type_name || human(item.primary_type_slug))}</div></div><div class="venue-location"><div class="venue-address">${esc(item.address || 'Address unavailable')}</div><div class="venue-area">${esc(area)}</div></div></article>`;
     }
 
     function renderVenues() {
