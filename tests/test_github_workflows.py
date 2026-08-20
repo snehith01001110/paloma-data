@@ -40,6 +40,13 @@ def test_maintenance_workflow_checks_live_details_runtime_daily():
     assert "if: github.event_name == 'schedule'" in SYNC
 
 
+def test_manual_catalog_refresh_can_recover_suppressed_existing_records():
+    assert (
+        'paloma-data pipeline-enqueue-catalog --include-suppressed --city "$CITY" '
+        '--limit "$LIMIT"'
+    ) in SYNC
+
+
 def test_scoped_oidc_credential_allows_only_the_two_reviewed_workflows():
     assert ".github/workflows/sync.yml@refs/heads/main" in CREDENTIALS
     assert ".github/workflows/expansion.yml@refs/heads/main" in CREDENTIALS

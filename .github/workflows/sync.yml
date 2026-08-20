@@ -181,7 +181,7 @@ jobs:
                 --limit "$LIMIT"
               ;;
             queue-refresh)
-              paloma-data pipeline-enqueue-catalog --city "$CITY" --limit "$LIMIT"
+              paloma-data pipeline-enqueue-catalog --include-suppressed --city "$CITY" --limit "$LIMIT"
               ;;
             queue-work)
               paloma-data pipeline-worker \
