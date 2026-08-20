@@ -46,6 +46,10 @@ access to the event table. An owner uses the Supabase SQL editor or an equivalen
 connection to insert one immutable event after reviewing the terms and the exact coverage snapshot.
 Never copy the example placeholders unchanged.
 
+Contribution-terms activation is also an owner decision. The database hash must match the reviewed
+file exactly. Development approval does not authorize accepting public contributions in production;
+complete legal review and activate a production-approved version before enabling that workflow.
+
 ```sql
 insert into governance.catalog_expansion_release_events (
   release_id, event_type, manifest_sha256, scope_cities,
