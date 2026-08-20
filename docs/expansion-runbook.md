@@ -29,9 +29,15 @@ paloma-data pipeline-status
 - the published cohort has no expired verification, stale decision version, pending field conflict,
   or pending exact-address identity conflict;
 - there are no recent dead jobs or failed/partial logical runs;
-- full catalog refreshes have succeeded in at least two UTC calendar weeks during the prior 21 days,
-  with the latest no more than 96 hours old; and
+- full catalog refreshes have succeeded in the number of UTC calendar weeks required by the
+  checked-in manifest, with the latest no more than 96 hours old; and
 - the release still has capacity.
+
+The checked-in manifest explicitly identifies its deployment phase. Development may use one
+healthy refresh week so an empty pre-launch catalog is not forced to idle. Production validation
+requires at least two healthy refresh weeks; before launch, change `deployment_phase` to
+`production` and restore `minimum_healthy_refresh_weeks` to at least `2`. Either change updates the
+manifest hash and invalidates earlier release authorizations.
 
 ## Owner authorization
 
@@ -55,7 +61,7 @@ select
   array['Berkeley','Oakland'], 25,
   count(*) filter (where publication_state = 'published' and status = 'open'),
   '{"ca_abc":7,"datasf":7,"fsq":45,"overture":45,"wikidata":45}'::jsonb,
-  'v7', 2, 21, 96, 14,
+  'v7', 1, 21, 96, 14,
   '<active terms version>', '<reviewed coverage snapshot>'::jsonb,
   '<coverage reviewer>', now(), '<approver>', '<approval rationale>',
   now(), now() + interval '14 days'
