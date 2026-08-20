@@ -338,6 +338,7 @@ async function v2Payload(sql: Sql, runtimeApplied: boolean) {
     tierRows,
     typeRows,
     cityRows,
+    expansionRows,
   ] = await Promise.all([
     sql`
       with classified as (
@@ -517,6 +518,26 @@ async function v2Payload(sql: Sql, runtimeApplied: boolean) {
       group by e.city
       order by count(*) desc, e.city
       limit 16
+    `,
+    sql`
+      select event.release_id,
+             event.scope_cities,
+             event.maximum_new_publications,
+             event.baseline_publications,
+             event.minimum_healthy_refresh_weeks,
+             event.expires_at,
+             event.terms_version,
+             count(establishment.id) filter (
+               where establishment.publication_state = 'published'
+                 and establishment.status = 'open'
+             )::bigint as published
+      from governance.catalog_expansion_release_events event
+      left join public.establishments establishment
+        on establishment.expansion_release_id = event.release_id
+      where event.event_type = 'approved'
+      group by event.id
+      order by event.id desc
+      limit 1
     `,
   ]);
 
@@ -736,6 +757,27 @@ async function v2Payload(sql: Sql, runtimeApplied: boolean) {
   const cutoverComplete = unsafeLegacy === 0;
   const safeForUsers = cutoverComplete && unsafeAppVisible === 0 &&
     requiredReady;
+  const expansion = expansionRows[0]
+    ? {
+      release_id: expansionRows[0].release_id,
+      scope_cities: expansionRows[0].scope_cities ?? [],
+      maximum_new_publications: number(
+        expansionRows[0].maximum_new_publications,
+      ),
+      baseline_publications: number(expansionRows[0].baseline_publications),
+      published: number(expansionRows[0].published),
+      available_slots: Math.max(
+        0,
+        number(expansionRows[0].maximum_new_publications) -
+          number(expansionRows[0].published),
+      ),
+      minimum_healthy_refresh_weeks: number(
+        expansionRows[0].minimum_healthy_refresh_weeks,
+      ),
+      expires_at: expansionRows[0].expires_at,
+      terms_version: expansionRows[0].terms_version,
+    }
+    : null;
 
   return {
     dashboard_version: "v3",
@@ -813,6 +855,7 @@ async function v2Payload(sql: Sql, runtimeApplied: boolean) {
       ),
       providers,
     },
+    expansion,
     sources,
     verification_tiers: tierRows.map((row) => ({
       tier: row.tier,
