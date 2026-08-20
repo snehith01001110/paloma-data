@@ -192,7 +192,7 @@
       }
 
       setText('updated', `Updated ${new Date(data.generated_at).toLocaleTimeString([], { hour:'numeric', minute:'2-digit' })}`);
-      setText('contractVersion', `Decision ${data.decision_version || 'unknown'} · expansion paused`);
+      setText('contractVersion', `Decision ${data.decision_version || 'unknown'}`);
       setText('expiryMeta', until(overall.next_expiry));
       setText('safeLive', fmt(overall.safe_live));
       const denominator = num(coverage.denominator);
