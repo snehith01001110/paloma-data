@@ -1,6 +1,6 @@
 # Paloma Establishment Data Contribution Terms — 2026-08-v1
 
-Status: Draft pending owner and legal review
+Status: Owner-approved for development on 2026-08-20; production legal review remains required
 
 By submitting establishment information, the contributor confirms that:
 
@@ -25,5 +25,6 @@ These terms cover factual establishment fields such as regular hours, contact in
 location, operating status, price ranges, and objectively defined amenities. Separate terms are
 required for photographs, prose descriptions, reviews, menus, or other creative content.
 
-This draft must be approved and activated in `governance.contribution_terms_versions` before the
-production contribution endpoint accepts submissions.
+This version may be activated for development and internal release-governance testing. Before
+Paloma enables public contributions in production, the owner must complete legal review and either
+reapprove this exact version for production or publish and activate a superseding version.
