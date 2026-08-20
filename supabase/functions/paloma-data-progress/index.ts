@@ -759,22 +759,22 @@ async function v2Payload(sql: Sql, runtimeApplied: boolean) {
     requiredReady;
   const expansion = expansionRows[0]
     ? {
-        release_id: expansionRows[0].release_id,
-        scope_cities: expansionRows[0].scope_cities ?? [],
-        maximum_new_publications: number(expansionRows[0].maximum_new_publications),
-        baseline_publications: number(expansionRows[0].baseline_publications),
-        published: number(expansionRows[0].published),
-        available_slots: Math.max(
-          0,
-          number(expansionRows[0].maximum_new_publications) -
-            number(expansionRows[0].published),
-        ),
-        minimum_healthy_refresh_weeks: number(
-          expansionRows[0].minimum_healthy_refresh_weeks,
-        ),
-        expires_at: expansionRows[0].expires_at,
-        terms_version: expansionRows[0].terms_version,
-      }
+      release_id: expansionRows[0].release_id,
+      scope_cities: expansionRows[0].scope_cities ?? [],
+      maximum_new_publications: number(expansionRows[0].maximum_new_publications),
+      baseline_publications: number(expansionRows[0].baseline_publications),
+      published: number(expansionRows[0].published),
+      available_slots: Math.max(
+        0,
+        number(expansionRows[0].maximum_new_publications) -
+          number(expansionRows[0].published),
+      ),
+      minimum_healthy_refresh_weeks: number(
+        expansionRows[0].minimum_healthy_refresh_weeks,
+      ),
+      expires_at: expansionRows[0].expires_at,
+      terms_version: expansionRows[0].terms_version,
+    }
     : null;
 
   return {
