@@ -78,6 +78,12 @@
       "maximum_new_publications": 25
     },
     {
+      "release_id": "east-bay-sr-dublin-v1",
+      "label": "East Bay San Ramon / Dublin pilot",
+      "cities": ["Dublin", "San Ramon"],
+      "maximum_new_publications": 25
+    },
+    {
       "release_id": "south-bay-pilot-v1",
       "label": "South Bay pilot",
       "cities": ["Mountain View", "San Jose", "Santa Clara", "Sunnyvale"],

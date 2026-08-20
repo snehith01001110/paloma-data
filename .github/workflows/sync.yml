@@ -48,7 +48,7 @@ jobs:
     env:
       PALOMA_COUNTRIES: US
       PALOMA_REGIONS: CA
-      PALOMA_CITIES: San Francisco,Oakland,Berkeley,San Jose,San Mateo,Palo Alto,Mountain View,Sunnyvale,Santa Clara,Redwood City,Napa,Sonoma
+      PALOMA_CITIES: San Francisco,Oakland,Berkeley,San Jose,San Mateo,Palo Alto,Mountain View,Sunnyvale,Santa Clara,Redwood City,Napa,Sonoma,Dublin,San Ramon
       PALOMA_OVERTURE_BBOX: -123.2,36.8,-121.1,38.9
       FSQ_CATALOG_URI: ${{ vars.FSQ_CATALOG_URI }}
       FSQ_CATALOG_TOKEN: ${{ secrets.FSQ_CATALOG_TOKEN }}
