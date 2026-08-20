@@ -6,6 +6,106 @@
       "candidate_id": "e1f542d2-1367-4a94-bf70-a6836aaff4cf",
       "candidate_name": "Cask Taproom",
       "city": "Berkeley",
+      "field_name": "website_url",
+      "value": "https://caskstore.com/pages/cask-taproom",
+      "evidence_urls": ["https://caskstore.com/pages/cask-taproom"],
+      "note": "Reviewed the merchant-operated page for this exact Berkeley taproom identity.",
+      "lease_days": 180
+    },
+    {
+      "candidate_id": "ad500d45-5050-4fb9-9fa5-7875c6426f0f",
+      "candidate_name": "Cellarmaker Brewing Company",
+      "city": "Berkeley",
+      "field_name": "website_url",
+      "value": "https://cellarmakerbrewing.com/berkeley/",
+      "evidence_urls": ["https://cellarmakerbrewing.com/berkeley/"],
+      "note": "Reviewed the merchant-operated Berkeley location page for this exact candidate.",
+      "lease_days": 180
+    },
+    {
+      "candidate_id": "9bc51ec1-aa4f-488b-a17b-93224bf30e96",
+      "candidate_name": "Fieldwork Brewing Company",
+      "city": "Berkeley",
+      "field_name": "website_url",
+      "value": "https://fieldworkbrewing.com/",
+      "evidence_urls": ["https://fieldworkbrewing.com/accessibility/"],
+      "note": "Reviewed Fieldwork's merchant-operated site, whose accessibility page identifies the Berkeley location.",
+      "lease_days": 180
+    },
+    {
+      "candidate_id": "cc8dff32-50e4-4732-98a5-4ec43229bdf0",
+      "candidate_name": "Headlands Brewing",
+      "city": "Berkeley",
+      "field_name": "website_url",
+      "value": "https://www.headlandsbrewing.com/berkeley",
+      "evidence_urls": ["https://www.headlandsbrewing.com/berkeley"],
+      "note": "Reviewed the merchant-operated Berkeley beer-garden page for this exact candidate.",
+      "lease_days": 180
+    },
+    {
+      "candidate_id": "762db743-0c41-4198-a222-23ab38d057a5",
+      "candidate_name": "Mile Limit",
+      "city": "Berkeley",
+      "field_name": "website_url",
+      "value": "https://www.milelimitberkeley.com/",
+      "evidence_urls": ["https://www.milelimitberkeley.com/contact"],
+      "note": "Reviewed the merchant-operated contact page for the exact San Pablo Avenue location.",
+      "lease_days": 180
+    },
+    {
+      "candidate_id": "762db743-0c41-4198-a222-23ab38d057a5",
+      "candidate_name": "Mile Limit",
+      "city": "Berkeley",
+      "field_name": "phone_e164",
+      "value": "+15108332687",
+      "evidence_urls": ["https://www.milelimitberkeley.com/contact"],
+      "note": "Current merchant contact page lists this phone for the exact San Pablo Avenue location.",
+      "lease_days": 180
+    },
+    {
+      "candidate_id": "d7ad07af-a1ef-4aea-b1fc-ab32a378bce7",
+      "candidate_name": "Drake's Dealership",
+      "city": "Oakland",
+      "field_name": "website_url",
+      "value": "https://drinkdrakes.com/visit/dealership/",
+      "evidence_urls": ["https://drinkdrakes.com/visit/dealership/"],
+      "note": "Reviewed Drake's merchant-operated Dealership location page for this exact candidate.",
+      "lease_days": 180
+    },
+    {
+      "candidate_id": "762db743-0c41-4198-a222-23ab38d057a5",
+      "candidate_name": "Mile Limit",
+      "city": "Berkeley",
+      "field_name": "hours",
+      "value": {"wednesday": [["16:00", "21:00"]], "thursday": [["16:00", "21:00"]], "friday": [["16:00", "22:00"]], "saturday": [["16:00", "22:00"]], "sunday": [["16:00", "21:00"]]},
+      "evidence_urls": ["https://www.milelimitberkeley.com/contact"],
+      "note": "Current merchant contact page lists exact weekly hours; Monday and Tuesday are explicitly closed.",
+      "lease_days": 90
+    },
+    {
+      "candidate_id": "8541c80b-dade-481d-98e7-f69ec4844ea0",
+      "candidate_name": "Smitty’s Lounge",
+      "city": "Oakland",
+      "field_name": "hours",
+      "value": {"monday": [["11:00", "02:00"]], "tuesday": [["11:00", "02:00"]], "wednesday": [["11:00", "02:00"]], "thursday": [["11:00", "02:00"]], "friday": [["11:00", "02:00"]], "saturday": [["11:00", "02:00"]], "sunday": [["11:00", "02:00"]]},
+      "evidence_urls": ["https://www.visitoakland.com/listing/smittys-cocktails/598/"],
+      "note": "Current Oakland destination-authority listing was reviewed against the exact Grand Avenue identity and lists the same daily schedule.",
+      "lease_days": 90
+    },
+    {
+      "candidate_id": "13543fc8-4d45-4e8e-b990-c8b115dcd4d7",
+      "candidate_name": "Viridian",
+      "city": "Oakland",
+      "field_name": "hours",
+      "value": {"wednesday": [["17:00", "24:00"]], "thursday": [["17:00", "24:00"]], "friday": [["17:00", "02:00"]], "saturday": [["17:00", "02:00"]], "sunday": [["17:00", "24:00"]]},
+      "evidence_urls": ["https://www.viridianbar.com/", "https://www.visitoakland.com/listing/viridian/6353/"],
+      "note": "Current merchant page confirms Wednesday-through-Sunday evening service and closure Monday-Tuesday; the destination-authority listing supplies exact closing times for the same address.",
+      "lease_days": 90
+    },
+    {
+      "candidate_id": "e1f542d2-1367-4a94-bf70-a6836aaff4cf",
+      "candidate_name": "Cask Taproom",
+      "city": "Berkeley",
       "field_name": "hours",
       "value": {"tuesday": [["15:00", "22:00"]], "wednesday": [["15:00", "22:00"]], "thursday": [["15:00", "22:00"]], "friday": [["15:00", "24:00"]], "saturday": [["15:00", "24:00"]]},
       "evidence_urls": ["https://caskstore.com/pages/cask-taproom"],

@@ -28,6 +28,11 @@ def test_maintenance_workflow_has_no_new_publication_or_legacy_cutover_action():
     assert "PALOMA_CATALOG_AUTO_PUBLISH" not in SYNC
 
 
+def test_maintenance_workflow_checks_live_details_runtime_daily():
+    assert "paloma-data live-details-health --require-healthy" in SYNC
+    assert "if: github.event_name == 'schedule'" in SYNC
+
+
 def test_scoped_oidc_credential_allows_only_the_two_reviewed_workflows():
     assert ".github/workflows/sync.yml@refs/heads/main" in CREDENTIALS
     assert ".github/workflows/expansion.yml@refs/heads/main" in CREDENTIALS

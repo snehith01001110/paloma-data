@@ -92,7 +92,15 @@ export function liveDetailsResponse(
       provider: result.provider,
       ...result.attribution,
     })),
-    field_sources: sources,
+    // Keep the wire contract sparse: a field appears only when a provider
+    // supplied its display value. Some strongly typed clients decode this as
+    // [String: String], where an explicit JSON null invalidates the whole
+    // response even though the requested values were returned successfully.
+    field_sources: Object.fromEntries(
+      Object.entries(sources).filter(
+        (entry): entry is [string, LiveDetailsProvider] => entry[1] !== null,
+      ),
+    ),
     ...details,
   };
 }
