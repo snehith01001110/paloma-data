@@ -133,9 +133,12 @@ class FieldResolver:
         evidence_rows = conn.execute(
             """
             select distinct on (
-                     establishment_id, field_name, source, source_record_id
+                     coalesce(establishment_id, candidate_id),
+                     field_name, source, source_record_id
                    )
-                   id::text as evidence_id, establishment_id::text, field_name,
+                   id::text as evidence_id,
+                   coalesce(establishment_id, candidate_id)::text as establishment_id,
+                   field_name,
                    value_text, normalized_value, value_json, source,
                    evidence_confidence::float, identity_confidence::float,
                    authority::float, source_updated_at, upstream_origin_keys
@@ -147,7 +150,8 @@ class FieldResolver:
                 'address', 'latitude', 'longitude', 'operating_status',
                 'neighborhood', 'hours', 'price_level', 'setting_slug'
               )
-            order by establishment_id, field_name, source, source_record_id,
+            order by coalesce(establishment_id, candidate_id),
+                     field_name, source, source_record_id,
                      observed_at desc, id desc
             """
         ).fetchall()
@@ -598,6 +602,137 @@ class FieldResolver:
                 row.get("source_updated_at"), str(row.get("field_name") or "")
             )
         )
+
+
+def resolve_candidate_observations(
+    conn: Any,
+    candidate_id: str,
+    resolved_snapshot: dict[str, Any],
+) -> dict[str, Any]:
+    """Overlay admissible private-candidate observations onto a verified snapshot."""
+    rows = conn.execute(
+        """
+        select distinct on (field_name, source, source_record_id)
+               id::text as evidence_id, field_name, value_text, normalized_value,
+               value_json, source, evidence_confidence::float,
+               identity_confidence::float, authority::float, source_updated_at,
+               upstream_origin_keys
+        from catalog.field_observations
+        where candidate_id = %s::uuid
+          and observation_status = 'asserted'
+          and (expires_at is null or expires_at > now())
+          and field_name in (
+            'phone_e164', 'website_url', 'neighborhood', 'hours',
+            'price_level', 'setting_slug'
+          )
+        order by field_name, source, source_record_id, observed_at desc, id desc
+        """,
+        (candidate_id,),
+    ).fetchall()
+    by_field: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        by_field[str(row["field_name"])].append(dict(row))
+
+    result = dict(resolved_snapshot)
+    field_sources = dict(result.get("field_sources") or {})
+    field_confidences = dict(result.get("field_confidences") or {})
+    field_evidence_ids = dict(result.get("field_evidence_ids") or {})
+    resolution_status = dict(result.get("field_resolution_status") or {})
+    resolver = FieldResolver(None)
+    specs = (
+        ("phone_e164", "phone_e164", "phone", 0.68, False),
+        ("website_url", "website_url", "website", 0.68, False),
+        ("neighborhood", "neighborhood", "neighborhood", 0.68, False),
+        ("hours", "hours", "hours", 0.58, True),
+        ("price_level", "price_level", "price", 0.75, True),
+    )
+    for field_name, output_key, provenance_key, minimum, use_json in specs:
+        evidence = by_field[field_name]
+        if not evidence:
+            continue
+        selected = (
+            resolver._select_neighborhood(evidence)
+            if field_name == "neighborhood"
+            else resolver._select_attribute(evidence, minimum)
+        )
+        selected = _require_candidate_contact_corroboration(field_name, selected)
+        if selected is None:
+            result[output_key] = None
+            field_sources[provenance_key] = None
+            field_confidences[provenance_key] = None
+            field_evidence_ids[provenance_key] = []
+            distinct_values = {
+                str(row.get("normalized_value") or row.get("value_text"))
+                for row in evidence
+            }
+            resolution_status[provenance_key] = (
+                "conflicted" if len(distinct_values) > 1 else "insufficient"
+            )
+            continue
+        value: Any = selected.get("value_json") if use_json else selected["value_text"]
+        if field_name == "price_level":
+            try:
+                value = int(selected["value_text"])
+            except (TypeError, ValueError):
+                value = None
+            if value not in range(1, 5):
+                value = None
+        result[output_key] = value
+        field_sources[provenance_key] = str(selected["best_source"])
+        field_confidences[provenance_key] = round(float(selected["score"]), 3)
+        field_evidence_ids[provenance_key] = list(
+            selected.get("evidence_ids") or [selected["evidence_id"]]
+        )
+        resolution_status[provenance_key] = "selected"
+
+    setting_evidence = by_field["setting_slug"]
+    if setting_evidence:
+        known_settings = {
+            str(row["slug"])
+            for row in conn.execute("select slug from public.settings").fetchall()
+        }
+        settings: list[str] = []
+        evidence_ids: set[str] = set()
+        sources: set[str] = set()
+        scores: list[float] = []
+        for candidate in resolver._rank_evidence(setting_evidence):
+            slug = str(candidate["normalized_value"] or candidate["value_text"])
+            if float(candidate["score"]) < 0.58 or slug not in known_settings:
+                continue
+            settings.append(slug)
+            evidence_ids.update(
+                str(value)
+                for value in (
+                    candidate.get("evidence_ids") or [candidate["evidence_id"]]
+                )
+            )
+            sources.add(str(candidate["best_source"]))
+            scores.append(float(candidate["score"]))
+        result["setting_slugs"] = sorted(set(settings))
+        field_sources["settings"] = "+".join(sorted(sources)) if settings else None
+        field_confidences["settings"] = round(min(scores), 3) if scores else None
+        field_evidence_ids["settings"] = sorted(evidence_ids)
+        resolution_status["settings"] = "selected" if settings else "insufficient"
+
+    result["field_sources"] = field_sources
+    result["field_confidences"] = field_confidences
+    result["field_evidence_ids"] = field_evidence_ids
+    result["field_resolution_status"] = resolution_status
+    return result
+
+
+def _require_candidate_contact_corroboration(
+    field_name: str,
+    selected: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Fail closed on unreviewed candidate contact facts from a single origin."""
+    if selected is None or field_name not in {"phone_e164", "website_url"}:
+        return selected
+    if str(selected.get("best_source")) == "manual":
+        return selected
+    if int(selected.get("source_count") or 0) < 2:
+        return None
+    return selected
 
 
 def _identity_confidence(confidences: list[float]) -> float:

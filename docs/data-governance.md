@@ -21,6 +21,8 @@ state is a projection, not overwritten history.
 | California ABC | Yes, field-scoped | License/legal evidence; not consumer operating hours. |
 | DataSF reviewed datasets | Yes, field-scoped | Preserve dataset identity and terms review. |
 | DataSF SF Find boundaries | Yes, neighborhood only | Public-domain point-in-polygon display labels; general locations, not legal boundaries. |
+| Oakland neighborhood boundaries | Not yet | The city-owned 2002 neighborhood layer has no dataset license or attribution terms in its current portal metadata; keep derived labels null until policy review admits a specific version. |
+| Berkeley neighborhood boundaries | Not yet | No reviewed city boundary feed with explicit durable-reuse terms is configured. |
 | FSQ OS Places | Yes, field-scoped | Apache-2.0 release only; never self-service API attributes. |
 | Overture | Yes, property-scoped | Each field retains SourceItems, upstream origins, and licenses. |
 | Wikidata | Yes, field-scoped | CC0 corroboration; sparse and lower authority. |

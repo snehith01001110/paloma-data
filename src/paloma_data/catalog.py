@@ -606,7 +606,7 @@ def _corroborated_phone(
     observations: list[tuple[str, SourceRecord, frozenset[str]]] = []
     for record in records:
         normalized = normalize_phone(record.phone, country_code)
-        origins = _origins(record)
+        origins = _origins(record, "phone_e164")
         if normalized and origins:
             observations.append((normalized, record, origins))
     return _independently_agreed_value(observations)
@@ -620,7 +620,7 @@ def _corroborated_website(
     for record in records:
         normalized = normalize_url(record.website_url)
         host = website_host(normalized)
-        origins = _origins(record)
+        origins = _origins(record, "website_url")
         if normalized and host and origins:
             observations.append((host, record, origins))
             display_values[(host, record.source)] = normalized
@@ -648,8 +648,13 @@ def _independently_agreed_value(
     return None, None
 
 
-def _origins(record: SourceRecord) -> frozenset[str]:
-    origins = frozenset(record.origin_keys or (record.source,))
+def _origins(record: SourceRecord, field_name: str | None = None) -> frozenset[str]:
+    field = (
+        record.field_provenance.get(field_name, {})
+        if field_name and isinstance(record.field_provenance, dict)
+        else {}
+    )
+    origins = frozenset(field.get("origin_keys") or record.origin_keys or (record.source,))
     if record.source == "overture" and any(
         origin == "overture" or origin.startswith("overture:")
         for origin in origins

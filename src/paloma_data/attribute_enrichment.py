@@ -35,11 +35,12 @@ class CatalogPlace:
     longitude: float
     phone_e164: str | None
     website_url: str | None
+    entity_column: str = "establishment_id"
 
 
 @dataclass(frozen=True, slots=True)
 class EvidenceClaim:
-    establishment_id: str
+    entity_id: str
     field_name: str
     value_text: str
     normalized_value: str | None
@@ -51,6 +52,7 @@ class EvidenceClaim:
     authority: float
     source_updated_at: datetime | None
     metadata: dict[str, Any]
+    entity_column: str = "establishment_id"
 
 
 class OpenAttributeEnricher:
@@ -130,6 +132,7 @@ class OpenAttributeEnricher:
                         0.84,
                         observation.source_updated_at,
                         base_metadata,
+                        entity_column=place.entity_column,
                     )
                 )
             if observation.website_url:
@@ -147,6 +150,7 @@ class OpenAttributeEnricher:
                         0.82,
                         observation.source_updated_at,
                         base_metadata,
+                        entity_column=place.entity_column,
                     )
                 )
             if observation.hours:
@@ -164,6 +168,7 @@ class OpenAttributeEnricher:
                         0.76,
                         observation.source_updated_at,
                         base_metadata,
+                        entity_column=place.entity_column,
                     )
                 )
             for setting in observation.setting_slugs:
@@ -181,6 +186,7 @@ class OpenAttributeEnricher:
                         0.78,
                         observation.source_updated_at,
                         base_metadata,
+                        entity_column=place.entity_column,
                     )
                 )
         return len(observations), claims, ambiguous
@@ -229,6 +235,7 @@ class OpenAttributeEnricher:
                     0.84,
                     boundary.source_updated_at,
                     {"match_method": "point_in_polygon", "subtype": boundary.subtype},
+                    entity_column=place.entity_column,
                 )
             )
         return len(boundaries), claims, unmatched
@@ -240,11 +247,27 @@ class OpenAttributeEnricher:
                 select e.id::text, e.name, coalesce(e.normalized_name, lower(e.name)) as normalized_name,
                        ST_Y(e.location::geometry) as latitude,
                        ST_X(e.location::geometry) as longitude,
-                       e.phone_e164, e.website_url
+                       e.phone_e164, e.website_url,
+                       'establishment_id'::text as entity_column
                 from public.establishments e
                 where e.status <> 'closed'
                   and exists (
                     select 1 from ingest.establishment_sources es where es.establishment_id = e.id
+                  )
+                union all
+                select c.id::text, c.name,
+                       coalesce(c.normalized_name, lower(c.name)) as normalized_name,
+                       ST_Y(c.location::geometry) as latitude,
+                       ST_X(c.location::geometry) as longitude,
+                       c.resolved_snapshot->>'phone_e164' as phone_e164,
+                       c.resolved_snapshot->>'website_url' as website_url,
+                       'candidate_id'::text as entity_column
+                from ingest.catalog_candidates c
+                where c.candidate_state = 'verified'
+                  and c.verification_expires_at > now()
+                  and not exists (
+                    select 1 from public.establishments e
+                    where e.catalog_candidate_id = c.id
                   )
                 """
             ).fetchall()
@@ -260,13 +283,14 @@ class OpenAttributeEnricher:
             conn,
             """
             insert into catalog.field_observations (
-                establishment_id, field_name, value_text, normalized_value, value_json,
+                establishment_id, candidate_id,
+                field_name, value_text, normalized_value, value_json,
                 value_hash, source, source_record_id, source_property, claim_kind,
                 evidence_confidence, identity_confidence, authority,
                 upstream_origin_keys, license_ids, source_items, source_policy_id,
                 source_updated_at, expires_at, observation_fingerprint, metadata
             ) values (
-                %s::uuid, %s, %s, %s, %s::jsonb,
+                %s::uuid, %s::uuid, %s, %s, %s, %s::jsonb,
                 %s, %s, %s, %s, 'derived', %s, %s, %s,
                 %s, %s, '[]'::jsonb,
                 (select source_policy_id from governance.current_source_field_policies
@@ -277,7 +301,8 @@ class OpenAttributeEnricher:
             """,
             [
                 (
-                    row.establishment_id,
+                    row.entity_id if row.entity_column == "establishment_id" else None,
+                    row.entity_id if row.entity_column == "candidate_id" else None,
                     row.field_name,
                     row.value_text,
                     row.normalized_value,
@@ -298,7 +323,7 @@ class OpenAttributeEnricher:
                     row.source_updated_at,
                     _hash(
                         {
-                            "establishment_id": row.establishment_id,
+                            row.entity_column: row.entity_id,
                             "field": row.field_name,
                             "source": row.source,
                             "source_record_id": row.source_record_id,
@@ -373,7 +398,7 @@ def _match_osm(
 
 
 def _claim(
-    establishment_id: str,
+    entity_id: str,
     field_name: str,
     value_text: str,
     normalized_value: str | None,
@@ -385,9 +410,11 @@ def _claim(
     authority: float,
     source_updated_at: datetime | None,
     metadata: dict[str, Any],
+    *,
+    entity_column: str = "establishment_id",
 ) -> EvidenceClaim:
     return EvidenceClaim(
-        establishment_id=establishment_id,
+        entity_id=entity_id,
         field_name=field_name,
         value_text=value_text,
         normalized_value=normalized_value,
@@ -399,4 +426,5 @@ def _claim(
         authority=authority,
         source_updated_at=source_updated_at,
         metadata=metadata,
+        entity_column=entity_column,
     )

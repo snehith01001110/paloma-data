@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -20,8 +21,14 @@ from paloma_data.catalog import (
     provider_verification,
 )
 from paloma_data.catalog_repository import CatalogRepository
+from paloma_data.candidate_observations import CandidateObservationManifest
 from paloma_data.db import Database
+from paloma_data.evidence_ledger import (
+    append_candidate_source_observations,
+    append_manual_candidate_observation,
+)
 from paloma_data.expansion import ExpansionGate
+from paloma_data.field_resolution import resolve_candidate_observations
 from paloma_data.models import SourceRecord
 from paloma_data.normalizers import normalize_address, normalize_name
 from paloma_data.taxonomy import BAR_TYPES
@@ -91,6 +98,9 @@ class CatalogPipeline:
                     links,
                     self.repo.verifications(conn, candidate_id),
                     mode="production",
+                )
+                decision = self._apply_candidate_observations(
+                    conn, candidate_id, decision
                 )
                 self.repo.save_evaluation(
                     conn,
@@ -237,6 +247,10 @@ class CatalogPipeline:
                     else [verification, *existing],
                     mode=mode,
                 )
+                if mode == "production":
+                    decision = self._apply_candidate_observations(
+                        conn, candidate_id, decision
+                    )
                 self.repo.save_evaluation(
                     conn,
                     candidate_id,
@@ -272,10 +286,16 @@ class CatalogPipeline:
         *,
         city: str | None,
         limit: int,
+        states: tuple[str, ...] | None = None,
     ) -> dict[str, int]:
         counters: defaultdict[str, int] = defaultdict(int)
         with self.db.connection() as conn:
-            ids = self.repo.candidate_ids(conn, city=city, limit=limit)
+            ids = self.repo.candidate_ids(
+                conn,
+                city=city,
+                limit=limit,
+                states=states,
+            )
             for index, candidate_id in enumerate(ids, start=1):
                 decision = self._evaluate_candidate(conn, candidate_id)
                 counters[decision.state] += 1
@@ -411,8 +431,25 @@ class CatalogPipeline:
             self.repo.verifications(conn, candidate_id),
             mode="production",
         )
+        decision = self._apply_candidate_observations(conn, candidate_id, decision)
         self.repo.save_evaluation(conn, candidate_id, decision, mode="production")
         return decision
+
+    def _apply_candidate_observations(
+        self,
+        conn,
+        candidate_id: str,
+        decision: CatalogDecision,
+    ) -> CatalogDecision:
+        if decision.state != "verified":
+            return decision
+        append_candidate_source_observations(conn, candidate_id)
+        resolved = resolve_candidate_observations(
+            conn,
+            candidate_id,
+            decision.resolved,
+        )
+        return replace(decision, resolved=resolved)
 
     def _decide_candidate(
         self,
@@ -725,6 +762,132 @@ class CatalogPipeline:
             "verification_tier": decision.verification_tier,
             "attestation_outcome": verification.outcome,
             "verification_expires_at": verification.expires_at.isoformat(),
+            "publication_mutated": False,
+        }
+
+    def observe_candidate_field(
+        self,
+        candidate_id: str,
+        *,
+        field_name: str,
+        value: Any,
+        reviewer: str,
+        evidence_urls: tuple[str, ...],
+        expected_city: str | None = None,
+        note: str | None = None,
+        lease_days: int | None = None,
+    ) -> dict[str, Any]:
+        """Append one reviewed atomic fact to a private candidate and re-resolve it."""
+        with self.db.connection() as conn:
+            conn.execute(
+                "select pg_advisory_xact_lock(hashtext('paloma_candidate:' || %s))",
+                (candidate_id,),
+            )
+            anchor = self.repo.fsq_anchor(conn, candidate_id)
+            if anchor is None:
+                raise ValueError(f"Unknown or non-FSQ catalog candidate: {candidate_id}")
+            if expected_city is not None and anchor.city.casefold() != expected_city.casefold():
+                raise ValueError(
+                    f"Candidate city {anchor.city!r} does not match guardrail {expected_city!r}"
+                )
+            if self.repo.materialized_publication(conn, candidate_id) is not None:
+                raise ValueError(
+                    "catalog-observe-field is private-candidate-only; use the reviewed "
+                    "contribution workflow for a published establishment"
+                )
+            observation = append_manual_candidate_observation(
+                conn,
+                candidate_id,
+                field_name=field_name,
+                value=value,
+                reviewer=reviewer,
+                evidence_urls=evidence_urls,
+                note=note,
+                lease_days=lease_days,
+            )
+            decision = self._evaluate_candidate(conn, candidate_id)
+            conn.commit()
+        return {
+            **observation,
+            "candidate_id": candidate_id,
+            "candidate_state": decision.state,
+            "decision_reason": decision.reason,
+            "field_coverage": _field_coverage(decision),
+            "publication_mutated": False,
+        }
+
+    def observe_candidate_manifest(
+        self,
+        manifest: CandidateObservationManifest,
+        *,
+        reviewer: str,
+    ) -> dict[str, Any]:
+        """Apply a reviewed, checked-in private field batch transactionally."""
+        outcomes: list[dict[str, Any]] = []
+        with self.db.connection() as conn:
+            conn.execute(
+                "select pg_advisory_xact_lock(hashtext(%s))",
+                (f"paloma_candidate_manifest:{manifest.manifest_id}",),
+            )
+            for item in manifest.observations:
+                conn.execute(
+                    "select pg_advisory_xact_lock(hashtext('paloma_candidate:' || %s))",
+                    (item.candidate_id,),
+                )
+                anchor = self.repo.fsq_anchor(conn, item.candidate_id)
+                if anchor is None:
+                    raise ValueError(
+                        f"Unknown or non-FSQ catalog candidate: {item.candidate_id}"
+                    )
+                if anchor.city.casefold() != item.city.casefold():
+                    raise ValueError(
+                        f"Candidate city {anchor.city!r} does not match manifest "
+                        f"guardrail {item.city!r}"
+                    )
+                if normalize_name(anchor.name) != normalize_name(item.candidate_name):
+                    raise ValueError(
+                        f"Candidate name {anchor.name!r} does not match manifest "
+                        f"guardrail {item.candidate_name!r}"
+                    )
+                if self.repo.materialized_publication(conn, item.candidate_id) is not None:
+                    raise ValueError(
+                        "catalog-observe-manifest is private-candidate-only; use the "
+                        "reviewed contribution workflow for a published establishment"
+                    )
+                observation = append_manual_candidate_observation(
+                    conn,
+                    item.candidate_id,
+                    field_name=item.field_name,
+                    value=item.value,
+                    reviewer=reviewer,
+                    evidence_urls=item.evidence_urls,
+                    note=item.note,
+                    lease_days=item.lease_days,
+                    idempotency_key=(
+                        f"{manifest.manifest_id}:{manifest.sha256}:"
+                        f"{item.candidate_id}:{item.field_name}"
+                    ),
+                )
+                decision = self._evaluate_candidate(conn, item.candidate_id)
+                outcomes.append(
+                    {
+                        **observation,
+                        "candidate_id": item.candidate_id,
+                        "candidate_name": item.candidate_name,
+                        "city": item.city,
+                        "candidate_state": decision.state,
+                        "field_coverage": _field_coverage(decision),
+                    }
+                )
+            conn.commit()
+        return {
+            "manifest_id": manifest.manifest_id,
+            "manifest_sha256": manifest.sha256,
+            "observation_count": len(outcomes),
+            "idempotent_replays": sum(
+                bool(item.get("idempotent_replay")) for item in outcomes
+            ),
+            "observations": outcomes,
             "publication_mutated": False,
         }
 

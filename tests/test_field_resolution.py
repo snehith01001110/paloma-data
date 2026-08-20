@@ -6,6 +6,7 @@ from paloma_data.field_resolution import (
     _conflict_evidence_ids,
     _filter_changed_decisions,
     _manual_review_covers_current_evidence,
+    _require_candidate_contact_corroboration,
     _reapply_manual_projections,
 )
 
@@ -121,6 +122,35 @@ def test_reviewed_civic_polygon_outranks_a_broader_registration_label():
     assert selected is not None
     assert selected["value_text"] == "Outer Sunset"
     assert selected["best_source"] == "datasf_neighborhoods"
+
+
+def test_private_candidate_contact_requires_two_independent_origins():
+    provider_only = {
+        "best_source": "overture",
+        "source_count": 1,
+        "value_text": "+15105550100",
+    }
+    corroborated = {**provider_only, "source_count": 2}
+
+    assert (
+        _require_candidate_contact_corroboration("phone_e164", provider_only) is None
+    )
+    assert (
+        _require_candidate_contact_corroboration("phone_e164", corroborated)
+        is corroborated
+    )
+
+
+def test_reviewed_candidate_contact_can_use_one_first_party_observation():
+    reviewed = {
+        "best_source": "manual",
+        "source_count": 1,
+        "value_text": "https://example.com",
+    }
+
+    assert (
+        _require_candidate_contact_corroboration("website_url", reviewed) is reviewed
+    )
 
 
 def test_unchanged_decisions_are_deduplicated_but_a_return_is_appended():

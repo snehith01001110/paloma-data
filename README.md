@@ -14,6 +14,7 @@ complete source snapshots
   -> ingest.catalog_candidates                private discovery/conflation entities
   -> ingest.candidate_source_links             conservative identity links
   -> ingest.candidate_verifications            licensed-provider/manual checks + expiry
+  -> catalog.field_observations                rights-checked, append-only field evidence
   -> ingest.catalog_evaluations                immutable decision history
   -> public.establishments                     only verified product entities
 ```
@@ -52,6 +53,13 @@ ODbL product decision. Overture provenance is decomposed into property-level ups
 licenses, and SourceItems, so an Overture row copied
 from Foursquare is never counted as independent Foursquare corroboration. Legacy or unknown
 Overture lineage cannot corroborate a contact field at all.
+
+Verified private candidates use the same append-only observation ledger and source-policy checks as
+published establishments. Provider-derived phone and website values require agreement from at least
+two independent upstream origins. A single first-party observation is accepted only after a named
+human reviewer records the atomic fact and its current HTTPS evidence URL; page payloads are not
+copied into durable storage. A disagreement clears the candidate projection and remains visible for
+review instead of being silently resolved.
 
 Manufacturer premises remain fail-closed. A Type 02, 23, or 74 license is not tasting-room proof.
 A generic brewery, winery, or distillery requires a manual public-access attestation; even
@@ -246,6 +254,18 @@ paloma-data catalog-attest --candidate-id 00000000-0000-0000-0000-000000000000 \
   --evidence-url "https://merchant.example/oakland" \
   --note "Current first-party page confirms identity and ordinary walk-in service." \
   --confirm MANUAL_ATTESTATION
+# Record one reviewed atomic fact without retaining the source page or provider response.
+paloma-data catalog-observe-field \
+  --candidate-id 00000000-0000-0000-0000-000000000000 --city "Oakland" \
+  --field-name hours \
+  --value-json '{"monday":[["15:00","22:00"]]}' \
+  --evidence-url "https://merchant.example/oakland" --reviewer "github:owner" \
+  --note "Current first-party location page reviewed." \
+  --confirm RECORD_FIELD_OBSERVATION
+# Transactional, idempotent execution of the reviewed East Bay pilot fact manifest.
+paloma-data catalog-observe-manifest --reviewer "github:owner" \
+  --confirm RECORD_FIELD_MANIFEST
+paloma-data enrich-open-attributes --candidate-limit 5000
 paloma-data expansion-status --release-id east-bay-pilot-v1
 paloma-data catalog-publish --release-id east-bay-pilot-v1 \
   --confirm PUBLISH_VERIFIED --limit 25
@@ -281,11 +301,11 @@ No database password belongs in GitHub or the iOS app.
 
 ## Database security
 
-New v2 and pipeline-control tables enable RLS, revoke client privileges, and grant one explicit
-`paloma_ingest` policy. The pgmq tables also have RLS enabled with no client policy; workers use
-privilege-contained functions for one fixed private queue. Existing legacy ingest tables predate v2
-and should receive the same RLS hardening in a separately approved migration after confirming every
-operational role; enabling RLS without the ingest policy would stop scheduled jobs.
+All v2, pipeline-control, and retained legacy ingestion tables enable RLS, revoke Data API client
+privileges, and grant one explicit `paloma_ingest` policy. The pgmq tables also have RLS enabled
+with no client policy; workers use privilege-contained functions for one fixed private queue.
+Candidate observations remain in private schemas until materialization; clients never read the
+evidence ledger directly.
 
 ## Development
 

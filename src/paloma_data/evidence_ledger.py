@@ -2,12 +2,27 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 import json
 from typing import Any
 from urllib.parse import urlsplit
 
 from paloma_data.db import execute_many
+from paloma_data.hours import normalize_hours
+from paloma_data.normalizers import normalize_name, normalize_phone, normalize_url
+
+
+MANUAL_CANDIDATE_FIELDS = frozenset(
+    {
+        "phone_e164",
+        "website_url",
+        "neighborhood",
+        "hours",
+        "price_level",
+        "setting_slug",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +62,240 @@ def append_linked_source_observations(conn: Any) -> int:
         """
     ).fetchall()
 
+    rows = _linked_observation_rows(
+        linked,
+        policies,
+        entity_column="establishment_id",
+    )
+    _append_observation_rows(conn, rows, entity_column="establishment_id")
+    civic_rows = _append_civic_neighborhood_observations(
+        conn,
+        policies.get(("datasf_neighborhoods", "neighborhood")),
+    )
+    return len(rows) + civic_rows
+
+
+def append_candidate_source_observations(conn: Any, candidate_id: str) -> int:
+    """Append admissible linked facts while an entity is still private.
+
+    Candidate observations use the same rights trigger and append-only ledger as public
+    establishment observations.  The candidate UUID becomes the establishment UUID at
+    materialization, so this evidence remains attached without mutation or copying.
+    """
+    policies = {
+        (str(row["source"]), str(row["field_name"])): dict(row)
+        for row in conn.execute(
+            "select * from governance.current_source_field_policies"
+        ).fetchall()
+    }
+    linked = conn.execute(
+        """
+        select csl.candidate_id::text, csl.source, csl.source_record_id,
+               coalesce(csl.identity_confidence, 0.75)::float as identity_confidence,
+               sr.source_status, sr.source_updated_at, sr.payload_hash,
+               sr.last_seen_run_id::text, sr.name, sr.normalized_name,
+               sr.address, sr.normalized_address, sr.phone_e164, sr.website_url,
+               sr.primary_type_slug, sr.latitude, sr.longitude, sr.neighborhood,
+               sr.hours, sr.price_level, sr.setting_slugs,
+               sr.classification_confidence::float, sr.origin_keys, sr.data_license,
+               sr.field_provenance
+        from ingest.candidate_source_links csl
+        join ingest.source_records sr
+          on sr.source = csl.source and sr.source_record_id = csl.source_record_id
+        where csl.candidate_id = %s::uuid
+          and sr.retired_at is null
+        order by csl.source, csl.source_record_id
+        """,
+        (candidate_id,),
+    ).fetchall()
+    rows = _linked_observation_rows(
+        linked,
+        policies,
+        entity_column="candidate_id",
+    )
+    _append_observation_rows(conn, rows, entity_column="candidate_id")
+    return len(rows)
+
+
+def append_manual_candidate_observation(
+    conn: Any,
+    candidate_id: str,
+    *,
+    field_name: str,
+    value: Any,
+    reviewer: str,
+    evidence_urls: tuple[str, ...],
+    note: str | None = None,
+    lease_days: int | None = None,
+    observed_at: datetime | None = None,
+    idempotency_key: str | None = None,
+) -> dict[str, Any]:
+    """Append one independently reviewed atomic fact for a private candidate."""
+    field = field_name.strip()
+    reviewer_name = reviewer.strip()
+    urls = tuple(dict.fromkeys(url.strip() for url in evidence_urls if url.strip()))
+    if field not in MANUAL_CANDIDATE_FIELDS:
+        raise ValueError(f"Unsupported manual candidate field: {field}")
+    if not reviewer_name or len(reviewer_name) > 200:
+        raise ValueError("Manual field observations require an identified reviewer")
+    if not urls or len(urls) > 10 or any(
+        urlsplit(url).scheme != "https" or not urlsplit(url).netloc for url in urls
+    ):
+        raise ValueError("Manual field evidence requires 1-10 absolute HTTPS URLs")
+    if note and len(note) > 1_000:
+        raise ValueError("Manual field observation note is too long")
+
+    normalized = _normalize_manual_value(field, value)
+    if field == "setting_slug":
+        exists = conn.execute(
+            "select 1 from public.settings where slug = %s",
+            (normalized["normalized_value"],),
+        ).fetchone()
+        if exists is None:
+            raise ValueError(f"Unknown Paloma setting slug: {normalized['normalized_value']}")
+    candidate = conn.execute(
+        "select 1 from ingest.catalog_candidates where id = %s::uuid",
+        (candidate_id,),
+    ).fetchone()
+    if candidate is None:
+        raise ValueError(f"Unknown catalog candidate: {candidate_id}")
+
+    policy = conn.execute(
+        """
+        select *
+        from governance.current_source_field_policies
+        where source = 'manual' and field_name = %s
+        """,
+        (field,),
+    ).fetchone()
+    if policy is None or not _policy_allows(policy):
+        raise ValueError(f"No active manual rights policy permits {field}")
+
+    timestamp = observed_at or datetime.now(timezone.utc)
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+    recommended = policy.get("recommended_max_age")
+    requested = timedelta(days=lease_days) if lease_days is not None else recommended
+    if requested is None:
+        requested = timedelta(days=365)
+    if requested <= timedelta(0):
+        raise ValueError("Manual field observation lease must be positive")
+    if recommended is not None and requested > recommended:
+        raise ValueError(
+            f"Manual {field} lease exceeds the policy maximum of {recommended.days} days"
+        )
+    expires_at = timestamp + requested
+    value_json = normalized["value_json"]
+    value_hash = _digest({"text": normalized["value_text"], "json": value_json})
+    stable_key = idempotency_key.strip() if idempotency_key else None
+    if stable_key:
+        existing = conn.execute(
+            """
+            select id::text, field_name, value_text, value_json, value_hash,
+                   expires_at
+            from catalog.field_observations
+            where candidate_id = %s::uuid
+              and source = 'manual'
+              and metadata->>'idempotency_key' = %s
+              and (expires_at is null or expires_at > now())
+            order by observed_at desc, id desc
+            limit 1
+            """,
+            (candidate_id, stable_key),
+        ).fetchone()
+        if existing is not None:
+            if str(existing["field_name"]) != field or str(existing["value_hash"]) != value_hash:
+                raise ValueError("Manual observation idempotency key was reused for a new fact")
+            return {
+                "observation_id": str(existing["id"]),
+                "field_name": field,
+                "value_text": existing.get("value_text"),
+                "value_json": existing.get("value_json"),
+                "expires_at": existing["expires_at"].isoformat(),
+                "idempotent_replay": True,
+            }
+    source_record_id = f"{candidate_id}:{field}:{reviewer_name}"
+    fingerprint = _digest(
+        {
+            "candidate_id": candidate_id,
+            "field": field,
+            "source": "manual",
+            "source_record_id": source_record_id,
+            "observed_at": timestamp.isoformat(),
+            "value_hash": value_hash,
+            "policy_id": int(policy["source_policy_id"]),
+        }
+    )
+    source_items = [
+        {"kind": "factual_reference", "url": url} for url in urls
+    ]
+    row = conn.execute(
+        """
+        insert into catalog.field_observations (
+          candidate_id, field_name, value_text, normalized_value, value_json,
+          value_hash, source, source_record_id, source_property, claim_kind,
+          evidence_confidence, identity_confidence, authority,
+          upstream_origin_keys, license_ids, source_items, source_policy_id,
+          source_updated_at, observed_at, valid_from, expires_at,
+          observation_fingerprint, metadata
+        ) values (
+          %s::uuid, %s, %s, %s, %s::jsonb,
+          %s, 'manual', %s, %s, 'manual',
+          0.98, 1.0, %s,
+          %s, array['Paloma-manual-verification'], %s::jsonb, %s,
+          %s, %s, %s, %s,
+          %s, %s::jsonb
+        )
+        returning id::text
+        """,
+        (
+            candidate_id,
+            field,
+            normalized["value_text"],
+            normalized["normalized_value"],
+            json.dumps(value_json, sort_keys=True) if value_json is not None else None,
+            value_hash,
+            source_record_id,
+            field,
+            float(policy["authority"]),
+            [f"manual:{reviewer_name}"],
+            json.dumps(source_items, sort_keys=True),
+            int(policy["source_policy_id"]),
+            timestamp,
+            timestamp,
+            timestamp,
+            expires_at,
+            fingerprint,
+            json.dumps(
+                {
+                    "evidence_urls": list(urls),
+                    "idempotency_key": stable_key,
+                    "note": note.strip() if note and note.strip() else None,
+                    "policy_version": policy["policy_version"],
+                    "reviewer": reviewer_name,
+                },
+                sort_keys=True,
+            ),
+        ),
+    ).fetchone()
+    return {
+        "observation_id": str(row["id"]),
+        "field_name": field,
+        "value_text": normalized["value_text"],
+        "value_json": value_json,
+        "expires_at": expires_at.isoformat(),
+        "idempotent_replay": False,
+    }
+
+
+def _linked_observation_rows(
+    linked: Iterable[Mapping[str, Any]],
+    policies: Mapping[tuple[str, str], Mapping[str, Any]],
+    *,
+    entity_column: str,
+) -> list[tuple[Any, ...]]:
+    if entity_column not in {"establishment_id", "candidate_id"}:
+        raise ValueError(f"Unsupported observation entity column: {entity_column}")
     rows: list[tuple[Any, ...]] = []
     for record in linked:
         source = str(record["source"])
@@ -71,7 +320,7 @@ def append_linked_source_observations(conn: Any) -> int:
             source_record_id = str(record["source_record_id"]) + claim.source_record_suffix
             fingerprint = _digest(
                 {
-                    "establishment_id": str(record["establishment_id"]),
+                    entity_column: str(record[entity_column]),
                     "field": claim.field_name,
                     "source": source,
                     "source_record_id": source_record_id,
@@ -83,7 +332,7 @@ def append_linked_source_observations(conn: Any) -> int:
             )
             rows.append(
                 (
-                    str(record["establishment_id"]),
+                    str(record[entity_column]),
                     claim.field_name,
                     claim.value_text,
                     claim.normalized_value,
@@ -110,32 +359,39 @@ def append_linked_source_observations(conn: Any) -> int:
                     ),
                 )
             )
-    if rows:
-        execute_many(
-            conn,
-            """
-            insert into catalog.field_observations (
-              establishment_id, field_name, value_text, normalized_value, value_json,
-              value_hash, source, source_record_id, source_property, source_run_id,
-              source_record_payload_hash, claim_kind, evidence_confidence,
-              identity_confidence, authority, upstream_origin_keys, license_ids,
-              source_items, source_policy_id, source_updated_at, expires_at,
-              observation_fingerprint, metadata
-            ) values (
-              %s::uuid, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s::uuid,
-              %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s,
-              case when %s::interval is null then null else now() + %s::interval end,
-              %s, %s::jsonb
-            )
-            on conflict (observation_fingerprint) do nothing
-            """,
-            [row[:20] + (row[20], row[20]) + row[21:] for row in rows],
-        )
-    civic_rows = _append_civic_neighborhood_observations(
+    return rows
+
+
+def _append_observation_rows(
+    conn: Any,
+    rows: list[tuple[Any, ...]],
+    *,
+    entity_column: str,
+) -> None:
+    if not rows:
+        return
+    if entity_column not in {"establishment_id", "candidate_id"}:
+        raise ValueError(f"Unsupported observation entity column: {entity_column}")
+    execute_many(
         conn,
-        policies.get(("datasf_neighborhoods", "neighborhood")),
+        f"""
+        insert into catalog.field_observations (
+          {entity_column}, field_name, value_text, normalized_value, value_json,
+          value_hash, source, source_record_id, source_property, source_run_id,
+          source_record_payload_hash, claim_kind, evidence_confidence,
+          identity_confidence, authority, upstream_origin_keys, license_ids,
+          source_items, source_policy_id, source_updated_at, expires_at,
+          observation_fingerprint, metadata
+        ) values (
+          %s::uuid, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s::uuid,
+          %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s,
+          case when %s::interval is null then null else now() + %s::interval end,
+          %s, %s::jsonb
+        )
+        on conflict (observation_fingerprint) do nothing
+        """,
+        [row[:20] + (row[20], row[20]) + row[21:] for row in rows],
     )
-    return len(rows) + civic_rows
 
 
 def _append_civic_neighborhood_observations(
@@ -424,11 +680,56 @@ def _website_identity(value: Any) -> str | None:
     host = (parsed.hostname or "").casefold()
     if host.startswith("www."):
         host = host[4:]
-    path = parsed.path.rstrip("/")
-    return f"{host}{path}" if host else None
+    # A location page and the root page are compatible website observations when the
+    # independently observed registrable host is identical.  Preserve the best full URL in
+    # value_text, but group evidence by host so harmless path differences are not conflicts.
+    return host or None
 
 
 def _json_text(value: Any) -> str | None:
     if value is None:
         return None
     return json.dumps(value, sort_keys=True, separators=(",", ":"))
+
+
+def _normalize_manual_value(field_name: str, value: Any) -> dict[str, Any]:
+    if field_name == "hours":
+        hours = normalize_hours(value)
+        if hours is None:
+            raise ValueError("Manual hours observation is empty")
+        encoded = json.dumps(hours, sort_keys=True, separators=(",", ":"))
+        return {
+            "value_text": encoded,
+            "normalized_value": encoded,
+            "value_json": hours,
+        }
+    if field_name == "phone_e164":
+        text = normalize_phone(str(value), "US")
+    elif field_name == "website_url":
+        text = normalize_url(str(value))
+    elif field_name == "price_level":
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("price_level must be 1 through 4") from exc
+        if parsed not in range(1, 5):
+            raise ValueError("price_level must be 1 through 4")
+        text = str(parsed)
+    elif field_name == "setting_slug":
+        text = str(value).strip().casefold().replace(" ", "_")
+    else:
+        text = str(value).strip()
+    if not text:
+        raise ValueError(f"Manual {field_name} observation is empty")
+    normalized_value = (
+        _website_identity(text)
+        if field_name == "website_url"
+        else normalize_name(text)
+        if field_name == "neighborhood"
+        else text
+    )
+    return {
+        "value_text": text,
+        "normalized_value": normalized_value,
+        "value_json": int(text) if field_name == "price_level" else None,
+    }
