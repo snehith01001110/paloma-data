@@ -2,7 +2,7 @@ from pathlib import Path
 
 
 MIGRATION = Path(
-    "supabase/migrations/20260820055305_allow_single_development_refresh_week.sql"
+    "supabase/migrations/20260820060137_allow_single_development_refresh_week.sql"
 ).read_text()
 
 
