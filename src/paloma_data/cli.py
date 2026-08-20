@@ -42,6 +42,7 @@ from paloma_data.jobs import (
 )
 from paloma_data.neighborhoods import DataSFNeighborhoodAdapter, NeighborhoodStager
 from paloma_data.provider_links import ProviderLinkSync, YelpProviderAudit
+from paloma_data.runtime_health import live_details_runtime_health
 from paloma_data.staging import SourceStager
 
 
@@ -192,6 +193,22 @@ def field_coverage() -> None:
             default=str,
         )
     )
+
+
+@app.command("live-details-health")
+def live_details_health(
+    require_healthy: bool = typer.Option(
+        False,
+        help="Exit nonzero when the private live-details eligibility contract is unhealthy",
+    ),
+) -> None:
+    """Check runtime RLS, least privilege, and eligible public coverage."""
+    _, db, _, _ = _components()
+    with db.connection() as conn:
+        result = live_details_runtime_health(conn)
+    typer.echo(json.dumps(result, indent=2, sort_keys=True))
+    if require_healthy and not result["healthy"]:
+        raise typer.Exit(code=1)
 
 
 @app.command("review-field-conflict")

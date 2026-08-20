@@ -160,4 +160,26 @@ def test_provider_audit_is_read_only_and_reports_only_field_presence():
         "price": 1,
         "venue_website": 0,
     }
+    assert result["details"]["missing_attributes"] == []
     assert result["rejected_matches"]["decision_counts"] == {"matched": 1}
+
+
+class _MissingAttributeAPI(_API):
+    def audit_details(self, _provider_place_id, _place):
+        from paloma_data.adapters.yelp import YelpDetailsAudit
+
+        return YelpDetailsAudit(True, "matched", True, False, True, False)
+
+
+def test_provider_audit_identifies_paloma_rows_needing_fallback_without_values():
+    result = YelpProviderAudit(db=_DB(), repository=_AuditRepository()).run(
+        _MissingAttributeAPI(), city="San Francisco", limit=100
+    )
+
+    assert result["details"]["missing_attributes"] == [
+        {
+            "establishment_id": PLACE.establishment_id,
+            "name": PLACE.name,
+            "fields": ["phone", "price"],
+        }
+    ]

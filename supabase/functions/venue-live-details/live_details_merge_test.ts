@@ -112,4 +112,5 @@ Deno.test("single-provider responses retain their reusable cache metadata", () =
   assertEquals(response?.attributions, [
     { provider: "yelp", name: "Yelp", url: "https://yelp.example/place" },
   ]);
+  assertEquals(response?.field_sources, { price_level: "yelp" });
 });

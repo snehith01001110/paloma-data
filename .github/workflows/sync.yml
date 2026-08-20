@@ -8,7 +8,7 @@ on:
         required: true
         default: status
         type: choice
-        options: [status, coverage, resolve-fields, audit, stage, neighborhoods, open-attributes, trial-verified, provider-links, provider-audit, queue-refresh, queue-work, queue-status, deploy-worker]
+        options: [status, coverage, live-details-health, resolve-fields, audit, stage, neighborhoods, open-attributes, trial-verified, provider-links, provider-audit, queue-refresh, queue-work, queue-status, deploy-worker]
       source:
         description: Source for stage
         required: false
@@ -102,6 +102,10 @@ jobs:
         if: github.event_name == 'schedule' && github.event.schedule == '45 14 * * *'
         run: paloma-data pipeline-enqueue-sweep
 
+      - name: Validate consumer live-details eligibility
+        if: github.event_name == 'schedule'
+        run: paloma-data live-details-health --require-healthy
+
       - name: Authenticate deployment workflow to Google Cloud
         if: github.event_name == 'workflow_dispatch' && inputs.action == 'deploy-worker'
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
@@ -142,6 +146,9 @@ jobs:
               ;;
             coverage)
               paloma-data field-coverage
+              ;;
+            live-details-health)
+              paloma-data live-details-health --require-healthy
               ;;
             resolve-fields)
               paloma-data resolve-fields

@@ -484,6 +484,7 @@ class YelpProviderAudit:
         counts: Counter[str] = Counter()
         errors: Counter[str] = Counter()
         exceptions: list[dict[str, Any]] = []
+        missing_attributes: list[dict[str, Any]] = []
         for place, provider_place_id in linked:
             counts["api_calls"] += 1
             try:
@@ -501,6 +502,19 @@ class YelpProviderAudit:
                 continue
             for field in ("phone", "hours", "price"):
                 counts[f"has_{field}"] += int(getattr(audit, f"has_{field}"))
+            missing = [
+                field
+                for field in ("phone", "hours", "price")
+                if not getattr(audit, f"has_{field}")
+            ]
+            if missing:
+                missing_attributes.append(
+                    {
+                        "establishment_id": place.establishment_id,
+                        "name": place.name,
+                        "fields": missing,
+                    }
+                )
             counts["identity_compatible"] += int(audit.identity_compatible)
             counts["currently_operating"] += int(audit.currently_operating)
             if not audit.identity_compatible or not audit.currently_operating:
@@ -526,6 +540,7 @@ class YelpProviderAudit:
             "venue_website_note": "Yelp does not expose the venue website in this endpoint",
             "errors": dict(sorted(errors.items())),
             "exceptions": exceptions,
+            "missing_attributes": missing_attributes,
         }
 
     def _audit_rejected(

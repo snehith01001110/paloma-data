@@ -119,7 +119,10 @@ twice weekly, refreshes the larger durable open-source snapshots monthly, and pe
 3. Append rights-approved observations, resolve the existing cohort, and report field coverage.
 4. Queue published/suppressed cohort refreshes and a bounded provider-link sync.
 5. Leave scheduled publication disabled. A separate daily action queues the expiry sweep, and the
-   managed worker drains all queued work.
+   managed worker drains all queued work. Every scheduled maintenance invocation also runs
+   `live-details-health --require-healthy`; it fails if RLS hides an eligible provider link, if the
+   runtime can read provider attribute columns, or if any current publication cannot reach the
+   live-details eligibility path.
 
 Keep that path enabled. The managed worker drains the queue every 12 hours, while the maintenance
 workflow retains `queue-work` only as disaster recovery. Expansion has no schedule: its separate
@@ -135,6 +138,7 @@ Alert when any of these conditions is true:
 - a logical run finishes `partial` or `failed`;
 - a running lease remains expired after two worker invocations;
 - the verified publication count falls unexpectedly or an invariant-risk counter becomes nonzero.
+- `live-details-health` is unhealthy or reports fewer eligible than expected publications.
 
 Use `paloma-data pipeline-status` for queue/run state and `paloma-data catalog-status` for catalog
 truth and completeness. Retry a dead job by enqueueing a new reviewed request; do not edit queue
