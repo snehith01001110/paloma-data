@@ -59,6 +59,30 @@
     .metric.bad strong { color: var(--red); }
     .metric.warn strong { color: var(--amber); }
 
+    .insights { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: 9px; }
+    .insight { min-width: 0; padding: 18px; }
+    .insight h3 { margin: 0; font-size: 13px; letter-spacing: -.01em; }
+    .insight p { margin: 3px 0 14px; color: var(--muted); font-size: 10px; }
+    .bar-chart { display: grid; gap: 9px; }
+    .bar-row { display: grid; grid-template-columns: minmax(74px, .7fr) minmax(90px, 2fr) auto; gap: 8px; align-items: center; font-size: 10px; }
+    .bar-label { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+    .bar-track { height: 7px; overflow: hidden; background: #edf0eb; border-radius: 99px; }
+    .bar-fill { height: 100%; min-width: 2px; background: var(--green); border-radius: inherit; }
+    .bar-fill.empty { background: var(--line); }
+    .bar-value { min-width: 42px; color: var(--ink); font-size: 10px; text-align: right; }
+    .ops { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); gap: 9px; margin-top: 9px; }
+    .ops-block { min-width: 0; padding: 15px 18px; }
+    .ops-block h3 { margin: 0 0 10px; font-size: 12px; }
+    .ops-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 16px; margin: 0; }
+    .ops-list div { min-width: 0; }
+    .ops-list dt { color: var(--muted); font-size: 9px; }
+    .ops-list dd { margin: 1px 0 0; font-size: 15px; font-weight: 800; letter-spacing: -.03em; }
+    .source-list { display: flex; flex-wrap: wrap; gap: 7px; }
+    .source-status { padding: 5px 7px; color: var(--muted); background: #fafbf8; border: 1px solid var(--line); border-radius: 7px; font-size: 9px; }
+    .source-status strong { color: var(--ink); }
+    .source-status.stale { color: var(--amber); background: var(--amber-soft); border-color: #ead8b9; }
+    .source-status.stale strong { color: var(--amber); }
+
     .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; margin: 30px 1px 10px; }
     .section-head h2 { margin: 0; font-size: 16px; letter-spacing: -.015em; }
     .section-head p { margin: 0; color: var(--muted); font-size: 10px; text-align: right; }
@@ -87,6 +111,7 @@
       .top { align-items: flex-start; flex-direction: column; gap: 9px; }
       .updated { text-align: left; }
       .metrics { grid-template-columns: repeat(2, 1fr); }
+      .insights, .ops { grid-template-columns: 1fr; }
       .venue-head { display: none; }
       .venue { grid-template-columns: minmax(0, 1fr); gap: 9px 12px; }
       .venue-location { grid-column: 1 / -1; grid-row: 2; }
@@ -128,6 +153,23 @@
       <article class="card metric"><strong id="phoneCount">—</strong><span>With phone</span><small id="phoneMeta">Durable coverage</small></article>
       <article class="card metric"><strong id="websiteCount">—</strong><span>With website</span><small id="websiteMeta">Durable coverage</small></article>
       <article class="card metric"><strong id="neighborhoodCount">—</strong><span>With neighborhood</span><small id="neighborhoodMeta">Durable coverage</small></article>
+    </section>
+
+    <div class="section-head"><h2>Coverage at a glance</h2><p>Durable catalog facts and current city mix</p></div>
+    <section class="insights" aria-label="Catalog coverage charts">
+      <article class="card insight"><h3>Published by city</h3><p>Safe live establishments</p><div class="bar-chart" id="cityChart" role="list" aria-label="Published establishments by city"><div class="empty">Loading…</div></div></article>
+      <article class="card insight"><h3>Durable field coverage</h3><p>Current stored values · live provider details may fill gaps</p><div class="bar-chart" id="coverageChart" role="list" aria-label="Durable field coverage"><div class="empty">Loading…</div></div></article>
+    </section>
+    <section class="ops" aria-label="Pipeline operations">
+      <article class="card ops-block"><h3>Pipeline readiness</h3><dl class="ops-list">
+        <div><dt>Detail-ready</dt><dd id="detailReady">—</dd></div>
+        <div><dt>Warm provider cache</dt><dd id="warmDetails">—</dd></div>
+        <div><dt>Review queue</dt><dd id="reviewQueue">—</dd></div>
+        <div><dt>Leases due soon</dt><dd id="leasesDue">—</dd></div>
+        <div><dt>Release capacity</dt><dd id="expansionCapacity">—</dd></div>
+        <div><dt>Active scope</dt><dd id="expansionScope">—</dd></div>
+      </dl></article>
+      <article class="card ops-block"><h3>Source freshness</h3><div class="source-list" id="sourceFreshness"><span class="source-status">Loading…</span></div></article>
     </section>
 
     <div class="section-head"><h2>Published establishments</h2><p>Only rows currently safe for the app</p></div>
@@ -200,6 +242,39 @@
         setText(`${field}Count`, fmt(count));
         setText(`${field}Meta`, `of ${fmt(denominator)} live`);
       }
+      renderInsights(data);
+    }
+
+    function barRow(label, count, denominator) {
+      const value = num(count);
+      const total = Math.max(num(denominator), 1);
+      const percent = Math.min(100, Math.round((value / total) * 100));
+      return `<div class="bar-row" role="listitem" aria-label="${esc(label)}: ${fmt(value)} of ${fmt(denominator)}"><span class="bar-label">${esc(label)}</span><span class="bar-track"><span class="bar-fill${value ? '' : ' empty'}" style="width:${percent}%"></span></span><span class="bar-value">${fmt(value)} · ${percent}%</span></div>`;
+    }
+
+    function renderInsights(data) {
+      const coverage = data.coverage || {};
+      const denominator = num(data.overall?.safe_live);
+      const cities = (data.published_cities || []).slice().sort((a, b) => num(b.count) - num(a.count));
+      document.getElementById('cityChart').innerHTML = cities.length
+        ? cities.map(city => barRow(city.city, city.count, denominator)).join('')
+        : '<div class="empty">No city data</div>';
+      const fields = [['Phone', coverage.phone], ['Website', coverage.website], ['Neighborhood', coverage.neighborhood], ['Hours', coverage.hours], ['Price', coverage.price], ['Setting', coverage.settings]];
+      document.getElementById('coverageChart').innerHTML = fields.map(([label, count]) => barRow(label, count, denominator)).join('');
+
+      const runtime = data.runtime || {};
+      const queue = data.work_queue || {};
+      setText('detailReady', `${fmt(runtime.detail_ready)} / ${fmt(runtime.eligible_establishments)}`);
+      setText('warmDetails', `${fmt(runtime.warm_establishments)} / ${fmt(runtime.eligible_establishments)}`);
+      setText('reviewQueue', fmt(num(queue.pending_match_reviews) + num(queue.candidates_needing_review)));
+      setText('leasesDue', fmt(queue.leases_due));
+      const expansion = data.expansion || {};
+      setText('expansionCapacity', expansion.available_slots == null ? '—' : `${fmt(expansion.available_slots)} left`);
+      setText('expansionScope', expansion.scope_cities?.length ? expansion.scope_cities.join(', ') : 'None');
+      const sources = data.sources || [];
+      document.getElementById('sourceFreshness').innerHTML = sources.length
+        ? sources.map(source => `<span class="source-status${source.fresh ? '' : ' stale'}"><strong>${esc(source.label)}</strong> · ${source.fresh ? 'fresh' : 'refresh due'}${source.required ? ' · required' : ''}</span>`).join('')
+        : '<span class="source-status">No source snapshots</span>';
     }
 
     function venueRow(item) {
