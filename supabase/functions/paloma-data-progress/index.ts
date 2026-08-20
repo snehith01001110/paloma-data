@@ -761,7 +761,9 @@ async function v2Payload(sql: Sql, runtimeApplied: boolean) {
     ? {
       release_id: expansionRows[0].release_id,
       scope_cities: expansionRows[0].scope_cities ?? [],
-      maximum_new_publications: number(expansionRows[0].maximum_new_publications),
+      maximum_new_publications: number(
+        expansionRows[0].maximum_new_publications,
+      ),
       baseline_publications: number(expansionRows[0].baseline_publications),
       published: number(expansionRows[0].published),
       available_slots: Math.max(
