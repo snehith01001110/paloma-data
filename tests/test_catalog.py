@@ -5,6 +5,7 @@ from paloma_data.catalog import (
     VerificationEvidence,
     decide_candidate,
     decide_identity,
+    manual_attestation,
     provider_verification,
 )
 from paloma_data.models import SourceRecord
@@ -209,6 +210,99 @@ def test_eating_place_license_needs_provider_or_manual_access_verification():
 
     assert decision.state == "needs_verification"
     assert decision.reason == "missing_high_quality_verification:v7"
+
+
+def test_exact_premise_similarity_gap_is_queued_for_review():
+    anchor = _fsq(name="Slainte", address="131 Broadway", primary_type_slug="pub")
+    abc = _abc(name="SLAINTE PUB", address="131 BROADWAY")
+
+    decision = decide_identity(anchor, abc)
+
+    assert 0.75 <= decision.features["name"] < 0.78
+    assert decision.action == "review"
+    assert decision.reason == "same_location_name_conflict"
+
+
+def test_manual_attestation_retains_evidence_but_no_optional_provider_fields():
+    anchor = _fsq(
+        phone="+14155551212",
+        website_url="https://provider.example",
+        hours={"friday": [["16:00", "02:00"]]},
+        price_level=3,
+    )
+
+    verification = manual_attestation(
+        anchor,
+        reviewer="github:reviewer",
+        evidence_urls=("https://official.example/location",),
+        note="Current first-party location page confirms walk-in service.",
+        observed_at=NOW,
+    )
+
+    assert verification.verification_tier == "manual"
+    assert verification.storage_policy == "manual"
+    assert verification.expires_at == NOW + timedelta(days=90)
+    assert verification.permitted_snapshot["phone"] is None
+    assert verification.permitted_snapshot["website_url"] is None
+    assert verification.permitted_snapshot["hours"] is None
+    assert verification.permitted_snapshot["price_level"] is None
+    assert verification.permitted_snapshot["_attestation"]["evidence_urls"] == [
+        "https://official.example/location"
+    ]
+
+
+def test_manual_attestation_can_correct_coarse_type_but_still_requires_compatible_abc():
+    fsq = _fsq(primary_type_slug="pub")
+    abc = _abc(
+        source_record_id="123:23",
+        primary_type_slug="brewery",
+        permitted_metadata={
+            "license_type": "23",
+            "type_status": "ACTIVE",
+            "license_or_application": "LIC",
+        },
+    )
+    manual = manual_attestation(
+        fsq,
+        reviewer="github:reviewer",
+        evidence_urls=("https://brewery.example/taproom",),
+        venue_type="taproom",
+        observed_at=NOW,
+    )
+
+    decision = decide_candidate(_links(fsq, abc), [manual], now=NOW)
+
+    assert decision.state == "verified"
+    assert decision.resolved["primary_type_slug"] == "taproom"
+    assert decision.resolved["hours"] is None
+
+
+def test_current_manual_hard_negative_withdraws_the_exact_candidate():
+    fsq = _fsq(primary_type_slug="winery")
+    abc = _abc(
+        source_record_id="123:02",
+        primary_type_slug="winery",
+        permitted_metadata={
+            "license_type": "02",
+            "type_status": "ACTIVE",
+            "license_or_application": "LIC",
+        },
+    )
+    closed = manual_attestation(
+        fsq,
+        reviewer="github:reviewer",
+        evidence_urls=("https://news.example/confirmed-closure",),
+        outcome="fail",
+        note="The establishment left this premise and no longer offers public access.",
+        observed_at=NOW,
+    )
+
+    decision = decide_candidate(_links(fsq, abc), [closed], now=NOW)
+
+    assert closed.checks["identity"] is True
+    assert closed.checks["currently_operating"] is False
+    assert decision.state == "withdrawn"
+    assert decision.reason == "current_verifier_failure:v7"
 
 
 def test_raw_abc_status_must_be_exactly_active_even_if_canonical_status_is_open():

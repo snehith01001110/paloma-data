@@ -8,7 +8,7 @@ on:
         required: true
         default: status
         type: choice
-        options: [status, coverage, resolve-fields, audit, resolve-review, stage, neighborhoods, trial-verified, provider-links, provider-audit, queue-refresh, queue-work, queue-status, deploy-worker]
+        options: [status, coverage, resolve-fields, audit, stage, neighborhoods, trial-verified, provider-links, provider-audit, queue-refresh, queue-work, queue-status, deploy-worker]
       source:
         description: Source for stage
         required: false
@@ -25,22 +25,6 @@ on:
         required: false
         default: '20'
         type: string
-      confirmation:
-        description: Required confirmation token for destructive/curated actions
-        required: false
-        default: ''
-        type: string
-      review_id:
-        description: Match-review ID for resolve-review
-        required: false
-        default: ''
-        type: string
-      resolution:
-        description: Human decision for resolve-review
-        required: false
-        default: not_same_or_stale
-        type: choice
-        options: [not_same_or_stale, same_place]
   schedule:
     # High-risk regulatory status must remain inside the seven-day freshness contract.
     - cron: '30 14 * * 1,4'
@@ -149,9 +133,6 @@ jobs:
           SOURCE: ${{ inputs.source }}
           CITY: ${{ inputs.city }}
           LIMIT: ${{ inputs.limit }}
-          CONFIRMATION: ${{ inputs.confirmation }}
-          REVIEW_ID: ${{ inputs.review_id }}
-          RESOLUTION: ${{ inputs.resolution }}
         run: |
           set -euo pipefail
           case "$ACTION" in
@@ -166,14 +147,6 @@ jobs:
               ;;
             audit)
               paloma-data catalog-audit --city "$CITY" --limit "$LIMIT"
-              ;;
-            resolve-review)
-              test "$CONFIRMATION" = "RESOLVE_MATCH_REVIEW"
-              test -n "$REVIEW_ID"
-              paloma-data catalog-review-resolve \
-                --review-id "$REVIEW_ID" \
-                --resolution "$RESOLUTION" \
-                --confirm "$CONFIRMATION"
               ;;
             stage)
               paloma-data stage-source "$SOURCE" --mode full

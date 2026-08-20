@@ -454,6 +454,8 @@ class CatalogRepository:
         review_id: int,
         *,
         resolution: str,
+        resolved_by: str,
+        note: str | None = None,
     ) -> str:
         states = {
             "same_place": "accepted",
@@ -462,6 +464,36 @@ class CatalogRepository:
         state = states.get(resolution)
         if state is None:
             raise ValueError("resolution must be same_place or not_same_or_stale")
+        reviewer = resolved_by.strip()
+        if not 3 <= len(reviewer) <= 200:
+            raise ValueError("resolved_by must contain 3-200 non-whitespace characters")
+        normalized_note = note.strip() if note is not None else None
+        if normalized_note == "":
+            normalized_note = None
+        if normalized_note is not None and len(normalized_note) > 2000:
+            raise ValueError("note must contain at most 2000 characters")
+        recorded = conn.execute(
+            """
+            insert into ingest.candidate_match_review_resolutions (
+              review_id, resolution, resolved_by, note, evidence
+            )
+            select id, %s, %s, %s,
+                   jsonb_build_object(
+                     'candidate_id', candidate_id,
+                     'source', source,
+                     'source_record_id', source_record_id,
+                     'reason', reason,
+                     'score', score,
+                     'review_evidence', evidence
+                   )
+            from ingest.candidate_match_reviews
+            where id = %s and state = 'pending'
+            returning review_id
+            """,
+            (resolution, reviewer, normalized_note, review_id),
+        ).fetchone()
+        if recorded is None:
+            raise ValueError("review does not exist or is no longer pending")
         row = conn.execute(
             """
             update ingest.candidate_match_reviews
@@ -472,7 +504,7 @@ class CatalogRepository:
             (state, review_id),
         ).fetchone()
         if row is None:
-            raise ValueError("review does not exist or is no longer pending")
+            raise RuntimeError("review changed while its resolution was being recorded")
         return str(row["candidate_id"])
 
     def pending_match_review_candidate_id(
@@ -492,6 +524,68 @@ class CatalogRepository:
         if row is None:
             raise ValueError("review does not exist or is no longer pending")
         return str(row["candidate_id"])
+
+    def pending_match_review(
+        self,
+        conn: psycopg.Connection,
+        review_id: int,
+    ) -> dict[str, Any]:
+        """Lock and return the exact evidence a reviewer is about to decide."""
+        row = conn.execute(
+            """
+            select r.candidate_id::text as candidate_id,
+                   r.reason as review_reason, r.score as review_score,
+                   r.evidence as review_evidence,
+                   sr.*
+            from ingest.candidate_match_reviews r
+            join ingest.source_records sr
+              on sr.source = r.source and sr.source_record_id = r.source_record_id
+            where r.id = %s and r.state = 'pending'
+            for update of r
+            """,
+            (review_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError("review does not exist or is no longer pending")
+        values = dict(row)
+        return {
+            "candidate_id": str(values.pop("candidate_id")),
+            "reason": str(values.pop("review_reason")),
+            "score": float(values.pop("review_score")),
+            "evidence": values.pop("review_evidence") or {},
+            "record": _source_record(values),
+        }
+
+    def accepted_match_review(
+        self,
+        conn: psycopg.Connection,
+        candidate_id: str,
+        record: SourceRecord,
+        *,
+        reason: str,
+        evidence: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Return a same-place decision only while its full evidence fingerprint is current."""
+        row = conn.execute(
+            """
+            select id, score::float as score
+            from ingest.candidate_match_reviews
+            where candidate_id = %s::uuid
+              and source = %s and source_record_id = %s
+              and reason = %s and state = 'accepted'
+              and evidence = %s::jsonb
+            order by resolved_at desc
+            limit 1
+            """,
+            (
+                candidate_id,
+                record.source,
+                record.source_record_id,
+                reason,
+                json.dumps(evidence, sort_keys=True),
+            ),
+        ).fetchone()
+        return dict(row) if row else None
 
     def has_blocking_match_review(
         self,

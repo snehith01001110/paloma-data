@@ -81,11 +81,22 @@ owner approval. Run one city and action at a time:
 
 1. `status` and inspect every blocker.
 2. `discover` to create private candidates only.
-3. `trial` and `audit`; resolve identity conflicts manually.
-4. `verify` only when the configured provider contract permits durable server storage.
-5. `reevaluate`, then run `status` again with readiness required.
-6. `publish` with `PUBLISH_VERIFIED`, at or below the release cap.
-7. Run a full catalog refresh and recheck dashboard, queue, catalog, and release status.
+3. `trial` and `audit`; resolve identity conflicts with `resolve-review` in the same protected
+   workflow. Supply `RESOLVE_MATCH_REVIEW`, the exact review ID, city, decision, and a short rationale.
+   The GitHub actor and evidence snapshot are recorded in immutable history. `same_place` creates a
+   durable link bound to the reviewed evidence fingerprint, while `not_same_or_stale` prevents that
+   exact prompt from reopening until its source evidence changes.
+4. Use `attest` only after a named reviewer checks current first-party or authoritative pages for
+   identity, operation, ordinary public access, display name, and venue type. Supply 1–10 HTTPS
+   evidence URLs, `MANUAL_ATTESTATION`, and a type override only when the evidence corrects a coarse
+   FSQ OS classification. Use `pass` only when every hard fact is confirmed; use `fail` only for an
+   explicit closure, move, or loss of ordinary public access. The command appends a 90-day
+   verification lease and retains the evidence trail; it deliberately does not copy hours, phone,
+   website, price, or neighborhood fields.
+5. `verify` only when the configured provider contract permits durable server storage.
+6. `reevaluate`, then run `status` again with readiness required.
+7. `publish` with `PUBLISH_VERIFIED`, at or below the release cap.
+8. Run a full catalog refresh and recheck dashboard, queue, catalog, and release status.
 
 Publication is transactional. The database trigger rejects a missing/revoked/stale authorization,
 an out-of-scope city, exhausted capacity, or newly unhealthy control plane even when the CLI or

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import urlsplit
 
 from paloma_data.models import SourceRecord
 from paloma_data.normalizers import (
@@ -152,7 +153,13 @@ def decide_identity(anchor: SourceRecord, other: SourceRecord) -> IdentityDecisi
         if exact_address and name_score >= 0.84:
             return IdentityDecision("match", 0.965, "abc_exact_premise_name", features)
 
-    if (exact_address or same_door) and name_score < 0.75:
+    # An exact premise with a non-matching name can be a legal DBA, nested venue, rebrand, or
+    # stale listing.  None of those cases is safe to call distinct automatically.  Keep the
+    # entire range below the ABC auto-link threshold in review; the old split left the narrow
+    # 0.75-0.78 band incorrectly classified as distinct.
+    if exact_address and name_score < 0.84:
+        return IdentityDecision("review", 0.85, "same_location_name_conflict", features)
+    if same_door and name_score < 0.75:
         return IdentityDecision("review", 0.85, "same_location_name_conflict", features)
     if address_score >= 0.95 and name_score >= 0.78:
         return IdentityDecision("review", 0.84, "probable_identity_needs_review", features)
@@ -202,13 +209,46 @@ def decide_candidate(
             _timestamp(record.source_updated_at),
         ),
     )
-    if chosen.primary_type_slug not in CONSUMER_VENUE_TYPES:
+    # A verification is evidence about one exact provider identity.  Never let a pass for an
+    # old/merged Foursquare ID silently carry over to a newly linked place.
+    latest_verifications = [
+        item
+        for item in _latest_verifications(verifications)
+        if _verification_applies(item, chosen)
+    ]
+    failures = [
+        item
+        for item in latest_verifications
+        if item.outcome == "fail" and _utc(item.expires_at) > current_time
+    ]
+    passing = [
+        item
+        for item in latest_verifications
+        if item.outcome == "pass"
+        and _utc(item.expires_at) > current_time
+        and REQUIRED_VERIFICATION_CHECKS.issubset(
+            {key for key, value in item.checks.items() if value is True}
+        )
+        and (mode == "trial" or item.storage_policy in {"contract", "manual"})
+    ]
+    verification = (
+        max(passing, key=lambda item: _utc(item.verified_at)) if passing else None
+    )
+    # A retained provider check or explicit Paloma attestation may correct a coarse FSQ OS type.
+    # The verification is bound to this exact FSQ identity and must pass every hard check; the
+    # corrected type still has to be compatible with an exact ACTIVE ABC license below.
+    effective_type = (
+        verification.permitted_snapshot.get("primary_type_slug")
+        if verification is not None
+        else chosen.primary_type_slug
+    ) or chosen.primary_type_slug
+    if effective_type not in CONSUMER_VENUE_TYPES:
         return _decision("rejected", "consumer_type_not_supported")
 
     compatible_abc = [
         record
         for record in active_abc
-        if _license_supports_type(_license_code(record), chosen.primary_type_slug)
+        if _license_supports_type(_license_code(record), effective_type)
     ]
     if not compatible_abc:
         return _decision("rejected", "abc_license_incompatible_with_venue_type")
@@ -223,32 +263,10 @@ def decide_candidate(
             "needs_review", "identity_below_publication_threshold", identity=identity_confidence
         )
 
-    # A verification is evidence about one exact provider identity.  Never let a pass for an
-    # old/merged Foursquare ID silently carry over to a newly linked place.
-    latest_verifications = [
-        item
-        for item in _latest_verifications(verifications)
-        if _verification_applies(item, chosen)
-    ]
-    failures = [
-        item
-        for item in latest_verifications
-        if item.outcome == "fail" and _utc(item.expires_at) > current_time
-    ]
     if failures:
         return _decision(
             "withdrawn", "current_verifier_failure", identity=identity_confidence
         )
-    passing = [
-        item
-        for item in latest_verifications
-        if item.outcome == "pass"
-        and _utc(item.expires_at) > current_time
-        and REQUIRED_VERIFICATION_CHECKS.issubset(
-            {key for key, value in item.checks.items() if value is True}
-        )
-        and (mode == "trial" or item.storage_policy in {"contract", "manual"})
-    ]
     # The monthly FSQ OS timestamp is the default current-operation signal. A current durable
     # verification bound to this exact FSQ ID may supersede that timestamp: a contracted provider
     # check or reviewed manual attestation is stronger, fresher evidence than an unchanged bulk
@@ -262,9 +280,7 @@ def decide_candidate(
             "missing_current_fsq_os_anchor",
             identity=identity_confidence,
         )
-    if passing:
-        verification = max(passing, key=lambda item: _utc(item.verified_at))
-    else:
+    if verification is None:
         # FSQ OS + an exact ACTIVE *public-premises* ABC license is independently sufficient
         # for ordinary bars.  This is not a license-only rule: FSQ supplies the current public
         # identity/type while ABC supplies the legal walk-in premise.  Restaurant licenses and
@@ -292,7 +308,7 @@ def decide_candidate(
     # explicitly classified consumer venue (taproom/tasting room); generic manufacturers need a
     # human attestation of ordinary public access.
     if (
-        chosen.primary_type_slug in GENERIC_MANUFACTURER_TYPES
+        effective_type in GENERIC_MANUFACTURER_TYPES
         and verification.verification_tier != "manual"
     ):
         return _decision(
@@ -300,7 +316,7 @@ def decide_candidate(
             "generic_manufacturer_requires_manual_public_access",
             identity=identity_confidence,
         )
-    if chosen.primary_type_slug in {"taproom", "tasting_room"}:
+    if effective_type in {"taproom", "tasting_room"}:
         if not _has_hours(resolved.get("hours")) and verification.verification_tier != "manual":
             return _decision(
                 "needs_review",
@@ -421,6 +437,92 @@ def provider_verification(
         # violating Foursquare's no-server-caching rule for self-service API attributes.
         permitted_snapshot=_record_snapshot(record),
         storage_policy=storage_policy,
+        verified_at=timestamp,
+        expires_at=timestamp + timedelta(days=lease_days),
+    )
+
+
+def manual_attestation(
+    anchor: SourceRecord,
+    *,
+    reviewer: str,
+    evidence_urls: tuple[str, ...],
+    outcome: str = "pass",
+    venue_type: str | None = None,
+    note: str | None = None,
+    observed_at: datetime | None = None,
+    lease_days: int = DEFAULT_MANUAL_LEASE_DAYS,
+) -> VerificationEvidence:
+    """Create a bounded Paloma attestation without copying provider detail fields.
+
+    A passing reviewer asserts all five publication hard facts; a failing reviewer records an
+    explicit current hard negative for the same identity. Only the evidence trail and the
+    open-source anchor identity are retained. Hours, price, phone, website, and neighborhood
+    deliberately remain absent so a manual verification cannot smuggle an ephemeral website or
+    provider response into the durable field projection.
+    """
+    reviewer_name = reviewer.strip()
+    urls = tuple(dict.fromkeys(url.strip() for url in evidence_urls if url.strip()))
+    selected_type = (venue_type or anchor.primary_type_slug or "").strip()
+    if anchor.source != "fsq":
+        raise ValueError("Manual attestations must be bound to the exact FSQ OS anchor")
+    if not reviewer_name:
+        raise ValueError("Manual attestations require an identified reviewer")
+    if outcome not in {"pass", "fail"}:
+        raise ValueError("Manual attestation outcome must be pass or fail")
+    if not urls:
+        raise ValueError("Manual attestations require at least one evidence URL")
+    if len(urls) > 10 or any(
+        urlsplit(url).scheme != "https" or not urlsplit(url).netloc for url in urls
+    ):
+        raise ValueError("Manual evidence must contain 1-10 absolute HTTPS URLs")
+    if len(reviewer_name) > 200:
+        raise ValueError("Manual attestation reviewer is too long")
+    if note and len(note) > 1_000:
+        raise ValueError("Manual attestation note is too long")
+    if selected_type not in CONSUMER_VENUE_TYPES:
+        raise ValueError(f"Unsupported attested venue type: {selected_type}")
+    if lease_days < 1 or lease_days > DEFAULT_MANUAL_LEASE_DAYS:
+        raise ValueError(
+            f"Manual attestation lease must be 1-{DEFAULT_MANUAL_LEASE_DAYS} days"
+        )
+
+    timestamp = _utc(observed_at or datetime.now(timezone.utc))
+    snapshot: dict[str, Any] = {
+        "name": anchor.name,
+        "primary_type_slug": selected_type,
+        "address": anchor.address,
+        "city": anchor.city,
+        "region": anchor.region,
+        "postal_code": anchor.postal_code,
+        "country_code": anchor.country_code,
+        "latitude": anchor.latitude,
+        "longitude": anchor.longitude,
+        # Explicit NULLs prevent _resolve_fields from falling back to optional anchor fields.
+        "phone": None,
+        "website_url": None,
+        "neighborhood": None,
+        "hours": None,
+        "price_level": None,
+        "_attestation": {
+            "reviewer": reviewer_name,
+            "evidence_urls": list(urls),
+            "note": note.strip() if note and note.strip() else None,
+            "observed_at": timestamp.isoformat(),
+            "policy": "paloma-curation-v1",
+        },
+    }
+    return VerificationEvidence(
+        verifier="manual",
+        verifier_record_id=anchor.source_record_id,
+        outcome=outcome,
+        verification_tier="manual",
+        checks={
+            key: outcome == "pass" or key in {"identity", "display_name", "venue_type"}
+            for key in REQUIRED_VERIFICATION_CHECKS
+        },
+        permitted_snapshot=snapshot,
+        storage_policy="manual",
         verified_at=timestamp,
         expires_at=timestamp + timedelta(days=lease_days),
     )

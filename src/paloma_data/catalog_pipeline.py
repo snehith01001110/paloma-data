@@ -16,6 +16,7 @@ from paloma_data.catalog import (
     VerificationEvidence,
     decide_candidate,
     decide_identity,
+    manual_attestation,
     provider_verification,
 )
 from paloma_data.catalog_repository import CatalogRepository
@@ -455,15 +456,17 @@ class CatalogPipeline:
         self, conn, candidate_id: str, anchor: SourceRecord
     ) -> tuple[int, int]:
         matches: defaultdict[str, list[tuple[SourceRecord, IdentityDecision]]] = defaultdict(list)
-        reviews: list[tuple[SourceRecord, IdentityDecision]] = []
+        reviews: list[tuple[SourceRecord, IdentityDecision, str]] = []
         for record in self.repo.potential_sources(conn, anchor):
-            if not _types_compatible(anchor.primary_type_slug, record.primary_type_slug):
-                continue
             decision = decide_identity(anchor, record)
-            if decision.action == "match":
+            review_reason = _manual_review_reason(anchor, record, decision)
+            if (
+                decision.action == "match"
+                and _types_compatible(anchor.primary_type_slug, record.primary_type_slug)
+            ):
                 matches[record.source].append((record, decision))
-            elif decision.action == "review":
-                reviews.append((record, decision))
+            elif review_reason is not None:
+                reviews.append((record, decision, review_reason))
 
         linked_count = 0
         review_count = 0
@@ -473,10 +476,16 @@ class CatalogPipeline:
                 selected = ranked
             elif len(ranked) == 1 or ranked[0][1].score - ranked[1][1].score >= 0.03:
                 selected = ranked[:1]
-                reviews.extend(ranked[1:])
+                reviews.extend(
+                    (record, decision, decision.reason)
+                    for record, decision in ranked[1:]
+                )
             else:
                 selected = []
-                reviews.extend(ranked)
+                reviews.extend(
+                    (record, decision, decision.reason)
+                    for record, decision in ranked
+                )
             for record, decision in selected:
                 linked = self.repo.link_source(
                     conn,
@@ -498,15 +507,16 @@ class CatalogPipeline:
                                 "source_already_linked_to_another_candidate",
                                 decision.features,
                             ),
+                            "source_already_linked_to_another_candidate",
                         )
                     )
 
-        for record, decision in reviews:
+        for record, decision, reason in reviews:
             enqueued = self.repo.enqueue_match_review(
                 conn,
                 candidate_id,
                 record,
-                reason=decision.reason,
+                reason=reason,
                 score=decision.score,
                 evidence=_review_evidence(anchor, record, decision),
             )
@@ -529,13 +539,11 @@ class CatalogPipeline:
             ):
                 validated.append(link)
                 continue
-            if not _types_compatible(anchor.primary_type_slug, record.primary_type_slug):
-                identity = IdentityDecision(
-                    "review", 0.0, "linked_type_now_conflicts", {}
-                )
-            else:
-                identity = decide_identity(anchor, record)
-            if identity.action == "match" and identity.score >= 0.96:
+            identity = decide_identity(anchor, record)
+            types_compatible = _types_compatible(
+                anchor.primary_type_slug, record.primary_type_slug
+            )
+            if types_compatible and identity.action == "match" and identity.score >= 0.96:
                 self.repo.link_source(
                     conn,
                     candidate_id,
@@ -552,13 +560,44 @@ class CatalogPipeline:
                     )
                 )
                 continue
+            review_reason = _manual_review_reason(anchor, record, identity)
+            review_evidence = _review_evidence(anchor, record, identity)
+            accepted = (
+                self.repo.accepted_match_review(
+                    conn,
+                    candidate_id,
+                    record,
+                    reason=review_reason,
+                    evidence=review_evidence,
+                )
+                if review_reason is not None
+                else None
+            )
+            if accepted is not None:
+                confidence = 0.99
+                self.repo.link_source(
+                    conn,
+                    candidate_id,
+                    record,
+                    confidence=confidence,
+                    method=f"manual_review:{accepted['id']}:{review_reason}",
+                    metadata={
+                        "review_id": accepted["id"],
+                        "review_score": accepted["score"],
+                        "evidence": review_evidence,
+                    },
+                )
+                validated.append(
+                    LinkedSource(record, confidence, f"manual_review:{review_reason}")
+                )
+                continue
             self.repo.enqueue_match_review(
                 conn,
                 candidate_id,
                 record,
-                reason=f"link_no_longer_valid:{identity.reason}",
+                reason=review_reason or f"link_no_longer_valid:{identity.reason}",
                 score=identity.score,
-                evidence=_review_evidence(anchor, record, identity),
+                evidence=review_evidence,
             )
             self.repo.unlink_source(conn, candidate_id, record)
         return validated
@@ -568,6 +607,9 @@ class CatalogPipeline:
         review_id: int,
         *,
         resolution: str,
+        reviewer: str,
+        expected_city: str | None = None,
+        note: str | None = None,
     ) -> dict[str, Any]:
         """Resolve one human-reviewed conflict and immediately recompute its candidate."""
         with self.db.connection() as conn:
@@ -580,19 +622,109 @@ class CatalogPipeline:
             # and means a later source/anchor change produces a different fingerprint and safely
             # reopens review.
             self._evaluate_candidate(conn, candidate_id)
+            review = self.repo.pending_match_review(conn, review_id)
+            anchor = self.repo.fsq_anchor(conn, candidate_id)
+            if anchor is None:
+                raise ValueError("A match review can only be resolved for an FSQ-anchored candidate")
+            if expected_city is not None and anchor.city.casefold() != expected_city.casefold():
+                raise ValueError(
+                    f"Candidate city {anchor.city!r} does not match guardrail {expected_city!r}"
+                )
+            identity = decide_identity(anchor, review["record"])
+            expected_reason = _manual_review_reason(anchor, review["record"], identity)
+            valid_reasons = {expected_reason} if expected_reason is not None else set()
+            # A high-scoring match can still be queued when one source produced multiple
+            # plausible rows.  Its original identity reason remains a valid current prompt.
+            if identity.action == "match":
+                valid_reasons.add(identity.reason)
+            expected_evidence = _review_evidence(anchor, review["record"], identity)
+            if (
+                review["reason"] not in valid_reasons
+                or expected_evidence != review["evidence"]
+            ):
+                raise ValueError(
+                    "Review evidence changed during refresh; use the newly queued review"
+                )
             candidate_id = self.repo.resolve_match_review(
                 conn,
                 review_id,
                 resolution=resolution,
+                resolved_by=reviewer,
+                note=note,
             )
+            if resolution == "same_place":
+                linked = self.repo.link_source(
+                    conn,
+                    candidate_id,
+                    review["record"],
+                    confidence=0.99,
+                    method=f"manual_review:{review_id}:{review['reason']}",
+                    metadata={
+                        "review_id": review_id,
+                        "review_score": review["score"],
+                        "evidence": review["evidence"],
+                    },
+                )
+                if not linked:
+                    raise RuntimeError(
+                        "Reviewed source is already owned by a different candidate"
+                    )
             decision = self._evaluate_candidate(conn, candidate_id)
             conn.commit()
         return {
             "review_id": review_id,
             "resolution": resolution,
+            "reviewer": reviewer.strip(),
             "candidate_id": candidate_id,
             "candidate_state": decision.state,
             "decision_reason": decision.reason,
+            "publication_mutated": False,
+        }
+
+    def attest_candidate(
+        self,
+        candidate_id: str,
+        *,
+        reviewer: str,
+        evidence_urls: tuple[str, ...],
+        expected_city: str | None = None,
+        outcome: str = "pass",
+        venue_type: str | None = None,
+        note: str | None = None,
+        lease_days: int = 90,
+    ) -> dict[str, Any]:
+        """Append a bounded manual verification and re-evaluate privately."""
+        with self.db.connection() as conn:
+            conn.execute(
+                "select pg_advisory_xact_lock(hashtext('paloma_candidate:' || %s))",
+                (candidate_id,),
+            )
+            anchor = self.repo.fsq_anchor(conn, candidate_id)
+            if anchor is None:
+                raise ValueError(f"Unknown or non-FSQ catalog candidate: {candidate_id}")
+            if expected_city is not None and anchor.city.casefold() != expected_city.casefold():
+                raise ValueError(
+                    f"Candidate city {anchor.city!r} does not match guardrail {expected_city!r}"
+                )
+            verification = manual_attestation(
+                anchor,
+                reviewer=reviewer,
+                evidence_urls=evidence_urls,
+                outcome=outcome,
+                venue_type=venue_type,
+                note=note,
+                lease_days=lease_days,
+            )
+            self.repo.save_verification(conn, candidate_id, verification)
+            decision = self._evaluate_candidate(conn, candidate_id)
+            conn.commit()
+        return {
+            "candidate_id": candidate_id,
+            "candidate_state": decision.state,
+            "decision_reason": decision.reason,
+            "verification_tier": decision.verification_tier,
+            "attestation_outcome": verification.outcome,
+            "verification_expires_at": verification.expires_at.isoformat(),
             "publication_mutated": False,
         }
 
@@ -609,6 +741,19 @@ def _types_compatible(left: str | None, right: str | None) -> bool:
         frozenset({"distillery", "tasting_room"}),
     }
     return frozenset({left, right}) in compatible
+
+
+def _manual_review_reason(
+    anchor: SourceRecord,
+    record: SourceRecord,
+    identity: IdentityDecision,
+) -> str | None:
+    """Return the stable review reason for a plausible identity that cannot auto-link."""
+    if _types_compatible(anchor.primary_type_slug, record.primary_type_slug):
+        return identity.reason if identity.action == "review" else None
+    if identity.action in {"match", "review"}:
+        return f"type_conflict:{identity.reason}"
+    return None
 
 
 def _not_found_verification(
