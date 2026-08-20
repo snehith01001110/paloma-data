@@ -22,6 +22,13 @@ def test_expansion_is_manual_environment_protected_and_database_gated():
     assert "paloma-data catalog-observe-manifest" in EXPANSION
 
 
+def test_protected_review_resolution_supports_existing_catalog_cities():
+    assert 'case "$ACTION" in' in EXPANSION
+    assert "resolve-review)" in EXPANSION
+    assert 'os.environ["PALOMA_CITIES"].split(",")' in EXPANSION
+    assert "outside the configured maintenance region" in EXPANSION
+
+
 def test_maintenance_workflow_has_no_new_publication_or_legacy_cutover_action():
     assert "catalog-publish" not in SYNC
     assert "catalog-cutover" not in SYNC
@@ -31,6 +38,13 @@ def test_maintenance_workflow_has_no_new_publication_or_legacy_cutover_action():
 def test_maintenance_workflow_checks_live_details_runtime_daily():
     assert "paloma-data live-details-health --require-healthy" in SYNC
     assert "if: github.event_name == 'schedule'" in SYNC
+
+
+def test_manual_catalog_refresh_can_recover_suppressed_existing_records():
+    assert (
+        'paloma-data pipeline-enqueue-catalog --include-suppressed --city "$CITY" '
+        '--limit "$LIMIT"'
+    ) in SYNC
 
 
 def test_scoped_oidc_credential_allows_only_the_two_reviewed_workflows():
