@@ -1,5 +1,6 @@
 -- Development expansion may proceed after one healthy refresh week. The checked-in manifest
 -- independently refuses a production phase configured below two weeks.
+-- This version prefix matches the production migration-history entry.
 
 alter table governance.catalog_expansion_release_events
   drop constraint catalog_expansion_release_events_check1;
