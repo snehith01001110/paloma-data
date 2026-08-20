@@ -143,8 +143,24 @@ jobs:
             echo "limit must be an integer from 1 through 2000" >&2
             exit 2
           fi
-          if [[ "$ACTION" != "status" && "$ACTION" != "publish" && "$ACTION" != "observe-manifest" ]]; then
-            RELEASE_ID="$RELEASE_ID" CITY="$CITY" python - <<'PY'
+          case "$ACTION" in
+            resolve-review)
+              CITY="$CITY" python - <<'PY'
+          import os
+
+          allowed = {
+              city.strip().casefold()
+              for city in os.environ["PALOMA_CITIES"].split(",")
+              if city.strip()
+          }
+          if os.environ["CITY"].casefold() not in allowed:
+              raise SystemExit(f"{os.environ['CITY']} is outside the configured maintenance region")
+          PY
+              ;;
+            status|publish|observe-manifest)
+              ;;
+            *)
+              RELEASE_ID="$RELEASE_ID" CITY="$CITY" python - <<'PY'
           import os
           from paloma_data.expansion import load_expansion_manifest
 
@@ -155,7 +171,8 @@ jobs:
                   + ", ".join(release.cities)
               )
           PY
-          fi
+              ;;
+          esac
           case "$ACTION" in
             status)
               paloma-data expansion-status --release-id "$RELEASE_ID"
