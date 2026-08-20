@@ -1,0 +1,186 @@
+{
+  "schema_version": 1,
+  "manifest_id": "east-bay-pilot-field-observations-v1",
+  "observations": [
+    {
+      "candidate_id": "e1f542d2-1367-4a94-bf70-a6836aaff4cf",
+      "candidate_name": "Cask Taproom",
+      "city": "Berkeley",
+      "field_name": "hours",
+      "value": {"tuesday": [["15:00", "22:00"]], "wednesday": [["15:00", "22:00"]], "thursday": [["15:00", "22:00"]], "friday": [["15:00", "24:00"]], "saturday": [["15:00", "24:00"]]},
+      "evidence_urls": ["https://caskstore.com/pages/cask-taproom"],
+      "note": "Current merchant taproom page reviewed; Monday and Sunday are explicitly closed.",
+      "lease_days": 90
+    },
+    {
+      "candidate_id": "ad500d45-5050-4fb9-9fa5-7875c6426f0f",
+      "candidate_name": "Cellarmaker Brewing Company",
+      "city": "Berkeley",
+      "field_name": "hours",
+      "value": {"wednesday": [["15:00", "20:00"]], "thursday": [["15:00", "20:00"]], "friday": [["15:00", "21:00"]], "saturday": [["12:00", "21:00"]], "sunday": [["12:00", "19:00"]]},
+      "evidence_urls": ["https://cellarmakerbrewing.com/berkeley/"],
+      "note": "Current merchant Berkeley location page reviewed; Monday and Tuesday have no service intervals.",
+      "lease_days": 90
+    },
+    {
+      "candidate_id": "9bc51ec1-aa4f-488b-a17b-93224bf30e96",
+      "candidate_name": "Fieldwork Brewing Company",
+      "city": "Berkeley",
+      "field_name": "hours",
+      "value": {"monday": [["12:00", "21:00"]], "tuesday": [["12:00", "21:00"]], "wednesday": [["12:00", "21:00"]], "thursday": [["12:00", "21:00"]], "friday": [["12:00", "22:00"]], "saturday": [["11:00", "22:00"]], "sunday": [["11:00", "21:00"]]},
+      "evidence_urls": ["https://fieldworkbrewing.com/accessibility/"],
+      "note": "Current merchant accessibility page lists the Berkeley location's complete weekly schedule.",
+      "lease_days": 90
+    },
+    {
+      "candidate_id": "fbd7bcbe-44b1-4ac9-b611-fe9eeb810ed0",
+      "candidate_name": "Free House",
+      "city": "Berkeley",
+      "field_name": "hours",
+      "value": {"monday": [["16:00", "22:00"]], "tuesday": [["16:00", "22:00"]], "wednesday": [["16:00", "22:00"]], "thursday": [["16:00", "22:00"]], "friday": [["16:00", "22:00"]]},
+      "evidence_urls": ["https://www.berkeleyfreehouse.com/"],
+      "note": "Current merchant page lists service Monday through Friday only; unlisted weekend days remain closed.",
+      "lease_days": 90
+    },
+    {
+      "candidate_id": "5ef3131a-2710-466c-a960-3570e2035406",
+      "candidate_name": "Gilman Brewing Company",
+      "city": "Berkeley",
+      "field_name": "hours",
+      "value": {"monday": [["12:00", "21:00"]], "tuesday": [["12:00", "21:00"]], "wednesday": [["12:00", "21:00"]], "thursday": [["12:00", "21:00"]], "friday": [["12:00", "22:00"]], "saturday": [["12:00", "22:00"]], "sunday": [["12:00", "21:00"]]},
+      "evidence_urls": ["https://gilmanbrew.com/location/berkeley/"],
+      "note": "Current merchant Berkeley location page reviewed.",
+      "lease_days": 90
+    },
+    {
+      "candidate_id": "8ae910b2-a313-40d2-b975-be6e2c950481",
+      "candidate_name": "Great Notion Brewing",
+      "city": "Berkeley",
+      "field_name": "hours",
+      "value": {"monday": [["12:00", "21:00"]], "tuesday": [["12:00", "21:00"]], "wednesday": [["12:00", "21:00"]], "thursday": [["12:00", "21:00"]], "friday": [["12:00", "22:00"]], "saturday": [["12:00", "22:00"]], "sunday": [["12:00", "21:00"]]},
+      "evidence_urls": ["https://greatnotion.com/pages/california-taproom-page"],
+      "note": "Current merchant California taproom page reviewed.",
+      "lease_days": 90
+    },
+    {
+      "candidate_id": "cc8dff32-50e4-4732-98a5-4ec43229bdf0",
+      "candidate_name": "Headlands Brewing",
+      "city": "Berkeley",
+      "field_name": "hours",
+      "value": {"monday": [["12:00", "21:00"]], "tuesday": [["12:00", "21:00"]], "wednesday": [["12:00", "21:00"]], "thursday": [["12:00", "21:00"]], "friday": [["12:00", "22:00"]], "saturday": [["11:00", "22:00"]], "sunday": [["11:00", "20:30"]]},
+      "evidence_urls": ["https://www.headlandsbrewing.com/berkeley"],
+      "note": "Current merchant Berkeley beer-garden page reviewed; schedule is weather permitting.",
+      "lease_days": 90
+    },
+    {
+      "candidate_id": "83194802-c047-4b69-b45f-4c2124f5c839",
+      "candidate_name": "Jupiter",
+      "city": "Berkeley",
+      "field_name": "hours",
+      "value": {"monday": [["11:30", "22:00"]], "tuesday": [["11:30", "22:00"]], "wednesday": [["11:30", "22:00"]], "thursday": [["11:30", "22:00"]], "friday": [["11:30", "23:00"]], "saturday": [["11:30", "23:00"]], "sunday": [["11:30", "22:00"]]},
+      "evidence_urls": ["https://www.jupiterbeer.com/"],
+      "note": "Current merchant home page lists a complete weekly schedule for the Berkeley location.",
+      "lease_days": 90
+    },
+    {
+      "candidate_id": "28e404c5-6f1f-4eba-ab9d-c1fc2d7e9863",
+      "candidate_name": "Tupper & Reed",
+      "city": "Berkeley",
+      "field_name": "hours",
+      "value": {"tuesday": [["16:30", "24:00"]], "wednesday": [["16:30", "24:00"]], "thursday": [["16:30", "02:00"]], "friday": [["16:30", "02:00"]], "saturday": [["16:30", "02:00"]], "sunday": [["17:00", "24:00"]]},
+      "evidence_urls": ["https://www.futurebars.com/locations/tupper-reed"],
+      "note": "Current operator location page reviewed; Monday is explicitly closed.",
+      "lease_days": 90
+    },
+    {
+      "candidate_id": "b227de6d-7fcb-4187-b011-6a58f245b02e",
+      "candidate_name": "Cellarmaker House of Pizza",
+      "city": "Oakland",
+      "field_name": "hours",
+      "value": {"tuesday": [["12:00", "15:00"], ["17:00", "21:00"]], "wednesday": [["12:00", "15:00"], ["17:00", "21:00"]], "thursday": [["12:00", "15:00"], ["17:00", "21:00"]], "friday": [["12:00", "21:00"]], "saturday": [["12:00", "21:00"]], "sunday": [["12:00", "20:00"]]},
+      "evidence_urls": ["https://cellarmakerbrewing.com/oakland/"],
+      "note": "Current merchant Oakland location page reviewed; Monday is closed and weekday split service is preserved.",
+      "lease_days": 90
+    },
+    {
+      "candidate_id": "d486aed5-74c2-48aa-93b7-75a3aa7ee5d8",
+      "candidate_name": "District Oakland",
+      "city": "Oakland",
+      "field_name": "hours",
+      "value": {"monday": [["16:00", "21:00"]], "tuesday": [["16:00", "21:00"]], "wednesday": [["16:00", "21:00"]], "thursday": [["16:00", "22:00"]], "friday": [["16:00", "24:00"]], "saturday": [["17:00", "24:00"]], "sunday": [["16:00", "20:00"]]},
+      "evidence_urls": ["https://www.visitoakland.com/listing/district-oakland/1068/"],
+      "note": "Current destination-authority listing reviewed against the exact venue address and phone.",
+      "lease_days": 90
+    },
+    {
+      "candidate_id": "d7ad07af-a1ef-4aea-b1fc-ab32a378bce7",
+      "candidate_name": "Drake's Dealership",
+      "city": "Oakland",
+      "field_name": "hours",
+      "value": {"schema_version": "paloma-hours-v1", "timezone": "America/Los_Angeles", "weekly": [{"day": 1, "opens": "16:00", "closes": "22:00", "closes_day_offset": 0}, {"day": 2, "opens": "12:00", "closes": "22:00", "closes_day_offset": 0}, {"day": 3, "opens": "12:00", "closes": "22:00", "closes_day_offset": 0}, {"day": 4, "opens": "12:00", "closes": "22:00", "closes_day_offset": 0}, {"day": 5, "opens": "12:00", "closes": "23:00", "closes_day_offset": 0}, {"day": 6, "opens": "11:00", "closes": "23:00", "closes_day_offset": 0}, {"day": 7, "opens": "11:00", "closes": "22:00", "closes_day_offset": 0}], "special": [{"date": "2026-10-22", "closed": true}]},
+      "evidence_urls": ["https://drinkdrakes.com/visit/dealership/"],
+      "note": "Current merchant location page reviewed; its announced October 22 closure is retained as a special schedule exception.",
+      "lease_days": 90
+    },
+    {
+      "candidate_id": "ac4aac47-dcc3-4ac8-94b8-6086e03166e7",
+      "candidate_name": "Ghost Town Brewing",
+      "city": "Oakland",
+      "field_name": "hours",
+      "value": {"monday": [["15:00", "22:00"]], "tuesday": [["15:00", "22:00"]], "wednesday": [["15:00", "22:00"]], "thursday": [["15:00", "22:00"]], "friday": [["12:00", "22:00"]], "saturday": [["12:00", "22:00"]], "sunday": [["12:00", "22:00"]]},
+      "evidence_urls": ["https://www.ghosttownbrewing.com/"],
+      "note": "Current merchant home page reviewed for the West Oakland address.",
+      "lease_days": 90
+    },
+    {
+      "candidate_id": "62789bfc-58af-466d-ad92-2209d51c67d9",
+      "candidate_name": "Ghost Town Brewing",
+      "city": "Oakland",
+      "field_name": "hours",
+      "value": {"monday": [["13:00", "22:00"]], "tuesday": [["12:00", "22:00"]], "wednesday": [["12:00", "22:00"]], "thursday": [["12:00", "22:00"]], "friday": [["12:00", "22:30"]], "saturday": [["12:00", "22:30"]], "sunday": [["12:00", "22:00"]]},
+      "evidence_urls": ["https://www.ghosttownbrewing.com/"],
+      "note": "Current merchant home page reviewed for the Laurel address.",
+      "lease_days": 90
+    },
+    {
+      "candidate_id": "1157e805-21d0-4502-a4ef-8bb9be118f95",
+      "candidate_name": "Rosenblum Cellars",
+      "city": "Oakland",
+      "field_name": "hours",
+      "value": {"tuesday": [["12:00", "20:00"]], "wednesday": [["12:00", "20:00"]], "thursday": [["12:00", "20:00"]], "friday": [["12:00", "20:00"]], "saturday": [["12:00", "20:00"]], "sunday": [["12:00", "20:00"]]},
+      "evidence_urls": ["https://rosenblumcellars.com/pages/reservations"],
+      "note": "Current merchant reservation page reviewed; Monday is explicitly closed.",
+      "lease_days": 90
+    },
+    {
+      "candidate_id": "e8fed297-bc97-467f-9741-e004c595571d",
+      "candidate_name": "Sante Adairius Oakland Arbor",
+      "city": "Oakland",
+      "field_name": "hours",
+      "value": {"monday": [["16:00", "22:00"]], "tuesday": [["14:00", "22:00"]], "wednesday": [["14:00", "22:00"]], "thursday": [["14:00", "22:00"]], "friday": [["12:00", "23:00"]], "saturday": [["12:00", "23:00"]], "sunday": [["13:00", "19:00"]]},
+      "evidence_urls": ["https://rusticales.com/oakland-arbor/"],
+      "note": "Current merchant Oakland Arbor location page reviewed.",
+      "lease_days": 90
+    },
+    {
+      "candidate_id": "3333e52e-0550-4f46-8964-54b546c76ae0",
+      "candidate_name": "The Alley",
+      "city": "Oakland",
+      "field_name": "hours",
+      "value": {"monday": [["18:00", "02:00"]], "tuesday": [["18:00", "02:00"]], "wednesday": [["18:00", "02:00"]], "thursday": [["18:00", "02:00"]], "friday": [["18:00", "02:00"]], "saturday": [["18:00", "02:00"]], "sunday": [["18:00", "02:00"]]},
+      "evidence_urls": ["https://www.thealleyoakland.com/events"],
+      "note": "Current merchant hours page lists daily door hours; service-specific sub-hours are not substituted for venue hours.",
+      "lease_days": 90
+    },
+    {
+      "candidate_id": "e514e519-c64e-4a28-aa0c-3fd608ca30fc",
+      "candidate_name": "The Double Standard",
+      "city": "Oakland",
+      "field_name": "hours",
+      "value": {"monday": [["16:00", "24:00"]], "tuesday": [["16:00", "24:00"]], "wednesday": [["16:00", "24:00"]], "thursday": [["16:00", "01:00"]], "friday": [["16:00", "02:00"]], "saturday": [["14:00", "02:00"]], "sunday": [["14:00", "24:00"]]},
+      "evidence_urls": ["https://www.doublestandardbar.com/"],
+      "note": "Current merchant home page reviewed.",
+      "lease_days": 90
+    }
+  ]
+}

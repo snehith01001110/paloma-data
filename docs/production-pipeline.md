@@ -35,6 +35,12 @@ does not drift between scheduled runs.
   field resolver has projected canonical attributes, rematerialization preserves that projection
   (including intentional `NULL` values) so routine identity refreshes cannot erase or resurrect
   independently resolved phone, website, neighborhood, hours, price, or setting values.
+- Verified private candidates and public establishments share one append-only observation ledger.
+  Exactly one entity scope is set on each observation; the candidate UUID becomes the establishment
+  UUID at first materialization, so evidence does not need to be copied or rewritten.
+- Candidate phone and website projections require two independent upstream origins unless a named
+  reviewer recorded a first-party atomic fact. Provider cache payloads remain physically separate
+  and cannot flow into the durable ledger unless the source policy grants retention rights.
 - Each job has an active deduplication key, a visibility lease, bounded attempts, immutable
   attempt records, exponential retry, and a terminal dead-letter state.
 - Provider network requests do not hold an open database transaction. Provider response-retention

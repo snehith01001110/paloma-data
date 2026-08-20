@@ -14,6 +14,12 @@ def test_expansion_is_manual_environment_protected_and_database_gated():
     assert "--require-ready" in EXPANSION
     assert "paloma-data catalog-publish" in EXPANSION
     assert '--release-id "$RELEASE_ID"' in EXPANSION
+    assert "observe-field" in EXPANSION
+    assert "RECORD_FIELD_OBSERVATION" in EXPANSION
+    assert "paloma-data catalog-observe-field" in EXPANSION
+    assert "observe-manifest" in EXPANSION
+    assert "RECORD_FIELD_MANIFEST" in EXPANSION
+    assert "paloma-data catalog-observe-manifest" in EXPANSION
 
 
 def test_maintenance_workflow_has_no_new_publication_or_legacy_cutover_action():

@@ -15,7 +15,9 @@ from paloma_data.adapters import (
 )
 from paloma_data.adapters.foursquare_api import FoursquarePlacesAPI
 from paloma_data.adapters.yelp import YelpPlacesAPI
+from paloma_data.attribute_enrichment import OpenAttributeEnricher
 from paloma_data.catalog import CATALOG_DECISION_VERSION
+from paloma_data.candidate_observations import load_candidate_observation_manifest
 from paloma_data.catalog_pipeline import CatalogPipeline
 from paloma_data.catalog_repository import (
     POTENTIAL_SOURCE_EXCLUDED_FLAGS,
@@ -763,7 +765,7 @@ def catalog_status() -> None:
             with current_verified as (
               select *
               from ingest.catalog_candidates
-              where candidate_state in ('verified', 'published')
+              where candidate_state = 'verified'
                 and decision_version = %s
                 and verification_expires_at > now()
             )
@@ -817,7 +819,7 @@ def catalog_status() -> None:
             select resolved_snapshot->>'primary_type_slug' as primary_type,
                    count(*) as count
             from ingest.catalog_candidates
-            where candidate_state in ('verified', 'published')
+            where candidate_state = 'verified'
               and decision_version = %s
               and verification_expires_at > now()
             group by resolved_snapshot->>'primary_type_slug'
@@ -852,7 +854,7 @@ def catalog_status() -> None:
             left join ingest.candidate_match_reviews r on r.candidate_id = c.id
             left join ingest.source_records sr
               on sr.source = r.source and sr.source_record_id = r.source_record_id
-            where c.candidate_state in ('verified', 'published')
+            where c.candidate_state = 'verified'
               and c.decision_version = %s
               and c.verification_expires_at > now()
             """,
@@ -1039,9 +1041,17 @@ def catalog_status() -> None:
                        and (verification_expires_at is null or verification_expires_at <= now())
                    ) as unsafe_expired_live,
                    count(*) filter (where publication_state = 'published' and phone_e164 is not null) as phone,
+                   count(*) filter (where publication_state = 'published' and website_url is not null) as website,
                    count(*) filter (where publication_state = 'published' and neighborhood is not null) as neighborhood,
                    count(*) filter (where publication_state = 'published' and hours is not null) as hours,
                    count(*) filter (where publication_state = 'published' and price_level is not null) as price,
+                   count(*) filter (
+                     where publication_state = 'published'
+                       and exists (
+                         select 1 from public.establishment_settings setting
+                         where setting.establishment_id = establishments.id
+                       )
+                   ) as settings,
                    count(*) filter (where publication_state = 'published' and cover_image_url is not null) as cover_image
             from public.establishments
             """
@@ -1150,6 +1160,77 @@ def catalog_attest(
                 note=note,
                 lease_days=lease_days,
             ),
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
+@app.command("catalog-observe-field")
+def catalog_observe_field(
+    candidate_id: str = typer.Option(..., help="Exact private catalog candidate UUID"),
+    field_name: str = typer.Option(
+        ...,
+        help="phone_e164, website_url, neighborhood, hours, price_level, or setting_slug",
+    ),
+    value_json: str = typer.Option(
+        ...,
+        "--value-json",
+        help="One JSON scalar/object/array containing the independently reviewed fact",
+    ),
+    reviewer: str = typer.Option(..., help="Identified Paloma reviewer"),
+    evidence_url: list[str] = typer.Option(
+        ...,
+        "--evidence-url",
+        help="Current factual-reference HTTPS URL; repeat as needed",
+    ),
+    city: str | None = typer.Option(None, help="Optional exact candidate-city guardrail"),
+    note: str | None = typer.Option(
+        None,
+        help="Short independent-review rationale; never paste provider/page payloads",
+    ),
+    lease_days: int | None = typer.Option(None, min=1, max=365),
+    confirm: str = typer.Option("", help="Must be exactly RECORD_FIELD_OBSERVATION"),
+) -> None:
+    """Append a rights-checked atomic fact to a private candidate; never publish it."""
+    if confirm != "RECORD_FIELD_OBSERVATION":
+        raise typer.BadParameter("Pass --confirm RECORD_FIELD_OBSERVATION")
+    try:
+        value = json.loads(value_json)
+    except json.JSONDecodeError as exc:
+        raise typer.BadParameter("--value-json must contain valid JSON") from exc
+    _, _, _, catalog = _components()
+    typer.echo(
+        json.dumps(
+            catalog.observe_candidate_field(
+                candidate_id,
+                field_name=field_name,
+                value=value,
+                reviewer=reviewer,
+                evidence_urls=tuple(evidence_url),
+                expected_city=city,
+                note=note,
+                lease_days=lease_days,
+            ),
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
+@app.command("catalog-observe-manifest")
+def catalog_observe_manifest(
+    reviewer: str = typer.Option(..., help="Identified Paloma reviewer"),
+    confirm: str = typer.Option("", help="Must be exactly RECORD_FIELD_MANIFEST"),
+) -> None:
+    """Apply the checked-in East Bay private field batch; never publish it."""
+    if confirm != "RECORD_FIELD_MANIFEST":
+        raise typer.BadParameter("Pass --confirm RECORD_FIELD_MANIFEST")
+    manifest = load_candidate_observation_manifest()
+    _, _, _, catalog = _components()
+    typer.echo(
+        json.dumps(
+            catalog.observe_candidate_manifest(manifest, reviewer=reviewer),
             indent=2,
             sort_keys=True,
         )
@@ -1304,6 +1385,37 @@ def sync_neighborhoods() -> None:
     with DataSFNeighborhoodAdapter(settings.sf_neighborhoods_url) as adapter:
         result = stager.run(adapter)
     typer.echo(json.dumps(result, indent=2, sort_keys=True))
+
+
+@app.command("enrich-open-attributes")
+def enrich_open_attributes(
+    candidate_limit: int = typer.Option(5_000, min=1, max=50_000),
+) -> None:
+    """Refresh reviewed open attribute layers and re-resolve; never publish."""
+    settings, db, _, catalog = _components()
+    enrichment = OpenAttributeEnricher(
+        db,
+        bbox=settings.overture_bbox,
+        overpass_url=settings.osm_overpass_url,
+    ).run()
+    candidates = catalog.reevaluate(
+        city=None,
+        limit=candidate_limit,
+        states=("verified",),
+    )
+    fields = FieldResolver(db).refresh_and_resolve()
+    typer.echo(
+        json.dumps(
+            {
+                "enrichment": enrichment,
+                "candidate_decisions": candidates,
+                "public_field_resolution": fields,
+                "publication_mutated": False,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
 
 
 @app.command()

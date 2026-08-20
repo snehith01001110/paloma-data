@@ -1581,4 +1581,5 @@ def _source_record(row: dict[str, Any]) -> SourceRecord:
         ),
         category_evidence=row.get("category_evidence") or {},
         permitted_metadata=row.get("permitted_metadata") or {},
+        field_provenance=row.get("field_provenance") or {},
     )

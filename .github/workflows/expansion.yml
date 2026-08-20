@@ -8,7 +8,7 @@ on:
         required: true
         default: status
         type: choice
-        options: [status, discover, trial, verify, reevaluate, audit, resolve-review, attest, publish]
+        options: [status, discover, trial, verify, reevaluate, audit, resolve-review, attest, observe-field, observe-manifest, publish]
       release_id:
         description: Versioned bounded release
         required: true
@@ -72,6 +72,22 @@ on:
         required: false
         default: ''
         type: string
+      field_name:
+        description: Atomic field for observe-field
+        required: false
+        default: hours
+        type: choice
+        options: [phone_e164, website_url, neighborhood, hours, price_level, setting_slug]
+      field_value_json:
+        description: JSON scalar/object/array for observe-field
+        required: false
+        default: 'null'
+        type: string
+      field_lease_days:
+        description: Optional lease no longer than the source policy permits
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -117,6 +133,9 @@ jobs:
           ATTESTATION_OUTCOME: ${{ inputs.attestation_outcome }}
           EVIDENCE_URLS: ${{ inputs.evidence_urls }}
           ATTESTATION_NOTE: ${{ inputs.attestation_note }}
+          FIELD_NAME: ${{ inputs.field_name }}
+          FIELD_VALUE_JSON: ${{ inputs.field_value_json }}
+          FIELD_LEASE_DAYS: ${{ inputs.field_lease_days }}
           REVIEWER: github:${{ github.actor }}
         run: |
           set -euo pipefail
@@ -124,7 +143,7 @@ jobs:
             echo "limit must be an integer from 1 through 2000" >&2
             exit 2
           fi
-          if [[ "$ACTION" != "status" && "$ACTION" != "publish" ]]; then
+          if [[ "$ACTION" != "status" && "$ACTION" != "publish" && "$ACTION" != "observe-manifest" ]]; then
             RELEASE_ID="$RELEASE_ID" CITY="$CITY" python - <<'PY'
           import os
           from paloma_data.expansion import load_expansion_manifest
@@ -204,6 +223,51 @@ jobs:
                 ARGS+=(--note "$ATTESTATION_NOTE")
               fi
               paloma-data catalog-attest "${ARGS[@]}"
+              ;;
+            observe-field)
+              test "$CONFIRMATION" = "RECORD_FIELD_OBSERVATION"
+              test -n "$CANDIDATE_ID"
+              mapfile -t EVIDENCE < <(python - <<'PY'
+          import json
+          import os
+
+          values = json.loads(os.environ["EVIDENCE_URLS"])
+          if not isinstance(values, list) or not values or len(values) > 10:
+              raise SystemExit("evidence_urls must be a JSON array with 1-10 values")
+          for value in values:
+              if not isinstance(value, str) or "\n" in value or "\r" in value:
+                  raise SystemExit("each evidence URL must be one line of text")
+              print(value)
+          PY
+              )
+              ARGS=(
+                --candidate-id "$CANDIDATE_ID"
+                --field-name "$FIELD_NAME"
+                --value-json "$FIELD_VALUE_JSON"
+                --reviewer "$REVIEWER"
+                --city "$CITY"
+                --confirm "$CONFIRMATION"
+              )
+              for url in "${EVIDENCE[@]}"; do
+                ARGS+=(--evidence-url "$url")
+              done
+              if [ -n "$ATTESTATION_NOTE" ]; then
+                ARGS+=(--note "$ATTESTATION_NOTE")
+              fi
+              if [ -n "$FIELD_LEASE_DAYS" ]; then
+                if [[ ! "$FIELD_LEASE_DAYS" =~ ^[1-9][0-9]*$ ]] || (( FIELD_LEASE_DAYS > 365 )); then
+                  echo "field_lease_days must be an integer from 1 through 365" >&2
+                  exit 2
+                fi
+                ARGS+=(--lease-days "$FIELD_LEASE_DAYS")
+              fi
+              paloma-data catalog-observe-field "${ARGS[@]}"
+              ;;
+            observe-manifest)
+              test "$CONFIRMATION" = "RECORD_FIELD_MANIFEST"
+              paloma-data catalog-observe-manifest \
+                --reviewer "$REVIEWER" \
+                --confirm "$CONFIRMATION"
               ;;
             publish)
               test "$CONFIRMATION" = "PUBLISH_VERIFIED"

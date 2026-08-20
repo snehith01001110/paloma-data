@@ -8,7 +8,7 @@ on:
         required: true
         default: status
         type: choice
-        options: [status, coverage, resolve-fields, audit, stage, neighborhoods, trial-verified, provider-links, provider-audit, queue-refresh, queue-work, queue-status, deploy-worker]
+        options: [status, coverage, resolve-fields, audit, stage, neighborhoods, open-attributes, trial-verified, provider-links, provider-audit, queue-refresh, queue-work, queue-status, deploy-worker]
       source:
         description: Source for stage
         required: false
@@ -74,6 +74,7 @@ jobs:
           paloma-data stage-source overture --mode full
           paloma-data stage-source wikidata --mode full
           paloma-data sync-neighborhoods
+          paloma-data enrich-open-attributes
           if [ -n "$FSQ_PLACES_API_KEY" ] && [ "$FSQ_SERVER_STORAGE_LICENSED" = "true" ]; then
             paloma-data catalog-verify --limit 250 --existing-only
           else
@@ -153,6 +154,9 @@ jobs:
               ;;
             neighborhoods)
               paloma-data sync-neighborhoods
+              ;;
+            open-attributes)
+              paloma-data enrich-open-attributes --candidate-limit "$LIMIT"
               ;;
             trial-verified)
               paloma-data catalog-trial --city "$CITY" --limit "$LIMIT" --verified-only

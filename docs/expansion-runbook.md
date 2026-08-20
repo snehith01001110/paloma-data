@@ -93,10 +93,24 @@ owner approval. Run one city and action at a time:
    explicit closure, move, or loss of ordinary public access. The command appends a 90-day
    verification lease and retains the evidence trail; it deliberately does not copy hours, phone,
    website, price, or neighborhood fields.
-5. `verify` only when the configured provider contract permits durable server storage.
-6. `reevaluate`, then run `status` again with readiness required.
-7. `publish` with `PUBLISH_VERIFIED`, at or below the release cap.
-8. Run a full catalog refresh and recheck dashboard, queue, catalog, and release status.
+5. Use `observe-field` for a reviewed atomic phone, website, neighborhood, normalized hours, price,
+   or setting fact. Supply `RECORD_FIELD_OBSERVATION`, the exact candidate and city, JSON value,
+   1–10 current HTTPS evidence URLs, and a short review note. The command stores the normalized fact,
+   reviewer, timestamp, and evidence links, but never the source page payload. Do not infer price or
+   setting from branding. Unreviewed provider phone and website values need two independent origins.
+   For the checked-in East Bay pilot batch, use `observe-manifest` with
+   `RECORD_FIELD_MANIFEST`. It validates candidate UUID, normalized name, city, evidence URL, and
+   hours structure before writing anything; the whole batch commits or rolls back together and a
+   rerun is idempotent.
+6. Run `enrich-open-attributes` from catalog maintenance to append policy-approved Overture civic
+   divisions for both verified candidates and published establishments. OSM remains excluded.
+   A missing neighborhood is acceptable when the open layer has no containing division. Do not
+   substitute Oakland's unlicensed portal layer or an informal Berkeley boundary map; add a
+   versioned municipal source policy only after its durable-reuse terms are explicitly reviewed.
+7. `verify` only when the configured provider contract permits durable server storage.
+8. `reevaluate`, then run `status` and `audit` again. Resolve every conflict or leave the field null.
+9. `publish` with `PUBLISH_VERIFIED`, at or below the release cap.
+10. Run a full catalog refresh and recheck dashboard, queue, catalog, and release status.
 
 Publication is transactional. The database trigger rejects a missing/revoked/stale authorization,
 an out-of-scope city, exhausted capacity, or newly unhealthy control plane even when the CLI or

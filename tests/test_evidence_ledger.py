@@ -52,11 +52,11 @@ def test_coordinates_are_grouped_at_roughly_building_precision():
     assert claims["longitude"].normalized_value == "-122.4194"
 
 
-def test_website_identity_ignores_scheme_and_tracking_query():
+def test_website_identity_groups_same_host_across_location_paths():
     record = {
         "source": "fsq",
         "website_url": "http://www.example.com/venue?y_source=tracking",
         "setting_slugs": [],
     }
     claims = {claim.field_name: claim for claim in _record_claims(record)}
-    assert claims["website_url"].normalized_value == "example.com/venue"
+    assert claims["website_url"].normalized_value == "example.com"
