@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "manifest_id": "bay-area-v1",
+  "deployment_phase": "development",
   "region": {
     "name": "Nine-county San Francisco Bay Area",
     "definition_url": "https://abag.ca.gov/about-abag/what-we-do/our-members",
@@ -57,7 +58,7 @@
   },
   "health_policy": {
     "decision_version": "v7",
-    "minimum_healthy_refresh_weeks": 2,
+    "minimum_healthy_refresh_weeks": 1,
     "refresh_history_days": 21,
     "maximum_latest_refresh_age_hours": 96,
     "failed_run_lookback_days": 14,

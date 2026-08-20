@@ -29,6 +29,7 @@ class ExpansionRelease:
 class ExpansionManifest:
     manifest_id: str
     sha256: str
+    deployment_phase: str
     county_fips: dict[str, str]
     jurisdictions: dict[str, tuple[str, ...]]
     required_source_freshness_days: dict[str, int]
@@ -54,6 +55,7 @@ def load_expansion_manifest() -> ExpansionManifest:
 
     region = payload["region"]
     health = payload["health_policy"]
+    deployment_phase = str(payload.get("deployment_phase", "production"))
     jurisdictions = {
         str(county): tuple(str(city) for city in cities)
         for county, cities in region["jurisdictions"].items()
@@ -68,10 +70,17 @@ def load_expansion_manifest() -> ExpansionManifest:
         )
         for item in payload["releases"]
     )
-    _validate_manifest(jurisdictions, known_cities, releases)
+    _validate_manifest(
+        jurisdictions,
+        known_cities,
+        releases,
+        deployment_phase=deployment_phase,
+        minimum_healthy_refresh_weeks=int(health["minimum_healthy_refresh_weeks"]),
+    )
     return ExpansionManifest(
         manifest_id=str(payload["manifest_id"]),
         sha256=sha256(raw).hexdigest(),
+        deployment_phase=deployment_phase,
         county_fips={str(name): str(fips) for name, fips in region["county_fips"].items()},
         jurisdictions=jurisdictions,
         required_source_freshness_days={
@@ -90,7 +99,16 @@ def _validate_manifest(
     jurisdictions: dict[str, tuple[str, ...]],
     known_cities: set[str],
     releases: tuple[ExpansionRelease, ...],
+    *,
+    deployment_phase: str,
+    minimum_healthy_refresh_weeks: int,
 ) -> None:
+    if deployment_phase not in {"development", "production"}:
+        raise RuntimeError("Expansion deployment phase must be development or production")
+    if minimum_healthy_refresh_weeks < 1:
+        raise RuntimeError("At least one healthy refresh week is required")
+    if deployment_phase == "production" and minimum_healthy_refresh_weeks < 2:
+        raise RuntimeError("Production expansion requires at least two healthy refresh weeks")
     if len(jurisdictions) != 9:
         raise RuntimeError("The Bay Area manifest must contain all nine counties")
     if sum(len(cities) for cities in jurisdictions.values()) != 101:

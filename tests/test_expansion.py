@@ -5,6 +5,7 @@ import pytest
 from paloma_data.expansion import (
     ExpansionBlocked,
     ExpansionGate,
+    _validate_manifest,
     load_expansion_manifest,
 )
 
@@ -41,10 +42,25 @@ class _Database:
 def test_manifest_covers_the_official_nine_county_region_and_101_jurisdictions():
     manifest = load_expansion_manifest()
 
+    assert manifest.deployment_phase == "development"
+    assert manifest.minimum_healthy_refresh_weeks == 1
     assert len(manifest.county_fips) == 9
     assert sum(len(cities) for cities in manifest.jurisdictions.values()) == 101
     assert len(manifest.sha256) == 64
     assert manifest.release("east-bay-pilot-v1").cities == ("Berkeley", "Oakland")
+
+
+def test_production_manifest_cannot_disable_the_two_week_refresh_gate():
+    manifest = load_expansion_manifest()
+
+    with pytest.raises(RuntimeError, match="at least two healthy refresh weeks"):
+        _validate_manifest(
+            manifest.jurisdictions,
+            {city.casefold() for cities in manifest.jurisdictions.values() for city in cities},
+            manifest.releases,
+            deployment_phase="production",
+            minimum_healthy_refresh_weeks=1,
+        )
 
 
 def test_unknown_release_fails_before_database_access():

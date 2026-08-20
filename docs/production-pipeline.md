@@ -128,6 +128,11 @@ Keep that path enabled. The managed worker drains the queue every 12 hours, whil
 workflow retains `queue-work` only as disaster recovery. Expansion has no schedule: its separate
 GitHub workflow uses the `catalog-expansion` environment and a versioned release ID.
 
+The expansion manifest is currently marked `development`, which permits one healthy UTC refresh
+week. Before production launch, set the phase to `production` and restore the two-week minimum;
+manifest validation rejects a production configuration below two weeks and the changed manifest
+hash invalidates previous authorizations.
+
 ## Alerts and operating thresholds
 
 Alert when any of these conditions is true:
