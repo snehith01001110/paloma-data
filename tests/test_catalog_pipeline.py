@@ -2,9 +2,13 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
-from paloma_data.catalog import CATALOG_DECISION_VERSION, CatalogDecision
+from paloma_data.catalog import (
+    CATALOG_DECISION_VERSION,
+    CatalogDecision,
+    decide_identity,
+)
 from paloma_data.adapters.foursquare_api import FoursquarePlaceUnusableError
-from paloma_data.catalog_pipeline import CatalogPipeline
+from paloma_data.catalog_pipeline import CatalogPipeline, _review_evidence
 from paloma_data.models import SourceRecord
 
 
@@ -83,14 +87,56 @@ class _ResolutionDatabase(_Database):
 class _ResolutionRepository:
     def __init__(self):
         self.resolutions = []
+        self.links = []
+        self.anchor = SourceRecord(
+            source="fsq",
+            source_record_id="fsq-1",
+            name="Little Bird",
+            address="435 13th St",
+            city="Oakland",
+            country_code="US",
+            latitude=37.803295,
+            longitude=-122.271321,
+            primary_type_slug="cocktail_bar",
+        )
+        self.record = SourceRecord(
+            source="ca_abc",
+            source_record_id="abc-1",
+            name="Radio Bar",
+            address="435 13th St",
+            city="Oakland",
+            country_code="US",
+            latitude=37.80327,
+            longitude=-122.27086,
+            primary_type_slug="bar",
+        )
 
     def pending_match_review_candidate_id(self, _, review_id):
         assert review_id == 123
         return "candidate-1"
 
-    def resolve_match_review(self, _, review_id, *, resolution):
-        self.resolutions.append((review_id, resolution))
+    def pending_match_review(self, _, review_id):
+        assert review_id == 123
+        identity = decide_identity(self.anchor, self.record)
+        return {
+            "candidate_id": "candidate-1",
+            "reason": identity.reason,
+            "score": identity.score,
+            "evidence": _review_evidence(self.anchor, self.record, identity),
+            "record": self.record,
+        }
+
+    def fsq_anchor(self, _, candidate_id):
+        assert candidate_id == "candidate-1"
+        return self.anchor
+
+    def resolve_match_review(self, _, review_id, *, resolution, resolved_by, note=None):
+        self.resolutions.append((review_id, resolution, resolved_by, note))
         return "candidate-1"
+
+    def link_source(self, _, candidate_id, record, **kwargs):
+        self.links.append((candidate_id, record.source_record_id, kwargs))
+        return True
 
 
 class _AlreadyLinkedDiscoveryRepository:
@@ -335,13 +381,73 @@ def test_resolving_review_refreshes_evidence_then_rechecks_candidate():
 
     pipeline._evaluate_candidate = evaluate
 
-    result = pipeline.resolve_match_review(123, resolution="not_same_or_stale")
+    result = pipeline.resolve_match_review(
+        123,
+        resolution="not_same_or_stale",
+        reviewer="github:test-reviewer",
+        expected_city="Oakland",
+        note="Current source is a different business.",
+    )
 
     assert evaluations == ["candidate-1", "candidate-1"]
-    assert repository.resolutions == [(123, "not_same_or_stale")]
+    assert repository.resolutions == [
+        (
+            123,
+            "not_same_or_stale",
+            "github:test-reviewer",
+            "Current source is a different business.",
+        )
+    ]
     assert database.conn.commits == 1
     assert result["candidate_state"] == "verified"
     assert result["publication_mutated"] is False
+
+
+def test_accepting_review_creates_a_durable_manual_identity_link():
+    database = _ResolutionDatabase()
+    pipeline = CatalogPipeline(database)
+    repository = _ResolutionRepository()
+    pipeline.repo = repository
+    pipeline._evaluate_candidate = lambda *_: _decision("verified")
+
+    result = pipeline.resolve_match_review(
+        123,
+        resolution="same_place",
+        reviewer="github:test-reviewer",
+    )
+
+    assert repository.resolutions == [(123, "same_place", "github:test-reviewer", None)]
+    assert len(repository.links) == 1
+    candidate_id, source_record_id, kwargs = repository.links[0]
+    assert candidate_id == "candidate-1"
+    assert source_record_id == "abc-1"
+    assert kwargs["confidence"] == 0.99
+    assert kwargs["method"].startswith("manual_review:123:")
+    assert kwargs["metadata"]["review_id"] == 123
+    assert result["candidate_state"] == "verified"
+
+
+def test_review_resolution_rejects_candidate_outside_city_guardrail():
+    database = _ResolutionDatabase()
+    pipeline = CatalogPipeline(database)
+    repository = _ResolutionRepository()
+    pipeline.repo = repository
+    pipeline._evaluate_candidate = lambda *_: _decision("verified")
+
+    try:
+        pipeline.resolve_match_review(
+            123,
+            resolution="not_same_or_stale",
+            reviewer="github:test-reviewer",
+            expected_city="Berkeley",
+        )
+    except ValueError as error:
+        assert str(error) == "Candidate city 'Oakland' does not match guardrail 'Berkeley'"
+    else:
+        raise AssertionError("a cross-city review resolution must fail closed")
+
+    assert repository.resolutions == []
+    assert database.conn.commits == 0
 
 
 def test_discovery_skips_anchor_claimed_after_batch_was_selected():

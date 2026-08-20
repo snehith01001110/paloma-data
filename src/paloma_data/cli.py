@@ -1080,10 +1080,13 @@ def catalog_status() -> None:
 @app.command("catalog-review-resolve")
 def catalog_review_resolve(
     review_id: int = typer.Option(..., min=1),
+    reviewer: str = typer.Option(..., help="Identified Paloma reviewer"),
     resolution: str = typer.Option(
         ...,
         help="same_place or not_same_or_stale",
     ),
+    city: str | None = typer.Option(None, help="Optional exact candidate-city guardrail"),
+    note: str | None = typer.Option(None, help="Optional short decision rationale"),
     confirm: str = typer.Option("", help="Must be exactly RESOLVE_MATCH_REVIEW"),
 ) -> None:
     """Resolve one exact-premise conflict; never publish the resulting candidate."""
@@ -1094,7 +1097,59 @@ def catalog_review_resolve(
     _, _, _, catalog = _components()
     typer.echo(
         json.dumps(
-            catalog.resolve_match_review(review_id, resolution=resolution),
+            catalog.resolve_match_review(
+                review_id,
+                resolution=resolution,
+                reviewer=reviewer,
+                expected_city=city,
+                note=note,
+            ),
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
+@app.command("catalog-attest")
+def catalog_attest(
+    candidate_id: str = typer.Option(..., help="Exact private catalog candidate UUID"),
+    reviewer: str = typer.Option(..., help="Identified Paloma reviewer"),
+    evidence_url: list[str] = typer.Option(
+        ...,
+        "--evidence-url",
+        help="Current first-party or authoritative HTTPS evidence; repeat as needed",
+    ),
+    city: str | None = typer.Option(None, help="Optional exact city guardrail"),
+    outcome: str = typer.Option("pass", help="pass for current venue; fail for hard negative"),
+    venue_type: str | None = typer.Option(
+        None,
+        help="Reviewed consumer venue type when correcting a coarse anchor type",
+    ),
+    note: str | None = typer.Option(
+        None,
+        help="Short review rationale; do not copy provider detail fields",
+    ),
+    lease_days: int = typer.Option(90, min=1, max=90),
+    confirm: str = typer.Option("", help="Must be exactly MANUAL_ATTESTATION"),
+) -> None:
+    """Append a bounded manual hard-gate attestation; never publish the candidate."""
+    if confirm != "MANUAL_ATTESTATION":
+        raise typer.BadParameter("Pass --confirm MANUAL_ATTESTATION")
+    if outcome not in {"pass", "fail"}:
+        raise typer.BadParameter("outcome must be pass or fail")
+    _, _, _, catalog = _components()
+    typer.echo(
+        json.dumps(
+            catalog.attest_candidate(
+                candidate_id,
+                reviewer=reviewer,
+                evidence_urls=tuple(evidence_url),
+                expected_city=city,
+                outcome=outcome,
+                venue_type=venue_type,
+                note=note,
+                lease_days=lease_days,
+            ),
             indent=2,
             sort_keys=True,
         )

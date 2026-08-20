@@ -235,9 +235,17 @@ paloma-data catalog-trial --city "San Francisco" --limit 20
 paloma-data catalog-verify --limit 250
 paloma-data catalog-reevaluate
 paloma-data catalog-audit --city "San Francisco" --limit 500
-# Human-reviewed exception; both resolutions preserve the evidence and trigger reevaluation.
+# Human-reviewed exception; same_place creates an evidence-bound durable identity link.
 paloma-data catalog-review-resolve --review-id 123 --resolution not_same_or_stale \
+  --reviewer "github:owner" --city "Oakland" \
+  --note "Current authoritative evidence identifies a different business." \
   --confirm RESOLVE_MATCH_REVIEW
+# Bounded Paloma verification. Evidence URLs are retained, but website/provider detail fields are not.
+paloma-data catalog-attest --candidate-id 00000000-0000-0000-0000-000000000000 \
+  --reviewer "github:owner" --city "Oakland" --outcome pass --venue-type taproom \
+  --evidence-url "https://merchant.example/oakland" \
+  --note "Current first-party page confirms identity and ordinary walk-in service." \
+  --confirm MANUAL_ATTESTATION
 paloma-data expansion-status --release-id east-bay-pilot-v1
 paloma-data catalog-publish --release-id east-bay-pilot-v1 \
   --confirm PUBLISH_VERIFIED --limit 25

@@ -8,7 +8,7 @@ on:
         required: true
         default: status
         type: choice
-        options: [status, discover, trial, verify, reevaluate, audit, publish]
+        options: [status, discover, trial, verify, reevaluate, audit, resolve-review, attest, publish]
       release_id:
         description: Versioned bounded release
         required: true
@@ -26,7 +26,49 @@ on:
         default: '25'
         type: string
       confirmation:
-        description: PUBLISH_VERIFIED is required for publication
+        description: Required action token; see the expansion runbook
+        required: false
+        default: ''
+        type: string
+      candidate_id:
+        description: Exact private candidate UUID for attest
+        required: false
+        default: ''
+        type: string
+      review_id:
+        description: Exact pending match-review ID for resolve-review
+        required: false
+        default: ''
+        type: string
+      resolution:
+        description: Human match decision for resolve-review
+        required: false
+        default: not_same_or_stale
+        type: choice
+        options: [not_same_or_stale, same_place]
+      review_note:
+        description: Short rationale for the match decision
+        required: false
+        default: ''
+        type: string
+      venue_type:
+        description: Reviewed consumer venue type override for attest (optional)
+        required: false
+        default: ''
+        type: string
+      attestation_outcome:
+        description: Current venue passes or has an explicit hard negative
+        required: false
+        default: pass
+        type: choice
+        options: [pass, fail]
+      evidence_urls:
+        description: JSON array of current authoritative HTTPS URLs for attest
+        required: false
+        default: '[]'
+        type: string
+      attestation_note:
+        description: Short rationale; do not copy provider detail fields
         required: false
         default: ''
         type: string
@@ -67,6 +109,15 @@ jobs:
           CITY: ${{ inputs.city }}
           LIMIT: ${{ inputs.limit }}
           CONFIRMATION: ${{ inputs.confirmation }}
+          CANDIDATE_ID: ${{ inputs.candidate_id }}
+          REVIEW_ID: ${{ inputs.review_id }}
+          RESOLUTION: ${{ inputs.resolution }}
+          REVIEW_NOTE: ${{ inputs.review_note }}
+          VENUE_TYPE: ${{ inputs.venue_type }}
+          ATTESTATION_OUTCOME: ${{ inputs.attestation_outcome }}
+          EVIDENCE_URLS: ${{ inputs.evidence_urls }}
+          ATTESTATION_NOTE: ${{ inputs.attestation_note }}
+          REVIEWER: github:${{ github.actor }}
         run: |
           set -euo pipefail
           if [[ ! "$LIMIT" =~ ^[1-9][0-9]*$ ]] || (( LIMIT > 2000 )); then
@@ -104,6 +155,55 @@ jobs:
               ;;
             audit)
               paloma-data catalog-audit --city "$CITY" --limit "$LIMIT"
+              ;;
+            resolve-review)
+              test "$CONFIRMATION" = "RESOLVE_MATCH_REVIEW"
+              test -n "$REVIEW_ID"
+              ARGS=(
+                --review-id "$REVIEW_ID"
+                --resolution "$RESOLUTION"
+                --reviewer "$REVIEWER"
+                --city "$CITY"
+                --confirm "$CONFIRMATION"
+              )
+              if [ -n "$REVIEW_NOTE" ]; then
+                ARGS+=(--note "$REVIEW_NOTE")
+              fi
+              paloma-data catalog-review-resolve "${ARGS[@]}"
+              ;;
+            attest)
+              test "$CONFIRMATION" = "MANUAL_ATTESTATION"
+              test -n "$CANDIDATE_ID"
+              mapfile -t EVIDENCE < <(python - <<'PY'
+          import json
+          import os
+
+          values = json.loads(os.environ["EVIDENCE_URLS"])
+          if not isinstance(values, list) or not values or len(values) > 10:
+              raise SystemExit("evidence_urls must be a JSON array with 1-10 values")
+          for value in values:
+              if not isinstance(value, str) or "\n" in value or "\r" in value:
+                  raise SystemExit("each evidence URL must be one line of text")
+              print(value)
+          PY
+              )
+              ARGS=(
+                --candidate-id "$CANDIDATE_ID"
+                --reviewer "$REVIEWER"
+                --city "$CITY"
+                --outcome "$ATTESTATION_OUTCOME"
+                --confirm "$CONFIRMATION"
+              )
+              for url in "${EVIDENCE[@]}"; do
+                ARGS+=(--evidence-url "$url")
+              done
+              if [ -n "$VENUE_TYPE" ]; then
+                ARGS+=(--venue-type "$VENUE_TYPE")
+              fi
+              if [ -n "$ATTESTATION_NOTE" ]; then
+                ARGS+=(--note "$ATTESTATION_NOTE")
+              fi
+              paloma-data catalog-attest "${ARGS[@]}"
               ;;
             publish)
               test "$CONFIRMATION" = "PUBLISH_VERIFIED"
