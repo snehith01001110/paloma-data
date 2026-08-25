@@ -125,6 +125,11 @@ city and action at a time:
    Use the `review-field-conflict` workflow action with `REVIEW_FIELD_CONFLICT` to record each
    human selection or audited unknown in the append-only review history. Supply the exact city of
    the published establishment; the reviewer rejects a conflict ID from any other city.
+   For a pre-audited backlog, `review-field-conflicts` accepts a JSON array of 1-200 objects with
+   `conflict_id`, `city`, `notes`, and optional `selected_evidence_id`, using confirmation token
+   `REVIEW_FIELD_CONFLICTS`. It validates the complete payload before writing, applies the same city
+   and current-evidence checks to every item, and retains an independent decision and rationale for
+   each conflict. Any rejected item is reported and makes the workflow fail.
 9. `publish` with `PUBLISH_VERIFIED`, at or below the release cap.
 10. Run a full catalog refresh and recheck dashboard, queue, catalog, and release status.
 

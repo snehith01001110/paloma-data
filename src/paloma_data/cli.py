@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict
 from typing import Any
+from uuid import UUID
 
 import typer
 
@@ -232,6 +233,116 @@ def review_field_conflict(
         expected_city=city,
     )
     typer.echo(json.dumps(asdict(result), indent=2, sort_keys=True))
+
+
+def _parse_field_reviews(reviews_json: str) -> list[dict[str, Any]]:
+    try:
+        values = json.loads(reviews_json)
+    except json.JSONDecodeError as exc:
+        raise ValueError("reviews_json must be valid JSON") from exc
+    if not isinstance(values, list) or not values or len(values) > 200:
+        raise ValueError("reviews_json must be a JSON array with 1-200 decisions")
+
+    parsed: list[dict[str, Any]] = []
+    conflict_ids: set[int] = set()
+    allowed_keys = {"conflict_id", "city", "notes", "selected_evidence_id"}
+    for index, value in enumerate(values):
+        if not isinstance(value, dict) or set(value) - allowed_keys:
+            raise ValueError(f"review {index} has an invalid shape")
+        conflict_id = value.get("conflict_id")
+        if (
+            not isinstance(conflict_id, int)
+            or isinstance(conflict_id, bool)
+            or conflict_id < 1
+        ):
+            raise ValueError(f"review {index} conflict_id must be a positive integer")
+        if conflict_id in conflict_ids:
+            raise ValueError(f"conflict_id {conflict_id} appears more than once")
+        conflict_ids.add(conflict_id)
+
+        city = value.get("city")
+        notes = value.get("notes")
+        if not isinstance(city, str) or not city.strip():
+            raise ValueError(f"review {index} city is required")
+        if not isinstance(notes, str) or not notes.strip() or len(notes) > 2_000:
+            raise ValueError(f"review {index} notes must contain 1-2000 characters")
+
+        evidence_id = value.get("selected_evidence_id") or None
+        if evidence_id is not None:
+            if not isinstance(evidence_id, str):
+                raise ValueError(f"review {index} selected_evidence_id must be a UUID")
+            try:
+                evidence_id = str(UUID(evidence_id))
+            except ValueError as exc:
+                raise ValueError(
+                    f"review {index} selected_evidence_id must be a UUID"
+                ) from exc
+
+        parsed.append(
+            {
+                "conflict_id": conflict_id,
+                "city": city.strip(),
+                "notes": notes.strip(),
+                "selected_evidence_id": evidence_id,
+            }
+        )
+    return parsed
+
+
+@app.command("review-field-conflicts")
+def review_field_conflicts(
+    reviews_json: str = typer.Option(...),
+    reviewer: str = typer.Option(...),
+    confirm: str = typer.Option(""),
+) -> None:
+    """Review a bounded, prevalidated batch while preserving one decision per conflict."""
+    if confirm != "REVIEW_FIELD_CONFLICTS":
+        raise typer.BadParameter("Pass --confirm REVIEW_FIELD_CONFLICTS")
+    try:
+        reviews = _parse_field_reviews(reviews_json)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    settings, db, _, _ = _components()
+    allowed_cities = {city.casefold() for city in settings.allowed_cities}
+    outside = sorted(
+        {
+            review["city"]
+            for review in reviews
+            if review["city"].casefold() not in allowed_cities
+        }
+    )
+    if outside:
+        raise typer.BadParameter(
+            "reviews contain cities outside the configured maintenance region: "
+            + ", ".join(outside)
+        )
+
+    field_reviewer = FieldConflictReviewer(db)
+    results: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
+    for review in reviews:
+        try:
+            result = field_reviewer.review(
+                review["conflict_id"],
+                reviewer=reviewer,
+                notes=review["notes"],
+                selected_evidence_id=review["selected_evidence_id"],
+                expected_city=review["city"],
+            )
+        except (ValueError, RuntimeError) as exc:
+            errors.append({"conflict_id": review["conflict_id"], "error": str(exc)})
+        else:
+            results.append(asdict(result))
+    typer.echo(
+        json.dumps(
+            {"reviewed": results, "errors": errors},
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    if errors:
+        raise typer.Exit(code=1)
 
 
 @app.command("review-merchant-claim")

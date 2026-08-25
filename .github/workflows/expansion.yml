@@ -8,7 +8,7 @@ on:
         required: true
         default: status
         type: choice
-        options: [status, discover, trial, verify, reevaluate, audit, resolve-review, review-field-conflict, attest, observe-field, observe-manifest, publish]
+        options: [status, discover, trial, verify, reevaluate, audit, resolve-review, review-field-conflict, review-field-conflicts, attest, observe-field, observe-manifest, publish]
       release_id:
         description: Versioned bounded release
         required: true
@@ -65,6 +65,11 @@ on:
         description: Short rationale for the field-conflict decision
         required: false
         default: ''
+        type: string
+      field_reviews_json:
+        description: JSON array of up to 200 bounded field-conflict decisions
+        required: false
+        default: '[]'
         type: string
       venue_type:
         description: Reviewed consumer venue type override for attest (optional)
@@ -146,6 +151,7 @@ jobs:
           CONFLICT_ID: ${{ inputs.conflict_id }}
           SELECTED_EVIDENCE_ID: ${{ inputs.selected_evidence_id }}
           FIELD_REVIEW_NOTE: ${{ inputs.field_review_note }}
+          FIELD_REVIEWS_JSON: ${{ inputs.field_reviews_json }}
           VENUE_TYPE: ${{ inputs.venue_type }}
           ATTESTATION_OUTCOME: ${{ inputs.attestation_outcome }}
           EVIDENCE_URLS: ${{ inputs.evidence_urls }}
@@ -174,7 +180,7 @@ jobs:
               raise SystemExit(f"{os.environ['CITY']} is outside the configured maintenance region")
           PY
               ;;
-            status|publish|observe-manifest)
+            status|publish|observe-manifest|review-field-conflicts)
               ;;
             *)
               RELEASE_ID="$RELEASE_ID" CITY="$CITY" python - <<'PY'
@@ -239,6 +245,13 @@ jobs:
                 ARGS+=(--selected-evidence-id "$SELECTED_EVIDENCE_ID")
               fi
               paloma-data review-field-conflict "${ARGS[@]}"
+              ;;
+            review-field-conflicts)
+              test "$CONFIRMATION" = "REVIEW_FIELD_CONFLICTS"
+              paloma-data review-field-conflicts \
+                --reviews-json "$FIELD_REVIEWS_JSON" \
+                --reviewer "$REVIEWER" \
+                --confirm "$CONFIRMATION"
               ;;
             attest)
               test "$CONFIRMATION" = "MANUAL_ATTESTATION"

@@ -22,6 +22,9 @@ def test_expansion_is_manual_and_database_gated_in_development():
     assert "review-field-conflict" in EXPANSION
     assert "REVIEW_FIELD_CONFLICT" in EXPANSION
     assert "paloma-data review-field-conflict" in EXPANSION
+    assert "review-field-conflicts" in EXPANSION
+    assert "REVIEW_FIELD_CONFLICTS" in EXPANSION
+    assert "paloma-data review-field-conflicts" in EXPANSION
     assert '--city "$CITY"' in EXPANSION
     assert "observe-manifest" in EXPANSION
     assert "RECORD_FIELD_MANIFEST" in EXPANSION
