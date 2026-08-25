@@ -7,6 +7,7 @@ SCHEDULER = Path("deploy/gcp/configure-scheduler.sh").read_text()
 MONITORING = Path("deploy/gcp/configure-monitoring.sh").read_text()
 WORKFLOW = Path(".github/workflows/sync.yml").read_text()
 WORKER_SETUP = Path(".github/actions/setup-data-worker/action.yml").read_text()
+WORKER_ENV = Path("deploy/gcp/worker-env.yaml").read_text()
 
 
 def test_github_deployment_uses_keyless_main_workflow_identity():
@@ -29,6 +30,11 @@ def test_worker_deploys_an_immutable_digest_with_scoped_secrets():
     assert "--parallelism=1" in DEPLOY
     assert "--batch-size,1" in DEPLOY
     assert "--max-jobs,5000" in DEPLOY
+
+
+def test_worker_city_allowlist_covers_the_san_ramon_dublin_release():
+    assert "Dublin" in WORKER_ENV
+    assert "San Ramon" in WORKER_ENV
 
 
 def test_scheduler_uses_a_dedicated_authenticated_invoker():

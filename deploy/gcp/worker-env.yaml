@@ -1,6 +1,6 @@
 PALOMA_PIPELINE_REQUESTER: cloud_run_scheduler
 PALOMA_COUNTRIES: US
 PALOMA_REGIONS: CA
-PALOMA_CITIES: San Francisco,Oakland,Berkeley,San Jose,San Mateo,Palo Alto,Mountain View,Sunnyvale,Santa Clara,Redwood City,Napa,Sonoma
+PALOMA_CITIES: San Francisco,Oakland,Berkeley,San Jose,San Mateo,Palo Alto,Mountain View,Sunnyvale,Santa Clara,Redwood City,Napa,Sonoma,Dublin,San Ramon
 PALOMA_OVERTURE_BBOX: -123.2,36.8,-121.1,38.9
 CATALOG_PROVIDER_LEASE_DAYS: "45"
