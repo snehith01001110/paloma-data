@@ -743,6 +743,10 @@ class CatalogPipeline:
                 raise ValueError(
                     f"Candidate city {anchor.city!r} does not match guardrail {expected_city!r}"
                 )
+            # Discovery may have staged fresher regulatory/open records after the candidate was
+            # first materialized. Re-run the same conservative correlation before evaluating the
+            # attestation; ambiguous or type-conflicting identities still go to review.
+            self._correlate(conn, candidate_id, anchor)
             verification = manual_attestation(
                 anchor,
                 reviewer=reviewer,

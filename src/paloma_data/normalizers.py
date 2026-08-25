@@ -40,6 +40,10 @@ def consumer_display_name(value: str | None) -> str:
 
 
 def normalize_address(value: str | None) -> str:
+    # Preserve a commercial unit number while making common designators equivalent. ``#1206``
+    # otherwise loses the hash during punctuation cleanup and fails to match ``Suite 1206``.
+    if value:
+        value = re.sub(r"#\s*(?=\w)", " unit ", value)
     cleaned = _clean_text(value)
     replacements = {
         r"\bstreet\b": "st",
@@ -53,7 +57,7 @@ def normalize_address(value: str | None) -> str:
         r"\bsouth\b": "s",
         r"\beast\b": "e",
         r"\bwest\b": "w",
-        r"\bsuite\b": "ste",
+        r"\b(?:suite|ste|unit)\b": "unit",
         r"\bapartment\b": "apt",
     }
     for pattern, replacement in replacements.items():

@@ -20,7 +20,10 @@ def test_consumer_display_name_removes_only_a_terminal_corporate_suffix():
 
 def test_address_normalization():
     assert normalize_address("1725 Haight Street") == "1725 haight st"
-    assert normalize_address("100 North Main Avenue, Suite 2") == "100 n main ave ste 2"
+    assert normalize_address("100 North Main Avenue, Suite 2") == "100 n main ave unit 2"
+    assert normalize_address("6000 Bollinger Canyon Rd #1206") == normalize_address(
+        "6000 Bollinger Canyon Rd Ste 1206"
+    )
 
 
 def test_phone_normalization():

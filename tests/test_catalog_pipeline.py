@@ -262,6 +262,60 @@ def _decision(state: str) -> CatalogDecision:
     )
 
 
+def test_manual_attestation_refreshes_safe_source_correlation(monkeypatch):
+    anchor = SourceRecord(
+        source="fsq",
+        source_record_id="fsq-fieldwork",
+        name="Fieldwork Brewing Company",
+        address="6000 Bollinger Canyon Rd Ste 1206",
+        city="San Ramon",
+        country_code="US",
+        latitude=37.7641,
+        longitude=-121.9590,
+        primary_type_slug="pub",
+    )
+
+    class _AttestationRepository:
+        def __init__(self):
+            self.saved = []
+
+        def fsq_anchor(self, _conn, candidate_id):
+            assert candidate_id == "candidate-1"
+            return anchor
+
+        def save_verification(self, _conn, candidate_id, verification):
+            self.saved.append((candidate_id, verification))
+
+    pipeline = CatalogPipeline(_ResolutionDatabase())
+    repository = _AttestationRepository()
+    pipeline.repo = repository
+    correlated = []
+    monkeypatch.setattr(
+        pipeline,
+        "_correlate",
+        lambda _conn, candidate_id, current_anchor: correlated.append(
+            (candidate_id, current_anchor.source_record_id)
+        ),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "_evaluate_candidate",
+        lambda _conn, _candidate_id: _decision("verified"),
+    )
+
+    result = pipeline.attest_candidate(
+        "candidate-1",
+        reviewer="reviewer@example.com",
+        evidence_urls=("https://example.com/fieldwork",),
+        expected_city="San Ramon",
+        venue_type="taproom",
+    )
+
+    assert correlated == [("candidate-1", "fsq-fieldwork")]
+    assert repository.saved[0][0] == "candidate-1"
+    assert result["candidate_state"] == "verified"
+
+
 def test_publish_rechecks_current_decision_and_skips_a_new_failure():
     pipeline = CatalogPipeline(_Database())
     repository = _PublicationRepository()
