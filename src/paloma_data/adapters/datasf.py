@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from datetime import datetime
+from time import sleep
 from typing import Any
 
 import httpx
@@ -12,6 +13,7 @@ from paloma_data.taxonomy import classify_datasf
 
 class DataSFAdapter:
     source = "datasf"
+    max_page_attempts = 3
 
     def __init__(self, dataset_id: str = "g8m3-pdis", page_size: int = 5000) -> None:
         self.dataset_id = dataset_id
@@ -20,14 +22,10 @@ class DataSFAdapter:
 
     def backfill(self) -> Iterator[SourceRecord]:
         offset = 0
-        with httpx.Client(timeout=60.0, headers={"User-Agent": "paloma-data/0.1"}) as client:
+        timeout = httpx.Timeout(120.0, connect=20.0)
+        with httpx.Client(timeout=timeout, headers={"User-Agent": "paloma-data/0.1"}) as client:
             while True:
-                response = client.get(
-                    self.base_url,
-                    params={"$limit": self.page_size, "$offset": offset, "$order": "uniqueid"},
-                )
-                response.raise_for_status()
-                rows: list[dict[str, Any]] = response.json()
+                rows = self._fetch_page(client, offset)
                 if not rows:
                     break
                 for row in rows:
@@ -37,6 +35,30 @@ class DataSFAdapter:
                 if len(rows) < self.page_size:
                     break
                 offset += self.page_size
+
+    def _fetch_page(self, client: httpx.Client, offset: int) -> list[dict[str, Any]]:
+        params = {"$limit": self.page_size, "$offset": offset, "$order": "uniqueid"}
+        for attempt in range(1, self.max_page_attempts + 1):
+            try:
+                response = client.get(self.base_url, params=params)
+                response.raise_for_status()
+                rows: list[dict[str, Any]] = response.json()
+                return rows
+            except (httpx.TransportError, httpx.HTTPStatusError) as exc:
+                retryable_status = (
+                    isinstance(exc, httpx.HTTPStatusError)
+                    and exc.response.status_code in {429, 500, 502, 503, 504}
+                )
+                if (
+                    attempt >= self.max_page_attempts
+                    or (
+                        isinstance(exc, httpx.HTTPStatusError)
+                        and not retryable_status
+                    )
+                ):
+                    raise
+                sleep(2 ** (attempt - 1))
+        raise AssertionError("unreachable DataSF page retry state")
 
     def incremental(self, cursor: str | None = None) -> Iterator[SourceRecord]:
         # DataSF is updated daily but does not expose a reliable per-row modification watermark
