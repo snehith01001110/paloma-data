@@ -8,7 +8,7 @@ on:
         required: true
         default: status
         type: choice
-        options: [status, discover, trial, verify, reevaluate, audit, resolve-review, review-field-conflict, review-field-conflicts, attest, observe-field, observe-manifest, publish]
+        options: [status, discover, trial, verify, reevaluate, audit, resolve-review, review-field-conflict, review-field-conflicts, observe-establishment, attest, observe-field, observe-manifest, publish]
       release_id:
         description: Versioned bounded release
         required: true
@@ -71,6 +71,17 @@ on:
         required: false
         default: '[]'
         type: string
+      establishment_id:
+        description: Exact published establishment UUID for observe-establishment
+        required: false
+        default: ''
+        type: string
+      establishment_status:
+        description: Independently verified operating status
+        required: false
+        default: closed
+        type: choice
+        options: [open, temporarily_closed, closed]
       venue_type:
         description: Reviewed consumer venue type override for attest (optional)
         required: false
@@ -152,6 +163,8 @@ jobs:
           SELECTED_EVIDENCE_ID: ${{ inputs.selected_evidence_id }}
           FIELD_REVIEW_NOTE: ${{ inputs.field_review_note }}
           FIELD_REVIEWS_JSON: ${{ inputs.field_reviews_json }}
+          ESTABLISHMENT_ID: ${{ inputs.establishment_id }}
+          ESTABLISHMENT_STATUS: ${{ inputs.establishment_status }}
           VENUE_TYPE: ${{ inputs.venue_type }}
           ATTESTATION_OUTCOME: ${{ inputs.attestation_outcome }}
           EVIDENCE_URLS: ${{ inputs.evidence_urls }}
@@ -167,7 +180,7 @@ jobs:
             exit 2
           fi
           case "$ACTION" in
-            resolve-review|review-field-conflict)
+            resolve-review|review-field-conflict|observe-establishment)
               CITY="$CITY" python - <<'PY'
           import os
 
@@ -252,6 +265,37 @@ jobs:
                 --reviews-json "$FIELD_REVIEWS_JSON" \
                 --reviewer "$REVIEWER" \
                 --confirm "$CONFIRMATION"
+              ;;
+            observe-establishment)
+              test "$CONFIRMATION" = "RECORD_ESTABLISHMENT_OBSERVATION"
+              test -n "$ESTABLISHMENT_ID"
+              test -n "$FIELD_REVIEW_NOTE"
+              mapfile -t EVIDENCE < <(python - <<'PY'
+          import json
+          import os
+
+          values = json.loads(os.environ["EVIDENCE_URLS"])
+          if not isinstance(values, list) or not values or len(values) > 10:
+              raise SystemExit("evidence_urls must be a JSON array with 1-10 values")
+          for value in values:
+              if not isinstance(value, str) or "\n" in value or "\r" in value:
+                  raise SystemExit("each evidence URL must be one line of text")
+              print(value)
+          PY
+              )
+              ARGS=(
+                --establishment-id "$ESTABLISHMENT_ID"
+                --city "$CITY"
+                --field-name operating_status
+                --value "$ESTABLISHMENT_STATUS"
+                --reviewer "$REVIEWER"
+                --notes "$FIELD_REVIEW_NOTE"
+                --confirm "$CONFIRMATION"
+              )
+              for url in "${EVIDENCE[@]}"; do
+                ARGS+=(--evidence-url "$url")
+              done
+              paloma-data observe-establishment-field "${ARGS[@]}"
               ;;
             attest)
               test "$CONFIRMATION" = "MANUAL_ATTESTATION"

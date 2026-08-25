@@ -28,6 +28,7 @@ from paloma_data.config import Settings
 from paloma_data.contributions import ContributionReviewer
 from paloma_data.db import Database
 from paloma_data.expansion import ExpansionBlocked, ExpansionGate
+from paloma_data.evidence_ledger import append_manual_establishment_observation
 from paloma_data.geocoding import AddressGeocoder
 from paloma_data.field_resolution import FieldResolver
 from paloma_data.field_review import FieldConflictReviewer
@@ -233,6 +234,55 @@ def review_field_conflict(
         expected_city=city,
     )
     typer.echo(json.dumps(asdict(result), indent=2, sort_keys=True))
+
+
+@app.command("observe-establishment-field")
+def observe_establishment_field(
+    establishment_id: str = typer.Option(...),
+    city: str = typer.Option(..., help="Exact city of the published establishment"),
+    field_name: str = typer.Option(..., help="Currently limited to operating_status"),
+    value: str = typer.Option(...),
+    reviewer: str = typer.Option(...),
+    notes: str = typer.Option(...),
+    evidence_url: list[str] = typer.Option(..., "--evidence-url"),
+    lease_days: int = typer.Option(90, min=1, max=90),
+    confirm: str = typer.Option(""),
+) -> None:
+    """Append one bounded staff observation for a materialized establishment."""
+    if confirm != "RECORD_ESTABLISHMENT_OBSERVATION":
+        raise typer.BadParameter("Pass --confirm RECORD_ESTABLISHMENT_OBSERVATION")
+    try:
+        establishment_id = str(UUID(establishment_id))
+    except ValueError as exc:
+        raise typer.BadParameter("establishment_id must be a UUID") from exc
+    _, db, _, _ = _components()
+    with db.connection() as conn:
+        conn.execute(
+            "select pg_advisory_xact_lock(hashtext('paloma_establishment:' || %s))",
+            (establishment_id,),
+        )
+        establishment = conn.execute(
+            "select city from public.establishments where id = %s::uuid",
+            (establishment_id,),
+        ).fetchone()
+        if establishment is None:
+            raise ValueError(f"Unknown establishment: {establishment_id}")
+        if str(establishment["city"]).casefold() != city.strip().casefold():
+            raise ValueError(
+                f"Establishment belongs to {establishment['city']}, not {city.strip()}"
+            )
+        result = append_manual_establishment_observation(
+            conn,
+            establishment_id,
+            field_name=field_name,
+            value=value,
+            reviewer=reviewer,
+            evidence_urls=tuple(evidence_url),
+            note=notes,
+            lease_days=lease_days,
+        )
+        conn.commit()
+    typer.echo(json.dumps(result, indent=2, sort_keys=True))
 
 
 def _parse_field_reviews(reviews_json: str) -> list[dict[str, Any]]:

@@ -130,6 +130,11 @@ city and action at a time:
    `REVIEW_FIELD_CONFLICTS`. It validates the complete payload before writing, applies the same city
    and current-evidence checks to every item, and retains an independent decision and rationale for
    each conflict. Any rejected item is reported and makes the workflow fail.
+   When current authoritative evidence proves a published establishment's operating status has
+   changed, use `observe-establishment` with `RECORD_ESTABLISHMENT_OBSERVATION` first. It stores only
+   the reviewed scalar conclusion, factual-reference URLs, reviewer, rationale, and a lease of at
+   most 90 days. Then select that new evidence in the field-conflict review; page payloads remain
+   excluded from storage.
 9. `publish` with `PUBLISH_VERIFIED`, at or below the release cap.
 10. Run a full catalog refresh and recheck dashboard, queue, catalog, and release status.
 

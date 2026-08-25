@@ -23,6 +23,7 @@ MANUAL_CANDIDATE_FIELDS = frozenset(
         "setting_slug",
     }
 )
+MANUAL_ESTABLISHMENT_FIELDS = frozenset({"operating_status"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,10 +133,96 @@ def append_manual_candidate_observation(
 ) -> dict[str, Any]:
     """Append one independently reviewed atomic fact for a private candidate."""
     field = field_name.strip()
-    reviewer_name = reviewer.strip()
-    urls = tuple(dict.fromkeys(url.strip() for url in evidence_urls if url.strip()))
     if field not in MANUAL_CANDIDATE_FIELDS:
         raise ValueError(f"Unsupported manual candidate field: {field}")
+    candidate = conn.execute(
+        "select 1 from ingest.catalog_candidates where id = %s::uuid",
+        (candidate_id,),
+    ).fetchone()
+    if candidate is None:
+        raise ValueError(f"Unknown catalog candidate: {candidate_id}")
+    return _append_manual_observation(
+        conn,
+        entity_column="candidate_id",
+        entity_id=candidate_id,
+        field_name=field,
+        value=value,
+        reviewer=reviewer,
+        evidence_urls=evidence_urls,
+        note=note,
+        lease_days=lease_days,
+        observed_at=observed_at,
+        idempotency_key=idempotency_key,
+    )
+
+
+def append_manual_establishment_observation(
+    conn: Any,
+    establishment_id: str,
+    *,
+    field_name: str,
+    value: Any,
+    reviewer: str,
+    evidence_urls: tuple[str, ...],
+    note: str | None = None,
+    lease_days: int | None = None,
+    observed_at: datetime | None = None,
+    idempotency_key: str | None = None,
+) -> dict[str, Any]:
+    """Append a bounded staff observation for an already materialized establishment."""
+    field = field_name.strip()
+    if field not in MANUAL_ESTABLISHMENT_FIELDS:
+        raise ValueError(f"Unsupported manual establishment field: {field}")
+    establishment = conn.execute(
+        """
+        select name, city
+        from public.establishments
+        where id = %s::uuid and publication_state in ('published', 'suppressed')
+        """,
+        (establishment_id,),
+    ).fetchone()
+    if establishment is None:
+        raise ValueError(f"Unknown materialized establishment: {establishment_id}")
+    result = _append_manual_observation(
+        conn,
+        entity_column="establishment_id",
+        entity_id=establishment_id,
+        field_name=field,
+        value=value,
+        reviewer=reviewer,
+        evidence_urls=evidence_urls,
+        note=note,
+        lease_days=lease_days,
+        observed_at=observed_at,
+        idempotency_key=idempotency_key,
+    )
+    return {
+        **result,
+        "establishment_id": establishment_id,
+        "establishment_name": str(establishment["name"]),
+        "city": str(establishment["city"]),
+    }
+
+
+def _append_manual_observation(
+    conn: Any,
+    *,
+    entity_column: str,
+    entity_id: str,
+    field_name: str,
+    value: Any,
+    reviewer: str,
+    evidence_urls: tuple[str, ...],
+    note: str | None,
+    lease_days: int | None,
+    observed_at: datetime | None,
+    idempotency_key: str | None,
+) -> dict[str, Any]:
+    if entity_column not in {"establishment_id", "candidate_id"}:
+        raise ValueError(f"Unsupported observation entity column: {entity_column}")
+    field = field_name.strip()
+    reviewer_name = reviewer.strip()
+    urls = tuple(dict.fromkeys(url.strip() for url in evidence_urls if url.strip()))
     if not reviewer_name or len(reviewer_name) > 200:
         raise ValueError("Manual field observations require an identified reviewer")
     if not urls or len(urls) > 10 or any(
@@ -153,12 +240,6 @@ def append_manual_candidate_observation(
         ).fetchone()
         if exists is None:
             raise ValueError(f"Unknown Paloma setting slug: {normalized['normalized_value']}")
-    candidate = conn.execute(
-        "select 1 from ingest.catalog_candidates where id = %s::uuid",
-        (candidate_id,),
-    ).fetchone()
-    if candidate is None:
-        raise ValueError(f"Unknown catalog candidate: {candidate_id}")
 
     policy = conn.execute(
         """
@@ -190,18 +271,18 @@ def append_manual_candidate_observation(
     stable_key = idempotency_key.strip() if idempotency_key else None
     if stable_key:
         existing = conn.execute(
-            """
+            f"""
             select id::text, field_name, value_text, value_json, value_hash,
                    expires_at
             from catalog.field_observations
-            where candidate_id = %s::uuid
+            where {entity_column} = %s::uuid
               and source = 'manual'
               and metadata->>'idempotency_key' = %s
               and (expires_at is null or expires_at > now())
             order by observed_at desc, id desc
             limit 1
             """,
-            (candidate_id, stable_key),
+            (entity_id, stable_key),
         ).fetchone()
         if existing is not None:
             if str(existing["field_name"]) != field or str(existing["value_hash"]) != value_hash:
@@ -214,10 +295,10 @@ def append_manual_candidate_observation(
                 "expires_at": existing["expires_at"].isoformat(),
                 "idempotent_replay": True,
             }
-    source_record_id = f"{candidate_id}:{field}:{reviewer_name}"
+    source_record_id = f"{entity_id}:{field}:{reviewer_name}"
     fingerprint = _digest(
         {
-            "candidate_id": candidate_id,
+            entity_column: entity_id,
             "field": field,
             "source": "manual",
             "source_record_id": source_record_id,
@@ -230,9 +311,9 @@ def append_manual_candidate_observation(
         {"kind": "factual_reference", "url": url} for url in urls
     ]
     row = conn.execute(
-        """
+        f"""
         insert into catalog.field_observations (
-          candidate_id, field_name, value_text, normalized_value, value_json,
+          {entity_column}, field_name, value_text, normalized_value, value_json,
           value_hash, source, source_record_id, source_property, claim_kind,
           evidence_confidence, identity_confidence, authority,
           upstream_origin_keys, license_ids, source_items, source_policy_id,
@@ -249,7 +330,7 @@ def append_manual_candidate_observation(
         returning id::text
         """,
         (
-            candidate_id,
+            entity_id,
             field,
             normalized["value_text"],
             normalized["normalized_value"],
@@ -717,6 +798,12 @@ def _normalize_manual_value(field_name: str, value: Any) -> dict[str, Any]:
         text = str(parsed)
     elif field_name == "setting_slug":
         text = str(value).strip().casefold().replace(" ", "_")
+    elif field_name == "operating_status":
+        text = str(value).strip().casefold()
+        if text not in {"open", "temporarily_closed", "closed"}:
+            raise ValueError(
+                "operating_status must be open, temporarily_closed, or closed"
+            )
     else:
         text = str(value).strip()
     if not text:
