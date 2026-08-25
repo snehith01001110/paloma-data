@@ -8,7 +8,7 @@ on:
         required: true
         default: status
         type: choice
-        options: [status, discover, trial, verify, reevaluate, audit, resolve-review, attest, observe-field, observe-manifest, publish]
+        options: [status, discover, trial, verify, reevaluate, audit, resolve-review, review-field-conflict, attest, observe-field, observe-manifest, publish]
       release_id:
         description: Versioned bounded release
         required: true
@@ -16,7 +16,7 @@ on:
         type: choice
         options: [east-bay-pilot-v1, east-bay-sr-dublin-v1, south-bay-pilot-v1, peninsula-pilot-v1, north-bay-pilot-v1]
       city:
-        description: Exact city within the selected release (not used by status/publish)
+        description: Exact scoped city, or the establishment city for conflict review
         required: false
         default: Oakland
         type: string
@@ -48,6 +48,21 @@ on:
         options: [not_same_or_stale, same_place]
       review_note:
         description: Short rationale for the match decision
+        required: false
+        default: ''
+        type: string
+      conflict_id:
+        description: Exact pending field-conflict ID for review-field-conflict
+        required: false
+        default: ''
+        type: string
+      selected_evidence_id:
+        description: Optional current evidence UUID to select for the field conflict
+        required: false
+        default: ''
+        type: string
+      field_review_note:
+        description: Short rationale for the field-conflict decision
         required: false
         default: ''
         type: string
@@ -128,6 +143,9 @@ jobs:
           REVIEW_ID: ${{ inputs.review_id }}
           RESOLUTION: ${{ inputs.resolution }}
           REVIEW_NOTE: ${{ inputs.review_note }}
+          CONFLICT_ID: ${{ inputs.conflict_id }}
+          SELECTED_EVIDENCE_ID: ${{ inputs.selected_evidence_id }}
+          FIELD_REVIEW_NOTE: ${{ inputs.field_review_note }}
           VENUE_TYPE: ${{ inputs.venue_type }}
           ATTESTATION_OUTCOME: ${{ inputs.attestation_outcome }}
           EVIDENCE_URLS: ${{ inputs.evidence_urls }}
@@ -143,7 +161,7 @@ jobs:
             exit 2
           fi
           case "$ACTION" in
-            resolve-review)
+            resolve-review|review-field-conflict)
               CITY="$CITY" python - <<'PY'
           import os
 
@@ -205,6 +223,22 @@ jobs:
                 ARGS+=(--note "$REVIEW_NOTE")
               fi
               paloma-data catalog-review-resolve "${ARGS[@]}"
+              ;;
+            review-field-conflict)
+              test "$CONFIRMATION" = "REVIEW_FIELD_CONFLICT"
+              [[ "$CONFLICT_ID" =~ ^[1-9][0-9]*$ ]]
+              test -n "$FIELD_REVIEW_NOTE"
+              ARGS=(
+                --conflict-id "$CONFLICT_ID"
+                --city "$CITY"
+                --reviewer "$REVIEWER"
+                --notes "$FIELD_REVIEW_NOTE"
+                --confirm "$CONFIRMATION"
+              )
+              if [ -n "$SELECTED_EVIDENCE_ID" ]; then
+                ARGS+=(--selected-evidence-id "$SELECTED_EVIDENCE_ID")
+              fi
+              paloma-data review-field-conflict "${ARGS[@]}"
               ;;
             attest)
               test "$CONFIRMATION" = "MANUAL_ATTESTATION"

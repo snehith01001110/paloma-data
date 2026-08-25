@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from paloma_data.db import Database
+from paloma_data.normalizers import normalize_address
 
 
 REVIEW_VERSION = "manual-review-v1"
@@ -33,15 +34,20 @@ class FieldConflictReviewer:
         reviewer: str,
         notes: str,
         selected_evidence_id: str | None = None,
+        expected_city: str | None = None,
     ) -> FieldReviewResult:
         if not reviewer.strip() or not notes.strip():
             raise ValueError("reviewer and notes are required")
         with self.db.connection() as conn:
             conflict = conn.execute(
                 """
-                select id, establishment_id::text, field_name, state, evidence_ids
-                from review.field_conflicts
-                where id = %s
+                select conflict.id, conflict.establishment_id::text,
+                       conflict.field_name, conflict.state, conflict.evidence_ids,
+                       establishment.city
+                from review.field_conflicts as conflict
+                join public.establishments as establishment
+                  on establishment.id = conflict.establishment_id
+                where conflict.id = %s
                 for update
                 """,
                 (conflict_id,),
@@ -50,6 +56,11 @@ class FieldConflictReviewer:
                 raise ValueError(f"field conflict {conflict_id} does not exist")
             if conflict["state"] != "pending":
                 raise ValueError(f"field conflict {conflict_id} is not pending")
+            if expected_city and str(conflict["city"]).casefold() != expected_city.strip().casefold():
+                raise ValueError(
+                    f"field conflict {conflict_id} belongs to {conflict['city']}, "
+                    f"not {expected_city.strip()}"
+                )
 
             establishment_id = str(conflict["establishment_id"])
             field_name = str(conflict["field_name"])
@@ -227,7 +238,46 @@ def _project_reviewed_value(
         conn.execute(
             """
             update public.establishments
-            set address = %s, updated_at = now()
+            set address = %s, normalized_address = %s, updated_at = now()
+            where id = %s::uuid
+            """,
+            (
+                evidence["value_text"],
+                normalize_address(str(evidence["value_text"])),
+                establishment_id,
+            ),
+        )
+    elif field_name == "latitude" and evidence:
+        conn.execute(
+            """
+            update public.establishments
+            set location = st_setsrid(
+                  st_makepoint(st_x(location::geometry), %s::double precision),
+                  4326
+                )::geography,
+                updated_at = now()
+            where id = %s::uuid
+            """,
+            (evidence["value_text"], establishment_id),
+        )
+    elif field_name == "longitude" and evidence:
+        conn.execute(
+            """
+            update public.establishments
+            set location = st_setsrid(
+                  st_makepoint(%s::double precision, st_y(location::geometry)),
+                  4326
+                )::geography,
+                updated_at = now()
+            where id = %s::uuid
+            """,
+            (evidence["value_text"], establishment_id),
+        )
+    elif field_name == "operating_status" and evidence:
+        conn.execute(
+            """
+            update public.establishments
+            set status = %s, updated_at = now()
             where id = %s::uuid
             """,
             (evidence["value_text"], establishment_id),

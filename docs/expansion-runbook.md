@@ -86,8 +86,11 @@ insert into governance.catalog_expansion_release_events (
 
 ## Execution
 
-Use GitHub Actions → `Controlled catalog expansion`. The `catalog-expansion` environment requires
-owner approval. Run one city and action at a time:
+Use GitHub Actions → `Controlled catalog expansion`. The checked-in manifest is currently in
+development phase, so the GitHub environment approval gate is intentionally disabled; the database
+authorization, release-health gate, scoped workflow, and explicit CLI confirmations remain required.
+Restore the `catalog-expansion` environment gate before switching the manifest to production. Run one
+city and action at a time:
 
 1. `status` and inspect every blocker.
 2. `discover` to create private candidates only.
@@ -119,6 +122,9 @@ owner approval. Run one city and action at a time:
    versioned municipal source policy only after its durable-reuse terms are explicitly reviewed.
 7. `verify` only when the configured provider contract permits durable server storage.
 8. `reevaluate`, then run `status` and `audit` again. Resolve every conflict or leave the field null.
+   Use the `review-field-conflict` workflow action with `REVIEW_FIELD_CONFLICT` to record each
+   human selection or audited unknown in the append-only review history. Supply the exact city of
+   the published establishment; the reviewer rejects a conflict ID from any other city.
 9. `publish` with `PUBLISH_VERIFIED`, at or below the release cap.
 10. Run a full catalog refresh and recheck dashboard, queue, catalog, and release status.
 

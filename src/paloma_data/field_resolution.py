@@ -963,7 +963,53 @@ def _reapply_manual_projections(conn: Any) -> None:
             and field_name = 'address' and decision_status = 'selected'
         )
         update public.establishments e
-        set address = d.value_text, updated_at = now()
+        set address = d.value_text,
+            normalized_address = coalesce(d.normalized_value, d.value_text),
+            updated_at = now()
+        from decisions d where d.establishment_id = e.id
+        """
+    )
+    conn.execute(
+        """
+        with decisions as (
+          select * from catalog.current_field_decisions
+          where resolver_version like 'manual-review-%'
+            and field_name = 'latitude' and decision_status = 'selected'
+        )
+        update public.establishments e
+        set location = st_setsrid(
+              st_makepoint(st_x(e.location::geometry), d.value_text::double precision),
+              4326
+            )::geography,
+            updated_at = now()
+        from decisions d where d.establishment_id = e.id
+        """
+    )
+    conn.execute(
+        """
+        with decisions as (
+          select * from catalog.current_field_decisions
+          where resolver_version like 'manual-review-%'
+            and field_name = 'longitude' and decision_status = 'selected'
+        )
+        update public.establishments e
+        set location = st_setsrid(
+              st_makepoint(d.value_text::double precision, st_y(e.location::geometry)),
+              4326
+            )::geography,
+            updated_at = now()
+        from decisions d where d.establishment_id = e.id
+        """
+    )
+    conn.execute(
+        """
+        with decisions as (
+          select * from catalog.current_field_decisions
+          where resolver_version like 'manual-review-%'
+            and field_name = 'operating_status' and decision_status = 'selected'
+        )
+        update public.establishments e
+        set status = d.value_text, updated_at = now()
         from decisions d where d.establishment_id = e.id
         """
     )

@@ -6,10 +6,12 @@ SYNC = Path(".github/workflows/sync.yml").read_text()
 CREDENTIALS = Path("supabase/functions/paloma-data-credentials/index.ts").read_text()
 
 
-def test_expansion_is_manual_environment_protected_and_database_gated():
+def test_expansion_is_manual_and_database_gated_in_development():
     assert "workflow_dispatch:" in EXPANSION
     assert "schedule:" not in EXPANSION
-    assert "environment: catalog-expansion" in EXPANSION
+    # Development intentionally omits the GitHub environment approval gate. The
+    # database release authorization and explicit CLI confirmation remain active.
+    assert "environment: catalog-expansion" not in EXPANSION
     assert "paloma-data expansion-status --release-id" in EXPANSION
     assert "--require-ready" in EXPANSION
     assert "paloma-data catalog-publish" in EXPANSION
@@ -17,6 +19,10 @@ def test_expansion_is_manual_environment_protected_and_database_gated():
     assert "observe-field" in EXPANSION
     assert "RECORD_FIELD_OBSERVATION" in EXPANSION
     assert "paloma-data catalog-observe-field" in EXPANSION
+    assert "review-field-conflict" in EXPANSION
+    assert "REVIEW_FIELD_CONFLICT" in EXPANSION
+    assert "paloma-data review-field-conflict" in EXPANSION
+    assert '--city "$CITY"' in EXPANSION
     assert "observe-manifest" in EXPANSION
     assert "RECORD_FIELD_MANIFEST" in EXPANSION
     assert "paloma-data catalog-observe-manifest" in EXPANSION

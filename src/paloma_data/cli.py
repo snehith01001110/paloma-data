@@ -214,6 +214,7 @@ def live_details_health(
 @app.command("review-field-conflict")
 def review_field_conflict(
     conflict_id: int = typer.Option(...),
+    city: str = typer.Option(..., help="Exact city of the conflict's establishment"),
     reviewer: str = typer.Option(...),
     notes: str = typer.Option(...),
     selected_evidence_id: str | None = typer.Option(None),
@@ -228,6 +229,7 @@ def review_field_conflict(
         reviewer=reviewer,
         notes=notes,
         selected_evidence_id=selected_evidence_id,
+        expected_city=city,
     )
     typer.echo(json.dumps(asdict(result), indent=2, sort_keys=True))
 

@@ -198,11 +198,14 @@ def test_manual_projection_reconciles_all_mutable_durable_fields():
     _reapply_manual_projections(connection)
 
     sql = "\n".join(connection.statements)
-    assert len(connection.statements) == 6
+    assert len(connection.statements) == 9
     for field in (
         "phone_e164",
         "website_url",
         "address",
+        "latitude",
+        "longitude",
+        "operating_status",
         "neighborhood",
         "hours",
         "price_level",
