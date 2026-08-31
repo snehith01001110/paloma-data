@@ -108,7 +108,7 @@
     .review-login { padding: 22px; }
     .review-login h3 { margin: 0; font-size: 15px; letter-spacing: -.02em; }
     .review-login p { max-width: 650px; margin: 5px 0 16px; color: var(--muted); font-size: 11px; }
-    .review-form { display: grid; grid-template-columns: minmax(220px, 360px) auto; gap: 9px; align-items: end; max-width: 760px; }
+    .review-form { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto; gap: 9px; align-items: end; max-width: 760px; }
     .review-field { display: grid; gap: 4px; color: var(--muted); font-size: 9px; font-weight: 800; }
     .review-field input, .review-field select, .review-note { width: 100%; padding: 9px 10px; outline: none; background: #fff; border: 1px solid var(--line); border-radius: 9px; font-size: 11px; }
     .review-field input:focus, .review-field select:focus, .review-note:focus { border-color: #9fa89e; box-shadow: 0 0 0 3px rgba(33, 100, 70, .08); }
@@ -233,10 +233,11 @@
     <section class="card review-panel" aria-label="Private field conflict review">
       <div class="review-login" id="reviewLogin">
         <h3>Review the decisions blocking the next batch</h3>
-        <p>The queue is private. Enter the admin email and we’ll send a one-time sign-in link. The queue opens only after that link is used.</p>
+        <p>The queue is private. Sign in with the admin email and temporary password to compare evidence, select the durable value, or record an audited unknown.</p>
         <form class="review-form" id="reviewLoginForm">
           <label class="review-field">Admin email<input id="reviewEmail" name="email" type="email" autocomplete="email" required></label>
-          <button class="review-button" id="reviewLoginButton" type="submit">Email sign-in link</button>
+          <label class="review-field">Password<input id="reviewPassword" name="password" type="password" autocomplete="current-password" required></label>
+          <button class="review-button" id="reviewLoginButton" type="submit">Sign in</button>
         </form>
         <div class="review-message" id="reviewLoginMessage" role="alert" hidden></div>
       </div>
@@ -584,18 +585,26 @@
       event.preventDefault();
       const button = document.getElementById('reviewLoginButton');
       const email = document.getElementById('reviewEmail').value.trim();
+      const password = document.getElementById('reviewPassword').value;
       setReviewMessage('reviewLoginMessage', '');
       button.disabled = true;
       try {
-        const redirectTo = `${window.location.origin}${window.location.pathname}`;
-        const response = await fetch(`${AUTH_ENDPOINT}/otp?redirect_to=${encodeURIComponent(redirectTo)}`, {
+        const response = await fetch(`${AUTH_ENDPOINT}/token?grant_type=password`, {
           method: 'POST',
           headers: { apikey: PUBLIC_KEY, 'Content-Type': 'application/json', 'X-Client-Info': 'paloma-dashboard' },
-          body: JSON.stringify({ email, create_user: false }),
+          body: JSON.stringify({ email, password }),
           cache: 'no-store',
         });
         if (!response.ok) throw new Error(await authError(response));
-        setReviewMessage('reviewLoginMessage', `A one-time sign-in link was sent to ${email}. Open it to unlock the admin queue.`);
+        const payload = await response.json();
+        if (!payload.access_token || !payload.refresh_token) throw new Error('Supabase did not return a review session.');
+        reviewSession.accessToken = payload.access_token;
+        reviewSession.refreshToken = payload.refresh_token;
+        reviewSession.email = payload.user?.email || email;
+        saveReviewSession();
+        document.getElementById('reviewPassword').value = '';
+        setReviewSignedIn(true);
+        await loadConflicts(true);
       } catch (error) {
         setReviewMessage('reviewLoginMessage', error.message || 'Sign in failed.');
       } finally {
@@ -638,38 +647,6 @@
       }
     }
 
-    async function consumeMagicLink() {
-      const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-      const error = hash.get('error_description') || hash.get('error');
-      if (error) {
-        history.replaceState({}, document.title, `${window.location.pathname}${window.location.search}`);
-        setReviewMessage('reviewLoginMessage', `Sign-in link failed: ${error}`);
-        return true;
-      }
-      const accessToken = hash.get('access_token');
-      if (!accessToken) return false;
-      reviewSession.accessToken = accessToken;
-      reviewSession.refreshToken = hash.get('refresh_token');
-      try {
-        const response = await fetch(`${AUTH_ENDPOINT}/user`, {
-          headers: { apikey: PUBLIC_KEY, Authorization: `Bearer ${accessToken}` },
-          cache: 'no-store',
-        });
-        if (response.ok) {
-          const payload = await response.json();
-          reviewSession.email = payload.email || null;
-        }
-        saveReviewSession();
-        history.replaceState({}, document.title, `${window.location.pathname}${window.location.search}`);
-        setReviewSignedIn(true);
-        await loadConflicts(true);
-      } catch (error) {
-        clearReviewSession();
-        setReviewMessage('reviewLoginMessage', error.message || 'Could not open the sign-in link.');
-      }
-      return true;
-    }
-
     function restoreReviewSession() {
       try {
         const saved = JSON.parse(sessionStorage.getItem('paloma-review-session') || 'null');
@@ -700,7 +677,7 @@
     document.getElementById('conflicts').addEventListener('submit', submitConflictReview);
     refreshSummary();
     loadVenues(true);
-    consumeMagicLink().then(consumed => { if (!consumed) restoreReviewSession(); });
+    restoreReviewSession();
     setInterval(refreshSummary, 30000);
   </script>
 </body>
