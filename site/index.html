@@ -50,7 +50,7 @@
     .status p { max-width: 780px; margin: 8px 0 0; color: var(--muted); font-size: 12px; }
     .status-meta { display: flex; flex-wrap: wrap; gap: 7px 18px; margin-top: 16px; color: var(--muted); font-size: 10px; }
 
-    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; margin-top: 9px; }
+    .metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 9px; margin-top: 9px; }
     .metric { padding: 18px; }
     .metric strong { display: block; font-size: 30px; line-height: 1; letter-spacing: -.05em; }
     .metric span { display: block; margin-top: 9px; font-size: 11px; font-weight: 800; }
@@ -104,6 +104,57 @@
     .load-wrap[hidden] { display: none; }
     .load { padding: 8px 14px; background: #fff; border: 1px solid var(--line); border-radius: 9px; font-size: 10px; }
     .load[hidden] { display: none; }
+    .review-panel { overflow: hidden; }
+    .review-login { padding: 22px; }
+    .review-login h3 { margin: 0; font-size: 15px; letter-spacing: -.02em; }
+    .review-login p { max-width: 650px; margin: 5px 0 16px; color: var(--muted); font-size: 11px; }
+    .review-form { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) auto; gap: 9px; align-items: end; max-width: 760px; }
+    .review-field { display: grid; gap: 4px; color: var(--muted); font-size: 9px; font-weight: 800; }
+    .review-field input, .review-field select, .review-note { width: 100%; padding: 9px 10px; outline: none; background: #fff; border: 1px solid var(--line); border-radius: 9px; font-size: 11px; }
+    .review-field input:focus, .review-field select:focus, .review-note:focus { border-color: #9fa89e; box-shadow: 0 0 0 3px rgba(33, 100, 70, .08); }
+    .review-button { padding: 9px 13px; color: #fff; background: var(--green); border: 1px solid var(--green); border-radius: 9px; font-size: 10px; font-weight: 800; }
+    .review-button[disabled] { cursor: wait; opacity: .55; }
+    .review-message { margin-top: 12px; color: var(--red); font-size: 10px; }
+    .review-message[hidden] { display: none; }
+    .review-private { padding: 14px 18px; color: var(--muted); background: #fafbf8; border-bottom: 1px solid var(--line); font-size: 10px; }
+    .review-private strong { color: var(--ink); }
+    .review-signed-in[hidden], .review-login[hidden] { display: none; }
+    .review-toolbar { display: flex; align-items: end; justify-content: space-between; gap: 12px; padding: 14px; border-bottom: 1px solid var(--line); }
+    .review-toolbar-copy { min-width: 0; }
+    .review-toolbar-copy strong { display: block; font-size: 12px; }
+    .review-toolbar-copy span { display: block; margin-top: 2px; color: var(--muted); font-size: 9px; }
+    .review-tools { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+    .review-tools .review-field { min-width: 150px; }
+    .review-tools .review-field input, .review-tools .review-field select { padding: 7px 8px; font-size: 10px; }
+    .review-secondary { color: var(--muted); background: #fff; border-color: var(--line); }
+    .conflict { padding: 18px; border-bottom: 1px solid #eceee9; }
+    .conflict:last-child { border-bottom: 0; }
+    .conflict-head { display: flex; align-items: start; justify-content: space-between; gap: 14px; }
+    .conflict-name { font-size: 13px; font-weight: 850; letter-spacing: -.015em; }
+    .conflict-location { margin-top: 2px; color: var(--muted); font-size: 10px; }
+    .conflict-badge { flex: 0 0 auto; padding: 4px 7px; color: var(--amber); background: var(--amber-soft); border: 1px solid #ead8b9; border-radius: 7px; font-size: 9px; font-weight: 850; }
+    .conflict-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin-top: 14px; }
+    .conflict-summary div { min-width: 0; padding: 9px; background: #fafbf8; border-radius: 8px; }
+    .conflict-summary span { display: block; color: var(--muted); font-size: 8px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+    .conflict-summary strong { display: block; margin-top: 3px; overflow: hidden; font-size: 10px; font-weight: 700; text-overflow: ellipsis; white-space: pre-wrap; }
+    .evidence-title { margin: 15px 0 7px; font-size: 10px; font-weight: 850; }
+    .evidence-list { display: grid; gap: 7px; }
+    .evidence-option { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: start; padding: 10px; background: #fff; border: 1px solid var(--line); border-radius: 9px; cursor: pointer; }
+    .evidence-option:has(input:checked) { background: var(--green-soft); border-color: #a9cdb4; }
+    .evidence-option input { margin-top: 2px; accent-color: var(--green); }
+    .evidence-copy { min-width: 0; }
+    .evidence-value { display: block; overflow-wrap: anywhere; font-size: 11px; font-weight: 750; white-space: pre-wrap; }
+    .evidence-meta { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; }
+    .evidence-links { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-top: 5px; }
+    .evidence-links a { color: var(--green); font-size: 9px; font-weight: 750; }
+    .conflict-review-form { margin-top: 13px; }
+    .review-note { min-height: 58px; resize: vertical; }
+    .conflict-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
+    .conflict-help { color: var(--muted); font-size: 9px; }
+    .conflict-form-message { color: var(--red); font-size: 9px; }
+    .conflict-form-message[hidden] { display: none; }
+    .review-load { border-top: 1px solid var(--line); }
+    .review-load[hidden] { display: none; }
     footer { display: flex; justify-content: space-between; gap: 16px; margin-top: 14px; color: var(--muted); font-size: 9px; }
 
     @media (max-width: 760px) {
@@ -117,6 +168,10 @@
       .venue-location { grid-column: 1 / -1; grid-row: 2; }
       .catalog-tools { align-items: stretch; flex-direction: column; }
       .search { width: 100%; }
+      .review-form { grid-template-columns: 1fr; }
+      .review-toolbar { align-items: stretch; flex-direction: column; }
+      .review-tools { justify-content: stretch; }
+      .review-tools .review-field { flex: 1 1 150px; }
     }
     @media (max-width: 440px) {
       .metrics { grid-template-columns: 1fr 1fr; }
@@ -127,6 +182,7 @@
       .section-head { align-items: flex-start; flex-direction: column; gap: 4px; }
       .section-head p { text-align: left; }
       footer { flex-direction: column; }
+      .conflict-summary { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -153,6 +209,7 @@
       <article class="card metric"><strong id="phoneCount">—</strong><span>With phone</span><small id="phoneMeta">Durable coverage</small></article>
       <article class="card metric"><strong id="websiteCount">—</strong><span>With website</span><small id="websiteMeta">Durable coverage</small></article>
       <article class="card metric"><strong id="neighborhoodCount">—</strong><span>With neighborhood</span><small id="neighborhoodMeta">Durable coverage</small></article>
+      <article class="card metric warn"><strong id="fieldConflictCount">—</strong><span>Field conflicts</span><small id="fieldConflictMeta">Owner review required</small></article>
     </section>
 
     <div class="section-head"><h2>Coverage at a glance</h2><p>Durable catalog facts and current city mix</p></div>
@@ -172,6 +229,35 @@
       <article class="card ops-block"><h3>Source freshness</h3><div class="source-list" id="sourceFreshness"><span class="source-status">Loading…</span></div></article>
     </section>
 
+    <div class="section-head"><h2>Owner conflict review</h2><p id="conflictSectionMeta">Private queue · sign in to review</p></div>
+    <section class="card review-panel" aria-label="Private field conflict review">
+      <div class="review-login" id="reviewLogin">
+        <h3>Review the decisions blocking the next batch</h3>
+        <p>The queue is private. Sign in with the owner Supabase account to compare evidence, select the durable value, or record an audited unknown.</p>
+        <form class="review-form" id="reviewLoginForm">
+          <label class="review-field">Owner email<input id="reviewEmail" name="email" type="email" autocomplete="username" required></label>
+          <label class="review-field">Password<input id="reviewPassword" name="password" type="password" autocomplete="current-password" required></label>
+          <button class="review-button" id="reviewLoginButton" type="submit">Sign in</button>
+        </form>
+        <div class="review-message" id="reviewLoginMessage" role="alert" hidden></div>
+      </div>
+      <div class="review-signed-in" id="reviewSignedIn" hidden>
+        <div class="review-private"><strong>Private owner queue.</strong> Evidence is shown only after authentication and is never included in the public catalog endpoint.</div>
+        <div class="review-toolbar">
+          <div class="review-toolbar-copy"><strong id="reviewMeta">Loading conflicts…</strong><span id="reviewIdentity"></span></div>
+          <div class="review-tools">
+            <label class="review-field">Field<select id="reviewField" aria-label="Filter field conflicts"><option value="">All fields</option><option value="operating_status">Operating status</option><option value="address">Address</option><option value="latitude">Latitude</option><option value="longitude">Longitude</option><option value="phone_e164">Phone</option><option value="website_url">Website</option><option value="hours">Hours</option><option value="price_level">Price</option></select></label>
+            <label class="review-field">Search<input id="reviewSearch" type="search" aria-label="Search field conflicts" placeholder="Name, city, or ID"></label>
+            <button class="review-button review-secondary" id="reviewRefresh" type="button">Refresh</button>
+            <button class="review-button review-secondary" id="reviewSignout" type="button">Sign out</button>
+          </div>
+        </div>
+        <div class="review-message" id="reviewMessage" role="alert" hidden></div>
+        <div id="conflicts"><div class="empty">Loading conflicts…</div></div>
+        <div class="load-wrap review-load" id="reviewLoadWrap" hidden><button class="load" id="reviewLoadMore" hidden type="button">Load more</button></div>
+      </div>
+    </section>
+
     <div class="section-head"><h2>Published establishments</h2><p>Only rows currently safe for the app</p></div>
     <section class="card catalog">
       <div class="catalog-tools"><span id="listMeta">Loading…</span><input class="search" id="search" type="search" aria-label="Search published establishments" placeholder="Search name or location"></div>
@@ -185,14 +271,27 @@
 
   <script>
     const ENDPOINT = 'https://lighcnfzajgvfbdoekzt.supabase.co/functions/v1/paloma-data-progress';
+    const REVIEW_ENDPOINT = 'https://lighcnfzajgvfbdoekzt.supabase.co/functions/v1/paloma-conflict-review';
+    const AUTH_ENDPOINT = 'https://lighcnfzajgvfbdoekzt.supabase.co/auth/v1';
+    const PUBLIC_KEY = 'sb_publishable_tNwLJUx9Fhpr0uR0JjJHbg_aMFzQQOM';
     const nf = new Intl.NumberFormat();
     const state = { q: '', offset: 0, total: 0, items: [], loading: false };
+    const reviewState = { q: '', field: '', offset: 0, total: 0, items: [], loading: false };
+    const reviewSession = { accessToken: null, refreshToken: null, email: null };
     let searchTimer = null;
+    let reviewSearchTimer = null;
     const fmt = value => nf.format(Number(value || 0));
     const num = value => Number(value || 0);
     const esc = value => String(value ?? '').replace(/[&<>'"]/g, character => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[character]));
     const human = value => String(value || '').replace(/:v\d+$/, '').replaceAll('_', ' ').replace(/\b\w/g, character => character.toUpperCase());
     const setText = (id, value) => { document.getElementById(id).textContent = value; };
+    const sourceName = source => ({ fsq:'Foursquare', overture:'Overture', manual:'Manual review', datasf:'DataSF', ca_abc:'California ABC' }[String(source)] || human(source));
+    const formatValue = (text, json) => {
+      const value = json !== null && json !== undefined ? json : text;
+      if (value === null || value === undefined || value === '') return 'No value';
+      return typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value);
+    };
+    const formatDate = value => value ? new Date(value).toLocaleDateString([], { month:'short', day:'numeric', year:'numeric' }) : 'Date unavailable';
     const until = iso => {
       if (!iso) return 'No active verification lease';
       const days = Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000);
@@ -242,6 +341,15 @@
         setText(`${field}Count`, fmt(count));
         setText(`${field}Meta`, `of ${fmt(denominator)} live`);
       }
+      const queue = data.work_queue || {};
+      const fieldConflicts = num(queue.pending_field_conflicts);
+      const publishedFieldConflicts = num(queue.pending_published_field_conflicts);
+      setText('fieldConflictCount', fmt(fieldConflicts));
+      setText('fieldConflictMeta', publishedFieldConflicts ? `${fmt(publishedFieldConflicts)} block expansion` : 'No pending owner decisions');
+      setText('conflictSectionMeta', fieldConflicts ? `${fmt(fieldConflicts)} pending · private owner queue` : 'No pending field conflicts');
+      if (schemaReady && unsafe === 0 && sourcesReady && publishedFieldConflicts > 0) {
+        setText('statusDetail', `${fmt(overall.safe_live)} verified establishments are currently safe to show. ${fmt(publishedFieldConflicts)} pending field conflict${publishedFieldConflicts === 1 ? '' : 's'} block the next expansion.`);
+      }
       renderInsights(data);
     }
 
@@ -266,7 +374,7 @@
       const queue = data.work_queue || {};
       setText('detailReady', `${fmt(runtime.detail_ready)} / ${fmt(runtime.eligible_establishments)}`);
       setText('warmDetails', `${fmt(runtime.warm_establishments)} / ${fmt(runtime.eligible_establishments)}`);
-      setText('reviewQueue', fmt(num(queue.pending_match_reviews) + num(queue.candidates_needing_review)));
+      setText('reviewQueue', fmt(num(queue.pending_match_reviews) + num(queue.candidates_needing_review) + num(queue.pending_field_conflicts)));
       setText('leasesDue', fmt(queue.leases_due));
       const expansion = data.expansion || {};
       setText('expansionCapacity', expansion.available_slots == null ? '—' : `${fmt(expansion.available_slots)} left`);
@@ -331,13 +439,245 @@
       }
     }
 
+    function setReviewMessage(id, message) {
+      const element = document.getElementById(id);
+      element.textContent = message || '';
+      element.hidden = !message;
+    }
+
+    function setReviewSignedIn(signedIn) {
+      document.getElementById('reviewLogin').hidden = signedIn;
+      document.getElementById('reviewSignedIn').hidden = !signedIn;
+      if (signedIn) {
+        setText('reviewIdentity', `Signed in as ${reviewSession.email || 'owner account'}`);
+      }
+    }
+
+    function saveReviewSession() {
+      try {
+        sessionStorage.setItem('paloma-review-session', JSON.stringify(reviewSession));
+      } catch { /* Private browsing may disable session storage. */ }
+    }
+
+    function clearReviewSession() {
+      reviewSession.accessToken = null;
+      reviewSession.refreshToken = null;
+      reviewSession.email = null;
+      try { sessionStorage.removeItem('paloma-review-session'); } catch { /* ignore */ }
+    }
+
+    function signOutReview(message = '') {
+      clearReviewSession();
+      reviewState.offset = 0;
+      reviewState.total = 0;
+      reviewState.items = [];
+      setReviewSignedIn(false);
+      setReviewMessage('reviewMessage', '');
+      if (message) setReviewMessage('reviewLoginMessage', message);
+    }
+
+    async function readJson(response) {
+      try { return await response.json(); } catch { return {}; }
+    }
+
+    async function authError(response) {
+      const payload = await readJson(response);
+      return payload.error_description || payload.msg || payload.error || `HTTP ${response.status}`;
+    }
+
+    async function refreshReviewSession() {
+      if (!reviewSession.refreshToken) return false;
+      try {
+        const response = await fetch(`${AUTH_ENDPOINT}/token?grant_type=refresh_token`, {
+          method: 'POST',
+          headers: { apikey: PUBLIC_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: reviewSession.refreshToken }),
+          cache: 'no-store',
+        });
+        if (!response.ok) return false;
+        const payload = await response.json();
+        if (!payload.access_token) return false;
+        reviewSession.accessToken = payload.access_token;
+        reviewSession.refreshToken = payload.refresh_token || reviewSession.refreshToken;
+        reviewSession.email = payload.user?.email || reviewSession.email;
+        saveReviewSession();
+        return true;
+      } catch { return false; }
+    }
+
+    async function reviewFetch(path, options = {}, retry = true) {
+      const headers = new Headers(options.headers || {});
+      headers.set('apikey', PUBLIC_KEY);
+      headers.set('Authorization', `Bearer ${reviewSession.accessToken}`);
+      if (options.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+      const response = await fetch(`${REVIEW_ENDPOINT}${path}`, { ...options, headers, cache:'no-store' });
+      if (response.status === 401 && retry && await refreshReviewSession()) return reviewFetch(path, options, false);
+      return response;
+    }
+
+    function reviewReason(reason) {
+      return reason === 'single_origin_high_risk_field'
+        ? 'High-risk field has only one independent origin.'
+        : reason === 'conflicting_admissible_evidence'
+        ? 'Admissible sources disagree on the value.'
+        : human(reason);
+    }
+
+    function evidenceOption(item, evidence) {
+      const value = formatValue(evidence.value_text, evidence.value_json);
+      const confidence = evidence.evidence_confidence == null ? '' : ` · evidence ${Math.round(Number(evidence.evidence_confidence) * 100)}%`;
+      const identity = evidence.identity_confidence == null ? '' : ` · identity ${Math.round(Number(evidence.identity_confidence) * 100)}%`;
+      const links = (evidence.links || []).map(link => `<a href="${esc(link.url)}" target="_blank" rel="noopener noreferrer">${esc(link.kind || 'Source')}</a>`).join('');
+      return `<label class="evidence-option"><input type="radio" name="evidence-${esc(item.conflict_id)}" value="${esc(evidence.id)}"><span class="evidence-copy"><span class="evidence-value">${esc(value)}</span><span class="evidence-meta">${esc(sourceName(evidence.source))}${evidence.claim_kind ? ` · ${esc(evidence.claim_kind)}` : ''}${confidence}${identity}${evidence.source_updated_at ? ` · ${esc(formatDate(evidence.source_updated_at))}` : ''}</span>${links ? `<span class="evidence-links">${links}</span>` : ''}</span></label>`;
+    }
+
+    function conflictCard(item) {
+      const establishment = item.establishment || {};
+      const evidence = item.evidence || [];
+      const options = evidence.map(option => evidenceOption(item, option)).join('');
+      const evidenceCopy = options || '<div class="conflict-help">No current admissible evidence is available in the ledger.</div>';
+      return `<article class="conflict"><div class="conflict-head"><div><div class="conflict-name">${esc(establishment.name)}</div><div class="conflict-location">${esc([establishment.address, establishment.city, establishment.region].filter(Boolean).join(' · '))}</div></div><span class="conflict-badge">Priority ${esc(item.priority)}</span></div><div class="conflict-summary"><div><span>Field</span><strong>${esc(human(item.field_name))}</strong></div><div><span>Current value</span><strong>${esc(formatValue(item.current?.value_text, item.current?.value_json))}</strong></div><div><span>Why it is held</span><strong>${esc(reviewReason(item.reason))}</strong></div></div><div class="evidence-title">Choose the durable value</div><form class="conflict-review-form" data-conflict-id="${esc(item.conflict_id)}" data-city="${esc(establishment.city)}"><div class="evidence-list">${evidenceCopy}<label class="evidence-option"><input type="radio" name="evidence-${esc(item.conflict_id)}" value="__unknown"><span class="evidence-copy"><span class="evidence-value">Record audited unknown</span><span class="evidence-meta">Do not select any source; preserve the decision trail without asserting a value.</span></span></label></div><label class="review-field">Review note<textarea class="review-note" name="notes" maxlength="2000" placeholder="Explain why this evidence is correct, or why the field must remain unknown." required></textarea></label><div class="conflict-actions"><span class="conflict-help">Conflict ${esc(item.conflict_id)} · created ${esc(formatDate(item.created_at))}</span><button class="review-button" type="submit">Record review</button></div><div class="conflict-form-message" role="alert" hidden></div></form></article>`;
+    }
+
+    function renderConflicts() {
+      const total = reviewState.total;
+      setText('reviewMeta', `${fmt(total)} pending conflict${total === 1 ? '' : 's'}`);
+      const container = document.getElementById('conflicts');
+      container.innerHTML = reviewState.items.length
+        ? reviewState.items.map(conflictCard).join('')
+        : '<div class="empty">No pending field conflicts match this filter.</div>';
+      const hasMore = reviewState.items.length < total;
+      document.getElementById('reviewLoadMore').hidden = !hasMore;
+      document.getElementById('reviewLoadWrap').hidden = !hasMore;
+    }
+
+    async function loadConflicts(reset = false) {
+      if (!reviewSession.accessToken || reviewState.loading) return;
+      if (reset) { reviewState.offset = 0; reviewState.items = []; }
+      reviewState.loading = true;
+      document.getElementById('reviewLoadMore').disabled = true;
+      if (!reviewState.items.length) document.getElementById('conflicts').innerHTML = '<div class="empty">Loading conflicts…</div>';
+      const params = new URLSearchParams({ limit:'20', offset:String(reviewState.offset) });
+      if (reviewState.field) params.set('field', reviewState.field);
+      if (reviewState.q) params.set('q', reviewState.q);
+      try {
+        const response = await reviewFetch(`?${params}`);
+        if (response.status === 401) { signOutReview('Your review session expired. Sign in again.'); return; }
+        if (response.status === 403) { signOutReview('This Supabase account is not authorized for owner review.'); return; }
+        if (!response.ok) throw new Error(await authError(response));
+        const data = await response.json();
+        const next = data.items || [];
+        reviewState.total = num(data.total_count);
+        reviewState.items = reset ? next : reviewState.items.concat(next);
+        reviewState.offset = reviewState.items.length;
+        setReviewMessage('reviewMessage', '');
+        renderConflicts();
+      } catch (error) {
+        setReviewMessage('reviewMessage', `Could not load conflicts: ${error.message}`);
+        if (!reviewState.items.length) document.getElementById('conflicts').innerHTML = '<div class="empty">Conflict queue unavailable.</div>';
+      } finally {
+        reviewState.loading = false;
+        document.getElementById('reviewLoadMore').disabled = false;
+      }
+    }
+
+    async function signInReview(event) {
+      event.preventDefault();
+      const button = document.getElementById('reviewLoginButton');
+      const email = document.getElementById('reviewEmail').value.trim();
+      const password = document.getElementById('reviewPassword').value;
+      setReviewMessage('reviewLoginMessage', '');
+      button.disabled = true;
+      try {
+        const response = await fetch(`${AUTH_ENDPOINT}/token?grant_type=password`, {
+          method: 'POST',
+          headers: { apikey: PUBLIC_KEY, 'Content-Type': 'application/json', 'X-Client-Info': 'paloma-dashboard' },
+          body: JSON.stringify({ email, password }),
+          cache: 'no-store',
+        });
+        if (!response.ok) throw new Error(await authError(response));
+        const payload = await response.json();
+        if (!payload.access_token || !payload.refresh_token) throw new Error('Supabase did not return a review session.');
+        reviewSession.accessToken = payload.access_token;
+        reviewSession.refreshToken = payload.refresh_token;
+        reviewSession.email = payload.user?.email || email;
+        saveReviewSession();
+        document.getElementById('reviewPassword').value = '';
+        setReviewSignedIn(true);
+        await loadConflicts(true);
+      } catch (error) {
+        setReviewMessage('reviewLoginMessage', error.message || 'Sign in failed.');
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    async function submitConflictReview(event) {
+      const form = event.target.closest('form.conflict-review-form');
+      if (!form) return;
+      event.preventDefault();
+      const selected = form.querySelector('input[type="radio"]:checked');
+      const note = form.querySelector('textarea[name="notes"]');
+      const message = form.querySelector('.conflict-form-message');
+      if (!selected) { message.textContent = 'Choose an evidence option or explicitly record audited unknown.'; message.hidden = false; return; }
+      if (!note.value.trim()) { message.textContent = 'A review note is required.'; message.hidden = false; return; }
+      const button = form.querySelector('button[type="submit"]');
+      button.disabled = true;
+      message.hidden = true;
+      try {
+        const response = await reviewFetch('', {
+          method: 'POST',
+          body: JSON.stringify({
+            conflict_id: Number(form.dataset.conflictId),
+            city: form.dataset.city,
+            selected_evidence_id: selected.value === '__unknown' ? null : selected.value,
+            notes: note.value.trim(),
+          }),
+        });
+        if (response.status === 401) { signOutReview('Your review session expired. Sign in again.'); return; }
+        if (response.status === 403) { signOutReview('This Supabase account is not authorized for owner review.'); return; }
+        if (!response.ok) throw new Error(await authError(response));
+        await loadConflicts(true);
+        await refreshSummary();
+      } catch (error) {
+        message.textContent = `Could not record review: ${error.message}`;
+        message.hidden = false;
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    function restoreReviewSession() {
+      try {
+        const saved = JSON.parse(sessionStorage.getItem('paloma-review-session') || 'null');
+        if (saved?.accessToken && saved?.refreshToken) {
+          reviewSession.accessToken = saved.accessToken;
+          reviewSession.refreshToken = saved.refreshToken;
+          reviewSession.email = saved.email || null;
+          setReviewSignedIn(true);
+          loadConflicts(true);
+        }
+      } catch { /* Start signed out if the stored session is unavailable. */ }
+    }
+
     document.getElementById('search').addEventListener('input', event => {
       clearTimeout(searchTimer);
       searchTimer = setTimeout(() => { state.q = event.target.value.trim(); loadVenues(true); }, 250);
     });
     document.getElementById('loadMore').addEventListener('click', () => loadVenues(false));
+    document.getElementById('reviewLoginForm').addEventListener('submit', signInReview);
+    document.getElementById('reviewSignout').addEventListener('click', () => signOutReview());
+    document.getElementById('reviewRefresh').addEventListener('click', () => loadConflicts(true));
+    document.getElementById('reviewLoadMore').addEventListener('click', () => loadConflicts(false));
+    document.getElementById('reviewField').addEventListener('change', event => { reviewState.field = event.target.value; loadConflicts(true); });
+    document.getElementById('reviewSearch').addEventListener('input', event => {
+      clearTimeout(reviewSearchTimer);
+      reviewSearchTimer = setTimeout(() => { reviewState.q = event.target.value.trim(); loadConflicts(true); }, 250);
+    });
+    document.getElementById('conflicts').addEventListener('submit', submitConflictReview);
     refreshSummary();
     loadVenues(true);
+    restoreReviewSession();
     setInterval(refreshSummary, 30000);
   </script>
 </body>

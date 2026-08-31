@@ -333,6 +333,7 @@ async function v2Payload(sql: Sql, runtimeApplied: boolean) {
     candidateRows,
     blockerRows,
     workRows,
+    fieldConflictRows,
     sourceRows,
     runRows,
     tierRows,
@@ -430,6 +431,18 @@ async function v2Payload(sql: Sql, runtimeApplied: boolean) {
             and verification_expires_at > now()
         )::bigint as unexpired_verified
       from ingest.catalog_candidates
+    `,
+    sql`
+      select
+        count(*) filter (where conflict.state = 'pending')::bigint
+          as pending_field_conflicts,
+        count(*) filter (
+          where conflict.state = 'pending'
+            and establishment.publication_state = 'published'
+        )::bigint as pending_published_field_conflicts
+      from review.field_conflicts conflict
+      join public.establishments establishment
+        on establishment.id = conflict.establishment_id
     `,
     sql`
       with expected(source, label, required, freshness_days) as (
@@ -797,6 +810,9 @@ async function v2Payload(sql: Sql, runtimeApplied: boolean) {
         safeLive,
         providerErrors,
         detailReady,
+        pendingPublishedFieldConflicts: number(
+          fieldConflictRows[0]?.pending_published_field_conflicts,
+        ),
         work: workRows[0],
       }),
     },
@@ -836,6 +852,12 @@ async function v2Payload(sql: Sql, runtimeApplied: boolean) {
       ready_to_publish: number(workRows[0]?.ready_to_publish),
       leases_due: number(workRows[0]?.leases_due),
       unexpired_verified: number(workRows[0]?.unexpired_verified),
+      pending_field_conflicts: number(
+        fieldConflictRows[0]?.pending_field_conflicts,
+      ),
+      pending_published_field_conflicts: number(
+        fieldConflictRows[0]?.pending_published_field_conflicts,
+      ),
     },
     runtime: {
       applied: runtimeApplied,
@@ -882,6 +904,7 @@ function nextAction(args: {
   safeLive: number;
   providerErrors: number;
   detailReady: number;
+  pendingPublishedFieldConflicts: number;
   work: Record<string, unknown> | undefined;
 }): string {
   if (!args.requiredReady) {
@@ -898,6 +921,9 @@ function nextAction(args: {
   }
   if (args.detailReady < args.safeLive) {
     return "Restore live-detail routing for every existing published establishment.";
+  }
+  if (args.pendingPublishedFieldConflicts > 0) {
+    return "Review pending field conflicts before expanding the published catalog.";
   }
   if (number(args.work?.ready_to_publish) > 0) {
     return "Keep verified candidates private until a bounded expansion release is fully authorized.";

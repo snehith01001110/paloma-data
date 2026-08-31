@@ -73,12 +73,20 @@ class FieldConflictReviewer:
                            authority::float, upstream_origin_keys
                     from catalog.field_observations
                     where id = %s::uuid
-                      and establishment_id = %s::uuid
+                      and (
+                        establishment_id = %s::uuid
+                        or candidate_id = %s::uuid
+                      )
                       and field_name = %s
                       and observation_status = 'asserted'
                       and (expires_at is null or expires_at > now())
                     """,
-                    (selected_evidence_id, establishment_id, field_name),
+                    (
+                        selected_evidence_id,
+                        establishment_id,
+                        establishment_id,
+                        field_name,
+                    ),
                 ).fetchone()
                 if evidence is None:
                     raise ValueError(
