@@ -511,10 +511,10 @@ async function reviewConflict(
         ${currentDecisionId}::bigint,
         ${fingerprint},
         jsonb_build_object(
-          'reviewer', ${user.id},
-          'reviewer_email', ${user.email},
-          'notes', ${body.notes},
-          'conflict_id', ${body.conflictId}
+          'reviewer', ${user.id}::text,
+          'reviewer_email', ${user.email}::text,
+          'notes', ${body.notes}::text,
+          'conflict_id', ${body.conflictId}::bigint
         )
       )
       returning id::text
