@@ -329,6 +329,23 @@ def test_current_manual_hard_negative_withdraws_the_exact_candidate():
     assert decision.reason == "current_verifier_failure:v7"
 
 
+def test_current_manual_hard_negative_withdraws_without_an_abc_match():
+    fsq = _fsq(primary_type_slug="lounge")
+    closed = manual_attestation(
+        fsq,
+        reviewer="github:reviewer",
+        evidence_urls=("https://official.example/closed",),
+        outcome="fail",
+        note="Current review confirms this is not a public alcohol venue at the listed premise.",
+        observed_at=NOW,
+    )
+
+    decision = decide_candidate([LinkedSource(fsq, 1.0, "anchor_source_id")], [closed], now=NOW)
+
+    assert decision.state == "withdrawn"
+    assert decision.reason == "current_verifier_failure:v7"
+
+
 def test_raw_abc_status_must_be_exactly_active_even_if_canonical_status_is_open():
     bad_abc = _abc(permitted_metadata={"license_type": "42", "type_status": "SUREND"})
     decision = decide_candidate(_links(_fsq(), bad_abc), [_verification()], now=NOW)

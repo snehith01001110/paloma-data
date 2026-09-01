@@ -184,13 +184,6 @@ def decide_candidate(
     if flags & HARD_NEGATIVE_FLAGS:
         return _decision("withdrawn", "consumer_hard_negative")
 
-    abc_records = [record for record in records if record.source == "ca_abc"]
-    if abc_records and not any(_abc_raw_active(record) for record in abc_records):
-        return _decision("withdrawn", "abc_license_not_active")
-    active_abc = [record for record in abc_records if _abc_raw_active(record)]
-    if not active_abc:
-        return _decision("needs_verification", "missing_exact_active_abc")
-
     fsq_records = [
         record
         for record in consumer
@@ -209,8 +202,9 @@ def decide_candidate(
             _timestamp(record.source_updated_at),
         ),
     )
-    # A verification is evidence about one exact provider identity.  Never let a pass for an
-    # old/merged Foursquare ID silently carry over to a newly linked place.
+    # A current hard-negative review is sufficient to withdraw the exact FSQ identity even
+    # when the stale/incorrect candidate never had a matching ABC row. Otherwise a false
+    # positive can remain stuck in needs_verification forever instead of being retired.
     latest_verifications = [
         item
         for item in _latest_verifications(verifications)
@@ -221,6 +215,18 @@ def decide_candidate(
         for item in latest_verifications
         if item.outcome == "fail" and _utc(item.expires_at) > current_time
     ]
+    if failures:
+        return _decision("withdrawn", "current_verifier_failure")
+
+    abc_records = [record for record in records if record.source == "ca_abc"]
+    if abc_records and not any(_abc_raw_active(record) for record in abc_records):
+        return _decision("withdrawn", "abc_license_not_active")
+    active_abc = [record for record in abc_records if _abc_raw_active(record)]
+    if not active_abc:
+        return _decision("needs_verification", "missing_exact_active_abc")
+
+    # A verification is evidence about one exact provider identity.  Never let a pass for an
+    # old/merged Foursquare ID silently carry over to a newly linked place.
     passing = [
         item
         for item in latest_verifications
@@ -263,10 +269,6 @@ def decide_candidate(
             "needs_review", "identity_below_publication_threshold", identity=identity_confidence
         )
 
-    if failures:
-        return _decision(
-            "withdrawn", "current_verifier_failure", identity=identity_confidence
-        )
     # The monthly FSQ OS timestamp is the default current-operation signal. A current durable
     # verification bound to this exact FSQ ID may supersede that timestamp: a contracted provider
     # check or reviewed manual attestation is stronger, fresher evidence than an unchanged bulk
