@@ -66,11 +66,22 @@
     .bar-chart { display: grid; gap: 9px; }
     .bar-row { display: grid; grid-template-columns: minmax(74px, .7fr) minmax(90px, 2fr) auto; gap: 8px; align-items: center; font-size: 10px; }
     .bar-label { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
-    .bar-track { height: 7px; overflow: hidden; background: #edf0eb; border-radius: 99px; }
-    .bar-fill { height: 100%; min-width: 2px; background: var(--green); border-radius: inherit; }
+    .bar-track { height: 9px; overflow: hidden; background: #edf2ed; border: 1px solid #e3eae3; border-radius: 99px; }
+    .bar-fill { height: 100%; min-width: 2px; background: linear-gradient(90deg, #216446, #5b9b76); border-radius: inherit; }
     .bar-fill.empty { background: var(--line); }
     .bar-value { min-width: 66px; color: var(--ink); font-size: 10px; line-height: 1.2; text-align: right; }
     .bar-missing { display: block; color: var(--muted); font-size: 8px; font-weight: 600; }
+    .city-breakdown { display: grid; grid-template-columns: minmax(120px, 150px) minmax(0, 1fr); gap: 18px; align-items: center; }
+    .city-donut { position: relative; display: grid; place-items: center; width: 150px; max-width: 100%; aspect-ratio: 1; border-radius: 50%; }
+    .city-donut::after { content: ''; position: absolute; inset: 28%; background: var(--paper); border-radius: 50%; box-shadow: 0 0 0 1px rgba(221, 225, 217, .8); }
+    .city-donut-center { position: relative; z-index: 1; display: grid; justify-items: center; line-height: 1.1; text-align: center; }
+    .city-donut-total { font-size: 20px; font-weight: 850; letter-spacing: -.05em; }
+    .city-donut-label { margin-top: 3px; color: var(--muted); font-size: 8px; font-weight: 750; text-transform: uppercase; letter-spacing: .06em; }
+    .city-legend { display: grid; gap: 8px; min-width: 0; }
+    .city-legend-row { display: grid; grid-template-columns: 9px minmax(0, 1fr) auto; gap: 7px; align-items: center; min-width: 0; }
+    .city-swatch { width: 9px; height: 9px; border-radius: 3px; }
+    .city-legend-name { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+    .city-legend-value { color: var(--ink); font-size: 10px; font-weight: 800; text-align: right; white-space: nowrap; }
     .ops { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); gap: 9px; margin-top: 9px; }
     .ops-block { min-width: 0; padding: 15px 18px; }
     .ops-block h3 { margin: 0 0 10px; font-size: 12px; }
@@ -173,6 +184,8 @@
       .review-toolbar { align-items: stretch; flex-direction: column; }
       .review-tools { justify-content: stretch; }
       .review-tools .review-field { flex: 1 1 150px; }
+      .city-breakdown { grid-template-columns: 1fr; }
+      .city-donut { margin: 0 auto; }
     }
     @media (max-width: 440px) {
       .metrics { grid-template-columns: 1fr 1fr; }
@@ -215,7 +228,7 @@
 
     <div class="section-head"><h2>Coverage at a glance</h2><p>Durable catalog facts and current city mix</p></div>
     <section class="insights" aria-label="Catalog coverage charts">
-      <article class="card insight"><h3>Published by city</h3><p>Safe live establishments</p><div class="bar-chart" id="cityChart" role="list" aria-label="Published establishments by city"><div class="empty">Loading…</div></div></article>
+      <article class="card insight"><h3>Published by city</h3><p>Safe live establishments · share of the catalog</p><div id="cityChart" role="list" aria-label="Published establishments by city"><div class="empty">Loading…</div></div></article>
       <article class="card insight"><h3>Durable field coverage</h3><p id="coverageSubtitle">Stored values across live establishments · missing values are shown</p><div class="bar-chart" id="coverageChart" role="list" aria-label="Durable field coverage"><div class="empty">Loading…</div></div></article>
     </section>
     <section class="ops" aria-label="Pipeline operations">
@@ -372,9 +385,29 @@
       const coverage = data.coverage || {};
       const denominator = num(data.overall?.safe_live);
       const cities = (data.published_cities || []).slice().sort((a, b) => num(b.count) - num(a.count));
-      document.getElementById('cityChart').innerHTML = cities.length
-        ? cities.map(city => barRow(city.city, city.count, denominator)).join('')
-        : '<div class="empty">No city data</div>';
+      if (cities.length) {
+        const palette = ['#216446', '#3e8c68', '#72ae87', '#b48b47', '#8d5d80', '#5c788d', '#a65c46', '#6f739e'];
+        const cityTotal = cities.reduce((sum, city) => sum + num(city.count), 0);
+        const chartTotal = Math.max(denominator, cityTotal, 1);
+        let cursor = 0;
+        const segments = cities.map((city, index) => {
+          const start = cursor;
+          cursor += (num(city.count) / chartTotal) * 100;
+          return `${palette[index % palette.length]} ${start}% ${cursor}%`;
+        });
+        if (cityTotal < chartTotal) segments.push(`#cbd3cc ${cursor}% 100%`);
+        const legend = cities.map((city, index) => {
+          const percent = Math.round((num(city.count) / chartTotal) * 100);
+          return `<div class="city-legend-row" role="listitem"><span class="city-swatch" style="background:${palette[index % palette.length]}"></span><span class="city-legend-name">${esc(city.city)}</span><span class="city-legend-value">${fmt(city.count)} · ${percent}%</span></div>`;
+        });
+        if (cityTotal < chartTotal) {
+          const unassigned = chartTotal - cityTotal;
+          legend.push(`<div class="city-legend-row" role="listitem"><span class="city-swatch" style="background:#cbd3cc"></span><span class="city-legend-name">Unassigned</span><span class="city-legend-value">${fmt(unassigned)} · ${Math.round((unassigned / chartTotal) * 100)}%</span></div>`);
+        }
+        document.getElementById('cityChart').innerHTML = `<div class="city-breakdown"><div class="city-donut" aria-hidden="true" style="background:conic-gradient(${segments.join(',')})"><div class="city-donut-center"><span class="city-donut-total">${fmt(denominator || cityTotal)}</span><span class="city-donut-label">live</span></div></div><div class="city-legend">${legend.join('')}</div></div>`;
+      } else {
+        document.getElementById('cityChart').innerHTML = '<div class="empty">No city data</div>';
+      }
       const fields = [['Phone', coverage.phone], ['Website', coverage.website], ['Neighborhood', coverage.neighborhood], ['Hours', coverage.hours], ['Price', coverage.price], ['Setting', coverage.settings]];
       setText('coverageSubtitle', `${fmt(denominator)} live establishments · stored values and missing counts`);
       document.getElementById('coverageChart').innerHTML = fields.map(([label, count]) => barRow(label, count, denominator, true)).join('');
