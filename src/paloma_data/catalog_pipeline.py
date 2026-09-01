@@ -680,9 +680,16 @@ class CatalogPipeline:
                 resolution == "not_same_or_stale"
                 and _review_identity_facts_match(review["evidence"], expected_evidence)
             )
+            legacy_review_reason_is_safe = (
+                stale_rejection_is_safe and identity.action == "review"
+            )
             if (
                 review["reason"] not in valid_reasons
-                or (evidence_changed and not stale_rejection_is_safe)
+                and not legacy_review_reason_is_safe
+            ) or (
+                review["reason"] in valid_reasons
+                and evidence_changed
+                and not stale_rejection_is_safe
             ):
                 raise ValueError(
                     "Review evidence changed during refresh; use the newly queued review"
