@@ -14,7 +14,7 @@ on:
         required: true
         default: east-bay-pilot-v1
         type: choice
-        options: [east-bay-pilot-v1, east-bay-sr-dublin-v1, south-bay-pilot-v1, peninsula-pilot-v1, north-bay-pilot-v1]
+        options: [east-bay-pilot-v1, east-bay-pilot-v2, east-bay-sr-dublin-v1, south-bay-pilot-v1, peninsula-pilot-v1, north-bay-pilot-v1]
       city:
         description: Exact scoped city, or the establishment city for conflict review
         required: false
