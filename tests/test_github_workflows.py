@@ -36,7 +36,7 @@ def test_expansion_is_manual_and_database_gated_in_development():
 
 def test_protected_review_resolution_supports_existing_catalog_cities():
     assert 'case "$ACTION" in' in EXPANSION
-    assert "resolve-review)" in EXPANSION
+    assert "resolve-review|" in EXPANSION
     assert 'os.environ["PALOMA_CITIES"].split(",")' in EXPANSION
     assert "outside the configured maintenance region" in EXPANSION
 

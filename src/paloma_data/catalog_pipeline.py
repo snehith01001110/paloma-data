@@ -675,9 +675,14 @@ class CatalogPipeline:
             if identity.action == "match":
                 valid_reasons.add(identity.reason)
             expected_evidence = _review_evidence(anchor, review["record"], identity)
+            evidence_changed = expected_evidence != review["evidence"]
+            stale_rejection_is_safe = (
+                resolution == "not_same_or_stale"
+                and _review_identity_facts_match(review["evidence"], expected_evidence)
+            )
             if (
                 review["reason"] not in valid_reasons
-                or expected_evidence != review["evidence"]
+                or (evidence_changed and not stale_rejection_is_safe)
             ):
                 raise ValueError(
                     "Review evidence changed during refresh; use the newly queued review"
@@ -975,6 +980,21 @@ def _review_evidence(
         "anchor": snapshot(anchor),
         "record": snapshot(record),
     }
+
+
+def _review_identity_facts_match(
+    stored: dict[str, Any], current: dict[str, Any]
+) -> bool:
+    """Allow only identity-preserving refreshes for a stale-source rejection."""
+    for side in ("anchor", "record"):
+        stored_item = stored.get(side)
+        current_item = current.get(side)
+        if not isinstance(stored_item, dict) or not isinstance(current_item, dict):
+            return False
+        for field in ("source", "source_record_id", "name", "address", "primary_type_slug"):
+            if stored_item.get(field) != current_item.get(field):
+                return False
+    return True
 
 
 def _field_coverage(decision: CatalogDecision) -> dict[str, bool]:

@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
@@ -455,6 +456,45 @@ def test_resolving_review_refreshes_evidence_then_rechecks_candidate():
     assert database.conn.commits == 1
     assert result["candidate_state"] == "verified"
     assert result["publication_mutated"] is False
+
+
+def test_rejecting_stale_review_allows_identity_preserving_source_refresh():
+    database = _ResolutionDatabase()
+    pipeline = CatalogPipeline(database)
+    repository = _ResolutionRepository()
+    refreshed_record = replace(
+        repository.record,
+        source_status="unknown",
+        source_updated_at=NOW,
+    )
+    stale_identity = decide_identity(repository.anchor, repository.record)
+    refreshed_identity = decide_identity(repository.anchor, refreshed_record)
+    repository.record = refreshed_record
+    repository.pending_match_review = lambda _, review_id: {
+        "candidate_id": "candidate-1",
+        "reason": refreshed_identity.reason,
+        "score": refreshed_identity.score,
+        "evidence": _review_evidence(
+            repository.anchor,
+            replace(
+                refreshed_record,
+                source_status="open",
+                source_updated_at=NOW - timedelta(days=1),
+            ),
+            stale_identity,
+        ),
+        "record": refreshed_record,
+    }
+    pipeline.repo = repository
+    pipeline._evaluate_candidate = lambda *_: _decision("verified")
+
+    result = pipeline.resolve_match_review(
+        123,
+        resolution="not_same_or_stale",
+        reviewer="github:test-reviewer",
+    )
+
+    assert result["candidate_state"] == "verified"
 
 
 def test_accepting_review_creates_a_durable_manual_identity_link():
