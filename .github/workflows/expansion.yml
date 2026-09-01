@@ -180,7 +180,7 @@ jobs:
             exit 2
           fi
           case "$ACTION" in
-            resolve-review|review-field-conflict|observe-establishment)
+            resolve-review|review-field-conflict|observe-establishment|attest|observe-field)
               CITY="$CITY" python - <<'PY'
           import os
 
