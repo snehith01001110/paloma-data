@@ -740,6 +740,14 @@ class CatalogRepository:
         )
         if snapshot:
             self._attach_civic_neighborhood(conn, candidate_id, snapshot)
+        persisted_candidate_state = decision.state
+        if decision.state == "verified":
+            publication = self.materialized_publication(conn, candidate_id)
+            if publication and publication["publication_state"] == "published":
+                # Re-evaluation must not demote a live identity back to the private
+                # verification state. The public safety view uses this state to ensure
+                # the candidate and establishment remain in the same publication phase.
+                persisted_candidate_state = "published"
         conn.execute(
             """
             insert into ingest.catalog_evaluations (
@@ -774,7 +782,7 @@ class CatalogRepository:
             where id = %s::uuid
             """,
             (
-                decision.state,
+                persisted_candidate_state,
                 decision.reason,
                 list(decision.reasons),
                 CATALOG_DECISION_VERSION,

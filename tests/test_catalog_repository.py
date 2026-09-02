@@ -3,6 +3,7 @@ from paloma_data.catalog_repository import (
     CatalogRepository,
     _overlay_public_field_projection,
 )
+from paloma_data.catalog import CatalogDecision
 from paloma_data.models import SourceRecord
 
 
@@ -43,6 +44,21 @@ class _NeighborhoodConnection:
         self.queries.append(query)
         self.params.append(params)
         return _Cursor(next(self.rows))
+
+
+class _PublishedCandidateEvaluationConnection:
+    def __init__(self):
+        self.queries = []
+        self.params = []
+
+    def execute(self, query, params):
+        self.queries.append(query)
+        self.params.append(params)
+        if "from public.establishments" in query:
+            return _Cursor(
+                {"establishment_id": "candidate-id", "publication_state": "published"}
+            )
+        return _EmptyCursor()
 
 
 def test_potential_sources_only_queries_current_eligible_evidence():
@@ -187,6 +203,23 @@ def test_unpublished_verified_candidate_selection_excludes_materialized_rows():
     assert "public.establishments" in connection.query
     assert "c.candidate_state = 'verified'" in connection.query
     assert connection.params == (["mountain view", "san jose"], "v7", 1)
+
+
+def test_save_evaluation_preserves_published_candidate_state_when_still_verified():
+    connection = _PublishedCandidateEvaluationConnection()
+    repository = CatalogRepository(db=None)
+    decision = CatalogDecision(
+        state="verified",
+        reason="all_hard_gates_passed:v7",
+        reasons=("all_hard_gates_passed",),
+        identity_confidence=0.99,
+    )
+
+    repository.save_evaluation(connection, "candidate-id", decision, mode="production")
+
+    update_params = connection.params[-1]
+    assert "update ingest.catalog_candidates" in connection.queries[-1]
+    assert update_params[0] == "published"
 
 
 def test_boundary_adjacent_neighborhood_uses_independent_coordinate_consensus():
