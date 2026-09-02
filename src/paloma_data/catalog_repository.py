@@ -837,6 +837,34 @@ class CatalogRepository:
         ).fetchall()
         return [str(row["id"]) for row in rows]
 
+    def unpublished_verified_candidate_ids(
+        self,
+        conn: psycopg.Connection,
+        *,
+        cities: tuple[str, ...],
+        limit: int,
+        decision_version: str,
+    ) -> list[str]:
+        """Select verified identities that have never been materialized publicly."""
+        rows = conn.execute(
+            """
+            select c.id::text
+            from ingest.catalog_candidates c
+            where lower(c.city) = any(%s::text[])
+              and c.candidate_state = 'verified'
+              and c.decision_version = %s::text
+              and not exists (
+                select 1
+                from public.establishments e
+                where e.catalog_candidate_id = c.id
+              )
+            order by c.updated_at, c.id
+            limit %s
+            """,
+            ([value.casefold() for value in cities], decision_version, limit),
+        ).fetchall()
+        return [str(row["id"]) for row in rows]
+
     def materialized_candidate_ids(
         self,
         conn: psycopg.Connection,

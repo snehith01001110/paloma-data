@@ -172,6 +172,23 @@ def test_new_publication_candidate_selection_is_scoped_to_release_cities():
     )
 
 
+def test_unpublished_verified_candidate_selection_excludes_materialized_rows():
+    connection = _RecordingConnection()
+    repository = CatalogRepository(db=None)
+
+    assert repository.unpublished_verified_candidate_ids(
+        connection,
+        cities=("Mountain View", "San Jose"),
+        limit=1,
+        decision_version="v7",
+    ) == []
+
+    assert "not exists" in connection.query
+    assert "public.establishments" in connection.query
+    assert "c.candidate_state = 'verified'" in connection.query
+    assert connection.params == (["mountain view", "san jose"], "v7", 1)
+
+
 def test_boundary_adjacent_neighborhood_uses_independent_coordinate_consensus():
     connection = _NeighborhoodConnection(
         [

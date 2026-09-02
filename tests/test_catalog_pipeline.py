@@ -41,7 +41,7 @@ class _PublicationRepository:
     def withdraw_expired(self, _):
         return 0
 
-    def candidate_ids(self, _, **kwargs):
+    def unpublished_verified_candidate_ids(self, _, **kwargs):
         self.requested_version = kwargs.get("decision_version")
         return ["candidate-1"]
 

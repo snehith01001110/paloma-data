@@ -395,11 +395,10 @@ class CatalogPipeline:
             counters["authorized_limit"] = release.maximum_new_publications
             counters["available_slots_before"] = available_slots
             counters["expired_withdrawn"] = self.repo.withdraw_expired(conn)
-            ids = self.repo.candidate_ids(
+            ids = self.repo.unpublished_verified_candidate_ids(
                 conn,
                 cities=release.cities,
                 limit=publish_limit,
-                states=("verified",),
                 decision_version=CATALOG_DECISION_VERSION,
             )
             for candidate_id in ids:
