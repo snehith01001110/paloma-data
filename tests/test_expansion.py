@@ -48,6 +48,7 @@ def test_manifest_covers_the_official_nine_county_region_and_101_jurisdictions()
     assert sum(len(cities) for cities in manifest.jurisdictions.values()) == 101
     assert len(manifest.sha256) == 64
     assert manifest.release("san-francisco-pilot-v1").cities == ("San Francisco",)
+    assert manifest.release("san-jose-pilot-v1").cities == ("San Jose",)
     assert manifest.release("east-bay-pilot-v1").cities == ("Berkeley", "Oakland")
 
 

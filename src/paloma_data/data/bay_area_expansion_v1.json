@@ -78,6 +78,12 @@
       "maximum_new_publications": 25
     },
     {
+      "release_id": "san-jose-pilot-v1",
+      "label": "San Jose pilot",
+      "cities": ["San Jose"],
+      "maximum_new_publications": 5
+    },
+    {
       "release_id": "east-bay-pilot-v1",
       "label": "East Bay pilot",
       "cities": ["Berkeley", "Oakland"],
