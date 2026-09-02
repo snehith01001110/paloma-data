@@ -49,9 +49,10 @@ _OVERTURE_EXACT_TYPES = {
     "beer_garden": "beer_bar",
     "irish_pub": "pub",
     "gastropub": "pub",
-    # FSQ labels pool halls as Arts and Entertainment rather than Dining and Drinking. Treat
-    # the explicit pool-hall category as a consumer bar so it can use the same ABC/access gates.
-    "pool_hall": "bar",
+    # FSQ labels pool halls as Arts and Entertainment rather than Dining and Drinking. Preserve
+    # that explicit consumer subtype while using the same ABC/access gates as other bar types.
+    "pool_hall": "billiards_bar",
+    "pool_billiards": "billiards_bar",
     "brewery": "brewery",
     "taproom": "taproom",
     "tap_room": "taproom",
@@ -74,6 +75,7 @@ BAR_TYPES = frozenset(
         "pub",
         "lounge",
         "nightclub",
+        "billiards_bar",
     }
 )
 ACCESS_SPECIFIC_TYPES = frozenset({*BAR_TYPES, "taproom", "tasting_room", "brewpub"})

@@ -180,7 +180,7 @@ def test_fsq_explicit_pool_hall_category_is_a_consumer_venue():
     )
 
     assert record is not None
-    assert record.primary_type_slug == "bar"
+    assert record.primary_type_slug == "billiards_bar"
     assert record.consumer_facing is True
     assert record.public_access == "walk_in"
     assert "consumer_identity_conflict" not in record.quality_flags

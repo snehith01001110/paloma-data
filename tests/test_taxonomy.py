@@ -73,3 +73,14 @@ def test_explicit_tasting_room_name_refines_generic_winery_category():
     )
 
     assert classification.primary_type_slug == "tasting_room"
+
+
+def test_explicit_pool_hall_category_is_a_billiards_bar():
+    classification = classify_overture(
+        "Crown Billiards",
+        {"arts_and_entertainment", "pool_hall", "bar"},
+        0.99,
+    )
+
+    assert classification.primary_type_slug == "billiards_bar"
+    assert classification.reason == "overture_taxonomy:pool_hall"
