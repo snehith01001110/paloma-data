@@ -1130,7 +1130,17 @@ class CatalogRepository:
             select *
             from ingest.catalog_candidates
             where id = %s::uuid
-              and candidate_state = 'verified'
+              and (
+                candidate_state = 'verified'
+                or (
+                  candidate_state = 'published'
+                  and exists (
+                    select 1
+                    from public.establishments
+                    where catalog_candidate_id = ingest.catalog_candidates.id
+                  )
+                )
+              )
               and decision_version = %s
               and verification_expires_at > now()
             for update

@@ -205,6 +205,18 @@ def test_unpublished_verified_candidate_selection_excludes_materialized_rows():
     assert connection.params == (["mountain view", "san jose"], "v7", 1)
 
 
+def test_materialize_allows_a_published_candidate_for_an_existing_identity_refresh():
+    connection = _RecordingConnection()
+    repository = CatalogRepository(db=None)
+
+    assert repository.materialize(connection, "candidate-id") is False
+
+    assert "candidate_state = 'verified'" in connection.query
+    assert "candidate_state = 'published'" in connection.query
+    assert "from public.establishments" in connection.query
+    assert "catalog_candidate_id = ingest.catalog_candidates.id" in connection.query
+
+
 def test_save_evaluation_preserves_published_candidate_state_when_still_verified():
     connection = _PublishedCandidateEvaluationConnection()
     repository = CatalogRepository(db=None)
