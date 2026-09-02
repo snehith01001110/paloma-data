@@ -49,6 +49,27 @@ HARD_NEGATIVE_FLAGS = frozenset(
 REQUIRED_VERIFICATION_CHECKS = frozenset(
     {"identity", "currently_operating", "public_access", "display_name", "venue_type"}
 )
+_STREET_SUFFIXES = frozenset(
+    {
+        "st",
+        "ave",
+        "blvd",
+        "rd",
+        "dr",
+        "ln",
+        "hwy",
+        "pkwy",
+        "way",
+        "ct",
+        "pl",
+        "plz",
+        "ter",
+        "trl",
+        "cir",
+        "loop",
+        "sq",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,6 +173,16 @@ def decide_identity(anchor: SourceRecord, other: SourceRecord) -> IdentityDecisi
     if other.source == "ca_abc" or anchor.source == "ca_abc":
         if exact_address and name_score >= 0.84:
             return IdentityDecision("match", 0.965, "abc_exact_premise_name", features)
+        # ABC often appends a suite, floor, entrance, or other premise qualifier that a POI
+        # source omits. Treat the shared street-address core as exact only when the strings are
+        # not already exact and the names are still strong; a same-address, weak-name pair stays
+        # in the human review band below.
+        if (
+            not exact_address
+            and _same_street_address_core(anchor.address, other.address)
+            and name_score >= 0.75
+        ):
+            return IdentityDecision("match", 0.96, "abc_address_core_strong_name", features)
 
     # An exact premise with a non-matching name can be a legal DBA, nested venue, rebrand, or
     # stale listing.  None of those cases is safe to call distinct automatically.  Keep the
@@ -164,6 +195,19 @@ def decide_identity(anchor: SourceRecord, other: SourceRecord) -> IdentityDecisi
     if address_score >= 0.95 and name_score >= 0.78:
         return IdentityDecision("review", 0.84, "probable_identity_needs_review", features)
     return IdentityDecision("distinct", 0.0, "insufficient_identity_evidence", features)
+
+
+def _same_street_address_core(left: str | None, right: str | None) -> bool:
+    def core(value: str | None) -> tuple[str, ...]:
+        tokens = normalize_address(value).split()
+        for index, token in enumerate(tokens):
+            if token in _STREET_SUFFIXES:
+                return tuple(tokens[: index + 1])
+        return ()
+
+    left_core = core(left)
+    right_core = core(right)
+    return bool(left_core and left_core == right_core)
 
 
 def decide_candidate(

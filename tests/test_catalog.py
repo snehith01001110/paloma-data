@@ -247,6 +247,26 @@ def test_exact_premise_similarity_gap_is_queued_for_review():
     assert decision.reason == "same_location_name_conflict"
 
 
+def test_abc_suite_suffix_can_match_an_exact_street_address_core():
+    anchor = _fsq(
+        name="Crown Billiards",
+        address="2416 San Ramon Valley Blvd",
+        city="San Ramon",
+    )
+    abc = _abc(
+        name="BAY AREA CROWN BILLIARDS",
+        address="2416 SAN RAMON VALLEY BLVD STE 100",
+        city="SAN RAMON",
+        source_record_id="00410818:48",
+    )
+
+    decision = decide_identity(anchor, abc)
+
+    assert decision.action == "match"
+    assert decision.score == 0.96
+    assert decision.reason == "abc_address_core_strong_name"
+
+
 def test_manual_attestation_retains_evidence_but_no_optional_provider_fields():
     anchor = _fsq(
         phone="+14155551212",
