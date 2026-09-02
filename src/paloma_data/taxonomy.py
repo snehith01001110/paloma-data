@@ -49,6 +49,9 @@ _OVERTURE_EXACT_TYPES = {
     "beer_garden": "beer_bar",
     "irish_pub": "pub",
     "gastropub": "pub",
+    # FSQ labels pool halls as Arts and Entertainment rather than Dining and Drinking. Treat
+    # the explicit pool-hall category as a consumer bar so it can use the same ABC/access gates.
+    "pool_hall": "bar",
     "brewery": "brewery",
     "taproom": "taproom",
     "tap_room": "taproom",

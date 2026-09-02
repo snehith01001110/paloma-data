@@ -158,6 +158,34 @@ def test_fsq_generic_bar_category_requires_consumer_name_signal():
     assert "consumer_identity_conflict" in record.quality_flags
 
 
+def test_fsq_explicit_pool_hall_category_is_a_consumer_venue():
+    record = _adapter()._to_record(
+        {
+            "fsq_place_id": "pool-hall123",
+            "name": "Crown Billiards",
+            "latitude": 37.775,
+            "longitude": -121.975,
+            "address": "2416 San Ramon Valley Blvd",
+            "locality": "San Ramon",
+            "region": "CA",
+            "postcode": "94583",
+            "country": "US",
+            "date_refreshed": "2026-08-06T00:00:00Z",
+            "fsq_category_labels": [
+                "Arts and Entertainment > Pool Hall",
+                "Dining and Drinking > Bar",
+            ],
+            "unresolved_flags": [],
+        }
+    )
+
+    assert record is not None
+    assert record.primary_type_slug == "bar"
+    assert record.consumer_facing is True
+    assert record.public_access == "walk_in"
+    assert "consumer_identity_conflict" not in record.quality_flags
+
+
 def test_fsq_bar_name_cannot_override_restaurant_category_conflict():
     record = _adapter()._to_record(
         {
