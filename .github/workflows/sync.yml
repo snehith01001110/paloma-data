@@ -8,7 +8,7 @@ on:
         required: true
         default: status
         type: choice
-        options: [status, coverage, live-details-health, resolve-fields, audit, stage, neighborhoods, open-attributes, trial-verified, provider-links, provider-audit, queue-refresh, queue-work, queue-status, deploy-worker]
+        options: [status, coverage, live-details-health, resolve-fields, audit, stage, neighborhoods, open-attributes, trial-verified, provider-links, provider-audit, queue-refresh, queue-refresh-all, queue-work, queue-status, deploy-worker]
       source:
         description: Source for stage
         required: false
@@ -182,6 +182,9 @@ jobs:
               ;;
             queue-refresh)
               paloma-data pipeline-enqueue-catalog --include-suppressed --city "$CITY" --limit "$LIMIT"
+              ;;
+            queue-refresh-all)
+              paloma-data pipeline-enqueue-catalog --include-suppressed --limit "$LIMIT"
               ;;
             queue-work)
               paloma-data pipeline-worker \
