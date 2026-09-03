@@ -1476,10 +1476,12 @@ class CatalogRepository:
                 and csl.identity_confidence >= 0.96
                 and source_record.retired_at is null
                 and source_record.source_status = 'open'
-                and source_record.consumer_facing
                 and source_record.public_access = 'walk_in'
                 and (
-                  not (source_record.quality_flags && %s::text[])
+                  (
+                    source_record.consumer_facing
+                    and not (source_record.quality_flags && %s::text[])
+                  )
                   or (
                     source_record.quality_flags @> array['consumer_identity_conflict']::text[]
                     and csl.match_method = 'reviewed_identity_exception:anchor_source_id'
