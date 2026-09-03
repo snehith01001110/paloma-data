@@ -302,20 +302,35 @@ async function eligiblePlace(
     join lateral (
       select link.source_record_id, link.identity_confidence
       from ingest.candidate_source_links link
-      join ingest.source_records source_record
+      left join ingest.source_records source_record
         on source_record.source = link.source
        and source_record.source_record_id = link.source_record_id
       where link.candidate_id = candidate.id
         and link.source = 'fsq'
         and link.identity_confidence >= 0.96
-        and source_record.retired_at is null
-        and source_record.source_status = 'open'
-        and source_record.consumer_facing
-        and source_record.public_access = 'walk_in'
-        and not (source_record.quality_flags && array[
-          'closed', 'delete', 'doesnt_exist', 'does_not_exist',
-          'duplicate', 'inappropriate', 'privatevenue', 'private_venue'
-        ]::text[])
+        and (
+          (
+            source_record.source_record_id is not null
+            and source_record.retired_at is null
+            and source_record.source_status = 'open'
+            and source_record.consumer_facing
+            and source_record.public_access = 'walk_in'
+            and not (source_record.quality_flags && array[
+              'closed', 'delete', 'doesnt_exist', 'does_not_exist',
+              'duplicate', 'inappropriate', 'privatevenue', 'private_venue'
+            ]::text[])
+          )
+          or (
+            -- A reviewed consumer-identity exception may use the exact FSQ anchor
+            -- created by the manual-verification gate. The source row is intentionally
+            -- hidden from this role because its coarse taxonomy is the conflict being
+            -- overridden; the worker-controlled link method is the narrow allow-list.
+            link.match_method = 'reviewed_identity_exception:anchor_source_id'
+            and candidate.anchor_source = 'fsq'
+            and candidate.anchor_source_record_id = link.source_record_id
+            and e.verification_tier = 'manual'
+          )
+        )
       order by
         (candidate.anchor_source = 'fsq'
           and candidate.anchor_source_record_id = link.source_record_id) desc,

@@ -110,8 +110,23 @@
     .venue:last-child { border-bottom: 0; }
     .venue-name { overflow: hidden; font-size: 11.5px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
     .venue-type { margin-top: 2px; color: var(--muted); font-size: 9px; }
+    .venue-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 8px; }
+    .live-details-toggle { padding: 6px 9px; color: var(--green); background: var(--green-soft); border: 1px solid #b9d8c1; border-radius: 8px; font-size: 9px; font-weight: 800; }
+    .live-details-toggle:hover { background: #dceee1; }
+    .live-details-toggle[disabled] { cursor: wait; opacity: .58; }
     .venue-address { overflow: hidden; font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
     .venue-area { margin-top: 2px; color: var(--muted); font-size: 9px; }
+    .venue-live-details { grid-column: 1 / -1; padding: 12px; background: #fafbf8; border: 1px solid #edf0eb; border-radius: 10px; }
+    .venue-live-details[hidden] { display: none; }
+    .live-details-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+    .live-details-heading strong { font-size: 10px; }
+    .live-details-meta, .live-details-empty, .live-details-error { margin-top: 4px; color: var(--muted); font-size: 9px; }
+    .live-details-error { color: var(--red); }
+    .live-hours { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 14px; margin: 8px 0 0; padding: 0; list-style: none; }
+    .live-hours li { min-width: 0; color: var(--ink); font-size: 9.5px; }
+    .live-hours li::before { content: '•'; margin-right: 6px; color: var(--green); font-weight: 900; }
+    .live-details-links { display: inline-flex; flex-wrap: wrap; gap: 8px; margin-left: 5px; }
+    .live-details-links a { color: var(--green); font-size: 9px; font-weight: 750; }
     .empty { grid-column: 1 / -1; padding: 34px 15px; color: var(--muted); text-align: center; font-size: 10px; }
     .load-wrap { padding: 12px; border-top: 1px solid var(--line); text-align: center; }
     .load-wrap[hidden] { display: none; }
@@ -277,7 +292,7 @@
       </div>
     </section>
 
-    <div class="section-head"><h2>Published establishments</h2><p>Only rows currently safe for the app</p></div>
+    <div class="section-head"><h2>Published establishments</h2><p>Only rows currently safe for the app · load current hours on demand</p></div>
     <section class="card catalog">
       <div class="catalog-tools"><span id="listMeta">Loading…</span><input class="search" id="search" type="search" aria-label="Search published establishments" placeholder="Search name or location"></div>
       <div class="venue-head" aria-hidden="true"><span>Establishment</span><span>Location</span></div>
@@ -290,6 +305,7 @@
 
   <script>
     const ENDPOINT = 'https://lighcnfzajgvfbdoekzt.supabase.co/functions/v1/paloma-data-progress';
+    const LIVE_DETAILS_ENDPOINT = 'https://lighcnfzajgvfbdoekzt.supabase.co/functions/v1/venue-live-details';
     const REVIEW_ENDPOINT = 'https://lighcnfzajgvfbdoekzt.supabase.co/functions/v1/paloma-conflict-review';
     const AUTH_ENDPOINT = 'https://lighcnfzajgvfbdoekzt.supabase.co/auth/v1';
     const PUBLIC_KEY = 'sb_publishable_tNwLJUx9Fhpr0uR0JjJHbg_aMFzQQOM';
@@ -439,7 +455,8 @@
 
     function venueRow(item) {
       const area = [item.neighborhood, item.city, item.region].filter(Boolean).join(' · ');
-      return `<article class="venue"><div><div class="venue-name">${esc(item.name)}</div><div class="venue-type">${esc(item.primary_type_name || human(item.primary_type_slug))}</div></div><div class="venue-location"><div class="venue-address">${esc(item.address || 'Address unavailable')}</div><div class="venue-area">${esc(area)}</div></div></article>`;
+      const detailId = `live-details-${item.id}`;
+      return `<article class="venue"><div><div class="venue-name">${esc(item.name)}</div><div class="venue-type">${esc(item.primary_type_name || human(item.primary_type_slug))}</div><div class="venue-actions"><button class="live-details-toggle" type="button" data-live-details-id="${esc(item.id)}" aria-controls="${esc(detailId)}" aria-expanded="false">Load current hours</button></div></div><div class="venue-location"><div class="venue-address">${esc(item.address || 'Address unavailable')}</div><div class="venue-area">${esc(area)}</div></div><div class="venue-live-details" id="${esc(detailId)}" hidden></div></article>`;
     }
 
     function renderVenues() {
@@ -565,6 +582,102 @@
       const response = await fetch(`${REVIEW_ENDPOINT}${path}`, { ...options, headers, cache:'no-store' });
       if (response.status === 401 && retry && await refreshReviewSession()) return reviewFetch(path, options, false);
       return response;
+    }
+
+    async function liveDetailsFetch(establishmentId, retry = true) {
+      const headers = { apikey: PUBLIC_KEY, Authorization: `Bearer ${reviewSession.accessToken}`, 'Content-Type': 'application/json' };
+      const response = await fetch(LIVE_DETAILS_ENDPOINT, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ establishment_id: establishmentId }),
+        cache: 'no-store',
+      });
+      if (response.status === 401 && retry && await refreshReviewSession()) return liveDetailsFetch(establishmentId, false);
+      return response;
+    }
+
+    function safeExternalUrl(value) {
+      try {
+        const url = new URL(value);
+        return url.protocol === 'https:' ? url.href : null;
+      } catch { return null; }
+    }
+
+    function liveDetailAttributions(data) {
+      const values = Array.isArray(data.attributions) ? data.attributions : data.attribution ? [data.attribution] : [];
+      const seen = new Set();
+      return values.map(value => {
+        const url = safeExternalUrl(value?.url);
+        const name = String(value?.name || value?.provider || '').trim();
+        if (!url || !name || seen.has(url)) return '';
+        seen.add(url);
+        return `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(name)}</a>`;
+      }).filter(Boolean).join('');
+    }
+
+    function liveDetailsMessage(panel, message, error = false) {
+      panel.innerHTML = `<div class="${error ? 'live-details-error' : 'live-details-empty'}">${esc(message)}</div>`;
+    }
+
+    function renderLiveDetails(panel, data) {
+      const weekdayText = Array.isArray(data.hours?.weekday_text)
+        ? data.hours.weekday_text.filter(value => typeof value === 'string' && value.trim())
+        : [];
+      const attributions = liveDetailAttributions(data);
+      const fetched = data.fetched_at ? `Checked ${new Date(data.fetched_at).toLocaleString([], { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' })}` : 'Checked just now';
+      if (!weekdayText.length) {
+        liveDetailsMessage(panel, 'No current hours were returned by the live provider.');
+        if (attributions) panel.innerHTML += `<div class="live-details-meta">${esc(fetched)}<span class="live-details-links">${attributions}</span></div>`;
+        return;
+      }
+      panel.innerHTML = `<div class="live-details-heading"><strong>Current hours</strong><span class="live-details-meta">${esc(fetched)}${attributions ? `<span class="live-details-links">${attributions}</span>` : ''}</span></div><ul class="live-hours">${weekdayText.map(value => `<li>${esc(value)}</li>`).join('')}</ul>`;
+    }
+
+    async function loadLiveDetails(event) {
+      const button = event.target.closest('button[data-live-details-id]');
+      if (!button) return;
+      const establishmentId = button.dataset.liveDetailsId;
+      const panel = document.getElementById(`live-details-${establishmentId}`);
+      if (!panel) return;
+      button.setAttribute('aria-expanded', 'true');
+      panel.hidden = false;
+      if (!reviewSession.accessToken) {
+        liveDetailsMessage(panel, 'Sign in with the admin account below to load current provider hours.');
+        setReviewMessage('reviewLoginMessage', 'Sign in to load current provider hours.');
+        document.getElementById('reviewLogin')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        document.getElementById('reviewEmail')?.focus({ preventScroll: true });
+        return;
+      }
+      button.disabled = true;
+      button.textContent = 'Loading…';
+      liveDetailsMessage(panel, 'Checking the current provider schedule…');
+      try {
+        const response = await liveDetailsFetch(establishmentId);
+        if (response.status === 401) {
+          signOutReview('Your session expired. Sign in again to load live hours.');
+          liveDetailsMessage(panel, 'Your session expired. Sign in again to load current hours.', true);
+          return;
+        }
+        if (response.status === 429) {
+          liveDetailsMessage(panel, 'The live provider is rate-limited temporarily. Try again later.', true);
+          return;
+        }
+        if (!response.ok) {
+          const payload = await readJson(response);
+          throw new Error(payload.reason === 'not_available' || payload.error === 'not_available' ? 'Live details are not available for this establishment.' : 'The live provider could not be reached.');
+        }
+        const data = await response.json();
+        if (!data.available) {
+          liveDetailsMessage(panel, 'No current hours are available from the live provider.');
+          return;
+        }
+        renderLiveDetails(panel, data);
+      } catch (error) {
+        liveDetailsMessage(panel, error.message || 'Could not load current hours.', true);
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Refresh live hours';
+      }
     }
 
     function reviewReason(reason) {
@@ -717,6 +830,7 @@
       searchTimer = setTimeout(() => { state.q = event.target.value.trim(); loadVenues(true); }, 250);
     });
     document.getElementById('loadMore').addEventListener('click', () => loadVenues(false));
+    document.getElementById('venues').addEventListener('click', loadLiveDetails);
     document.getElementById('reviewLoginForm').addEventListener('submit', signInReview);
     document.getElementById('reviewSignout').addEventListener('click', () => signOutReview());
     document.getElementById('reviewRefresh').addEventListener('click', () => loadConflicts(true));
