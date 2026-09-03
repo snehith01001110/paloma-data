@@ -210,7 +210,7 @@
     </header>
 
     <div class="error" id="error" role="alert"></div>
-    <section class="card status" id="status" aria-live="polite">
+    <section class="card status" id="status" aria-live="polite" hidden>
       <div class="status-icon" id="statusIcon">✓</div>
       <div>
         <div class="status-label" id="statusLabel">Checking</div>
@@ -329,8 +329,11 @@
       const currentRequired = required.filter(source => source.fresh && source.completed_at).length;
       const schemaReady = data.schema_version === 'catalog_v2';
       const sourcesReady = readiness.required_sources_ready && currentRequired === required.length;
+      const queue = data.work_queue || {};
+      const publishedFieldConflicts = num(queue.pending_published_field_conflicts);
       const status = document.getElementById('status');
       status.className = 'card status';
+      status.hidden = schemaReady && unsafe === 0 && sourcesReady && publishedFieldConflicts === 0;
 
       if (!schemaReady || unsafe > 0) {
         status.classList.add('bad');
@@ -344,6 +347,12 @@
         setText('statusLabel', 'Refresh due');
         setText('statusTitle', 'A required source snapshot is missing or stale');
         setText('statusDetail', 'Published leases remain fail-closed while required evidence is refreshed.');
+      } else if (publishedFieldConflicts > 0) {
+        status.classList.add('warn');
+        setText('statusIcon', '!');
+        setText('statusLabel', 'Review needed');
+        setText('statusTitle', `${fmt(publishedFieldConflicts)} pending field conflict${publishedFieldConflicts === 1 ? '' : 's'} block the next expansion`);
+        setText('statusDetail', `${fmt(overall.safe_live)} verified establishments remain safe to show; resolve the conflict before expanding.`);
       } else {
         setText('statusIcon', '✓');
         setText('statusLabel', 'Production safe');
@@ -361,9 +370,7 @@
         const missing = Math.max(0, denominator - num(count));
         setText(`${field}Meta`, `${fmt(missing)} missing · of ${fmt(denominator)} live`);
       }
-      const queue = data.work_queue || {};
       const fieldConflicts = num(queue.pending_field_conflicts);
-      const publishedFieldConflicts = num(queue.pending_published_field_conflicts);
       setText('fieldConflictCount', fmt(fieldConflicts));
       setText('fieldConflictMeta', publishedFieldConflicts ? `${fmt(publishedFieldConflicts)} block expansion` : 'No pending admin decisions');
       setText('conflictSectionMeta', fieldConflicts ? `${fmt(fieldConflicts)} pending · private admin queue` : 'No pending field conflicts');
