@@ -12,6 +12,8 @@ from paloma_data.adapters.foursquare_api import (
 from paloma_data.catalog import (
     CATALOG_DECISION_VERSION,
     CatalogDecision,
+    FSQ_OS_FRESHNESS_DAYS,
+    HARD_NEGATIVE_FLAGS,
     IdentityDecision,
     LinkedSource,
     VerificationEvidence,
@@ -114,6 +116,106 @@ class CatalogPipeline:
             conn.commit()
         counters["decisions"] = dict(counters["decisions"])
         return counters
+
+    def seed_reviewed_identity_exception(
+        self,
+        source_record_id: str,
+        *,
+        reviewer: str,
+        evidence_urls: tuple[str, ...],
+        expected_city: str,
+        venue_type: str,
+        note: str,
+        lease_days: int = 90,
+    ) -> dict[str, Any]:
+        """Stage and manually verify one exact FSQ row with a reviewed identity conflict.
+
+        This is deliberately narrower than normal discovery: it accepts only an open, recent
+        FSQ row carrying ``consumer_identity_conflict`` and immediately binds a named manual
+        attestation to that exact source ID. It never materializes a public establishment.
+        """
+        if not expected_city.strip():
+            raise ValueError("An exact city guardrail is required")
+        if not note.strip():
+            raise ValueError("A review note is required for an identity exception")
+
+        with self.db.connection() as conn:
+            conn.execute(
+                "select pg_advisory_xact_lock(hashtext('paloma_reviewed_identity:' || %s))",
+                (source_record_id,),
+            )
+            anchor = self.repo.source_record(
+                conn,
+                source="fsq",
+                source_record_id=source_record_id,
+            )
+            if anchor is None:
+                raise ValueError(f"Unknown or retired FSQ source record: {source_record_id}")
+            if anchor.city.casefold() != expected_city.casefold():
+                raise ValueError(
+                    f"Source city {anchor.city!r} does not match guardrail {expected_city!r}"
+                )
+            if anchor.source_status != "open":
+                raise ValueError("Identity exceptions require an open FSQ source record")
+            if set(anchor.quality_flags) & HARD_NEGATIVE_FLAGS:
+                raise ValueError("Identity exceptions cannot override a hard-negative FSQ flag")
+            if "consumer_identity_conflict" not in anchor.quality_flags:
+                raise ValueError(
+                    "This action is only for FSQ rows flagged consumer_identity_conflict"
+                )
+            now = datetime.now(timezone.utc)
+            if anchor.source_updated_at is None or anchor.source_updated_at < now - timedelta(
+                days=FSQ_OS_FRESHNESS_DAYS
+            ):
+                raise ValueError("Identity exceptions require a recent FSQ source record")
+
+            candidate_id = self.repo.candidate_id_for_source(conn, anchor)
+            created = False
+            if candidate_id is not None:
+                if self.repo.materialized_publication(conn, candidate_id) is not None:
+                    raise ValueError(
+                        "The exact FSQ source is already attached to a materialized establishment"
+                    )
+            else:
+                candidate_id, created = self._candidate_for_anchor(conn, anchor)
+                self.repo.link_source(
+                    conn,
+                    candidate_id,
+                    anchor,
+                    confidence=1.0,
+                    method="reviewed_identity_exception:anchor_source_id",
+                    metadata={
+                        "policy": "paloma-curation-v1",
+                        "source_quality_flag": "consumer_identity_conflict",
+                    },
+                )
+            self.repo.promote_anchor_if_better(conn, candidate_id, anchor)
+            linked, reviews = self._correlate(conn, candidate_id, anchor)
+            verification = manual_attestation(
+                anchor,
+                reviewer=reviewer,
+                evidence_urls=evidence_urls,
+                outcome="pass",
+                venue_type=venue_type,
+                note=note,
+                identity_override="consumer_identity_conflict",
+                lease_days=lease_days,
+            )
+            self.repo.save_verification(conn, candidate_id, verification)
+            decision = self._evaluate_candidate(conn, candidate_id)
+            conn.commit()
+
+        return {
+            "candidate_id": candidate_id,
+            "candidate_created": created,
+            "sources_linked": linked,
+            "match_reviews": reviews,
+            "candidate_state": decision.state,
+            "decision_reason": decision.reason,
+            "verification_tier": decision.verification_tier,
+            "verification_expires_at": verification.expires_at.isoformat(),
+            "publication_mutated": False,
+        }
 
     def verify_with_foursquare(
         self,

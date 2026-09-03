@@ -32,6 +32,9 @@ def test_expansion_is_manual_and_database_gated_in_development():
     assert "observe-manifest" in EXPANSION
     assert "RECORD_FIELD_MANIFEST" in EXPANSION
     assert "paloma-data catalog-observe-manifest" in EXPANSION
+    assert "seed-reviewed" in EXPANSION
+    assert "REVIEWED_IDENTITY_EXCEPTION" in EXPANSION
+    assert "paloma-data catalog-seed-reviewed" in EXPANSION
 
 
 def test_protected_review_resolution_supports_existing_catalog_cities():

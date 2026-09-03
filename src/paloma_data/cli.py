@@ -451,6 +451,50 @@ def catalog_discover(
     typer.echo(json.dumps(result, indent=2, sort_keys=True))
 
 
+@app.command("catalog-seed-reviewed")
+def catalog_seed_reviewed(
+    source_record_id: str = typer.Option(..., help="Exact FSQ source record ID"),
+    reviewer: str = typer.Option(..., help="Identified Paloma reviewer"),
+    evidence_url: list[str] = typer.Option(
+        ...,
+        "--evidence-url",
+        help="Current first-party or authoritative HTTPS evidence; repeat as needed",
+    ),
+    city: str = typer.Option(..., help="Exact city guardrail"),
+    venue_type: str = typer.Option(
+        ..., help="Reviewed consumer venue type, such as bar or nightclub"
+    ),
+    note: str = typer.Option(
+        ..., help="Short rationale for the exact identity exception"
+    ),
+    lease_days: int = typer.Option(90, min=1, max=90),
+    confirm: str = typer.Option(
+        "", help="Must be exactly REVIEWED_IDENTITY_EXCEPTION"
+    ),
+) -> None:
+    """Stage one conflict-flagged FSQ identity with a bounded manual review lease."""
+    if confirm != "REVIEWED_IDENTITY_EXCEPTION":
+        raise typer.BadParameter(
+            "Pass --confirm REVIEWED_IDENTITY_EXCEPTION"
+        )
+    _, _, _, catalog = _components()
+    typer.echo(
+        json.dumps(
+            catalog.seed_reviewed_identity_exception(
+                source_record_id,
+                reviewer=reviewer,
+                evidence_urls=tuple(evidence_url),
+                expected_city=city,
+                venue_type=venue_type,
+                note=note,
+                lease_days=lease_days,
+            ),
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
 @app.command("catalog-trial")
 def catalog_trial(
     city: str = typer.Option("San Francisco", help="Exact trial city"),

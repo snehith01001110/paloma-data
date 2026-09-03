@@ -94,6 +94,25 @@ class CatalogRepository:
         ).fetchone()
         return str(row["candidate_id"]) if row else None
 
+    def source_record(
+        self,
+        conn: psycopg.Connection,
+        *,
+        source: str,
+        source_record_id: str,
+    ) -> SourceRecord | None:
+        row = conn.execute(
+            """
+            select *
+            from ingest.source_records
+            where source = %s
+              and source_record_id = %s
+              and retired_at is null
+            """,
+            (source, source_record_id),
+        ).fetchone()
+        return _source_record(row) if row else None
+
     def candidate_matches(
         self,
         conn: psycopg.Connection,

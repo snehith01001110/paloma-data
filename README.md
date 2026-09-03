@@ -33,7 +33,11 @@ CLI no longer calls that path, and code pushes no longer trigger data rebuilds.
 1. A current FSQ OS record identifies a Paloma consumer POI. Rows that also describe a
    restaurant, cafe, retail store, lodging property, gym, office, social club, or other parent
    business cannot anchor a candidate merely because FSQ attached a secondary bar category.
-   Generic manufacturer categories remain private until the richer access checks below pass.
+   Generic manufacturer categories remain private until the richer access checks below pass. A
+   named reviewer may use the protected identity-exception workflow for one exact conflict-flagged
+   FSQ row only when current first-party evidence confirms the distinct public venue; the same ABC,
+   identity, access, lease, and materialization gates still apply, and Overture-only rows remain
+   ineligible.
 2. Its FSQ `date_refreshed` is no more than 365 days old and no closure/private/duplicate flag is
    present.
 3. A conservatively linked California ABC record has raw status exactly `ACTIVE` and is a license,

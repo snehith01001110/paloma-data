@@ -223,7 +223,36 @@ def decide_candidate(
         return _decision("rejected", "no_linked_sources")
 
     records = [link.record for link in links]
-    consumer = [record for record in records if record.consumer_facing]
+    latest_verifications = _latest_verifications(verifications)
+    reviewed_identity_override_ids = {
+        item.verifier_record_id
+        for item in latest_verifications
+        if (
+            item.outcome == "pass"
+            and item.verification_tier == "manual"
+            and item.storage_policy == "manual"
+            and _utc(item.expires_at) > current_time
+            and REQUIRED_VERIFICATION_CHECKS.issubset(
+                {key for key, value in item.checks.items() if value is True}
+            )
+            and item.permitted_snapshot.get("_attestation", {}).get(
+                "identity_override"
+            )
+            == "consumer_identity_conflict"
+        )
+    }
+    # A narrowly reviewed, first-party exception may restore consumer identity for one exact
+    # FSQ row that the taxonomy flagged as ambiguous. The exception is bound to the same source
+    # ID as the manual lease; it never makes Overture-only or unreviewed conflict rows publishable.
+    consumer = [
+        record
+        for record in records
+        if record.consumer_facing
+        or (
+            record.source == "fsq"
+            and record.source_record_id in reviewed_identity_override_ids
+        )
+    ]
     flags = {flag for record in consumer for flag in record.quality_flags}
     if flags & HARD_NEGATIVE_FLAGS:
         return _decision("withdrawn", "consumer_hard_negative")
@@ -250,9 +279,7 @@ def decide_candidate(
     # when the stale/incorrect candidate never had a matching ABC row. Otherwise a false
     # positive can remain stuck in needs_verification forever instead of being retired.
     latest_verifications = [
-        item
-        for item in _latest_verifications(verifications)
-        if _verification_applies(item, chosen)
+        item for item in latest_verifications if _verification_applies(item, chosen)
     ]
     failures = [
         item
@@ -496,6 +523,7 @@ def manual_attestation(
     outcome: str = "pass",
     venue_type: str | None = None,
     note: str | None = None,
+    identity_override: str | None = None,
     observed_at: datetime | None = None,
     lease_days: int = DEFAULT_MANUAL_LEASE_DAYS,
 ) -> VerificationEvidence:
@@ -526,6 +554,12 @@ def manual_attestation(
         raise ValueError("Manual attestation reviewer is too long")
     if note and len(note) > 1_000:
         raise ValueError("Manual attestation note is too long")
+    if identity_override not in {None, "consumer_identity_conflict"}:
+        raise ValueError("Unsupported manual identity override")
+    if identity_override and outcome != "pass":
+        raise ValueError("Manual identity overrides require a passing attestation")
+    if identity_override and (not note or not note.strip()):
+        raise ValueError("Manual identity overrides require a review note")
     if selected_type not in CONSUMER_VENUE_TYPES:
         raise ValueError(f"Unsupported attested venue type: {selected_type}")
     if lease_days < 1 or lease_days > DEFAULT_MANUAL_LEASE_DAYS:
@@ -534,6 +568,15 @@ def manual_attestation(
         )
 
     timestamp = _utc(observed_at or datetime.now(timezone.utc))
+    attestation: dict[str, Any] = {
+        "reviewer": reviewer_name,
+        "evidence_urls": list(urls),
+        "note": note.strip() if note and note.strip() else None,
+        "observed_at": timestamp.isoformat(),
+        "policy": "paloma-curation-v1",
+    }
+    if identity_override:
+        attestation["identity_override"] = identity_override
     snapshot: dict[str, Any] = {
         "name": anchor.name,
         "primary_type_slug": selected_type,
@@ -550,13 +593,7 @@ def manual_attestation(
         "neighborhood": None,
         "hours": None,
         "price_level": None,
-        "_attestation": {
-            "reviewer": reviewer_name,
-            "evidence_urls": list(urls),
-            "note": note.strip() if note and note.strip() else None,
-            "observed_at": timestamp.isoformat(),
-            "policy": "paloma-curation-v1",
-        },
+        "_attestation": attestation,
     }
     return VerificationEvidence(
         verifier="manual",

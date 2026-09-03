@@ -99,14 +99,22 @@ city and action at a time:
    The GitHub actor and evidence snapshot are recorded in immutable history. `same_place` creates a
    durable link bound to the reviewed evidence fingerprint, while `not_same_or_stale` prevents that
    exact prompt from reopening until its source evidence changes.
-4. Use `attest` only after a named reviewer checks current first-party or authoritative pages for
+4. For an exact FSQ row carrying only the `consumer_identity_conflict` flag, use the protected
+   `seed-reviewed` action only after a named reviewer checks current first-party or authoritative
+   pages for the distinct venue's identity, operation, ordinary public access, display name, and
+   venue type. Supply the exact FSQ source record ID, the exact city, a reviewed venue type, 1–10
+   HTTPS evidence URLs, `REVIEWED_IDENTITY_EXCEPTION`, and a short rationale. This creates a
+   private candidate and a 90-day manual lease; it never edits the FSQ source row, changes the
+   general taxonomy, or publishes the candidate. Use this exception only when an active ABC
+   premise also matches; Overture-only discoveries cannot use it.
+5. Use `attest` only after a named reviewer checks current first-party or authoritative pages for
    identity, operation, ordinary public access, display name, and venue type. Supply 1–10 HTTPS
    evidence URLs, `MANUAL_ATTESTATION`, and a type override only when the evidence corrects a coarse
    FSQ OS classification. Use `pass` only when every hard fact is confirmed; use `fail` only for an
    explicit closure, move, or loss of ordinary public access. The command appends a 90-day
    verification lease and retains the evidence trail; it deliberately does not copy hours, phone,
    website, price, or neighborhood fields.
-5. Use `observe-field` for a reviewed atomic phone, website, neighborhood, normalized hours, price,
+6. Use `observe-field` for a reviewed atomic phone, website, neighborhood, normalized hours, price,
    or setting fact. Supply `RECORD_FIELD_OBSERVATION`, the exact candidate and city, JSON value,
    1–10 current HTTPS evidence URLs, and a short review note. The command stores the normalized fact,
    reviewer, timestamp, and evidence links, but never the source page payload. Do not infer price or
@@ -115,13 +123,13 @@ city and action at a time:
    `RECORD_FIELD_MANIFEST`. It validates candidate UUID, normalized name, city, evidence URL, and
    hours structure before writing anything; the whole batch commits or rolls back together and a
    rerun is idempotent.
-6. Run `enrich-open-attributes` from catalog maintenance to append policy-approved Overture civic
+7. Run `enrich-open-attributes` from catalog maintenance to append policy-approved Overture civic
    divisions for both verified candidates and published establishments. OSM remains excluded.
    A missing neighborhood is acceptable when the open layer has no containing division. Do not
    substitute Oakland's unlicensed portal layer or an informal Berkeley boundary map; add a
    versioned municipal source policy only after its durable-reuse terms are explicitly reviewed.
-7. `verify` only when the configured provider contract permits durable server storage.
-8. `reevaluate`, then run `status` and `audit` again. Resolve every conflict or leave the field null.
+8. `verify` only when the configured provider contract permits durable server storage.
+9. `reevaluate`, then run `status` and `audit` again. Resolve every conflict or leave the field null.
    Use the `review-field-conflict` workflow action with `REVIEW_FIELD_CONFLICT` to record each
    human selection or audited unknown in the append-only review history. Supply the exact city of
    the published establishment; the reviewer rejects a conflict ID from any other city.
@@ -135,8 +143,8 @@ city and action at a time:
    the reviewed scalar conclusion, factual-reference URLs, reviewer, rationale, and a lease of at
    most 90 days. Then select that new evidence in the field-conflict review; page payloads remain
    excluded from storage.
-9. `publish` with `PUBLISH_VERIFIED`, at or below the release cap.
-10. Run a full catalog refresh and recheck dashboard, queue, catalog, and release status.
+10. `publish` with `PUBLISH_VERIFIED`, at or below the release cap.
+11. Run a full catalog refresh and recheck dashboard, queue, catalog, and release status.
 
 Publication is transactional. The database trigger rejects a missing/revoked/stale authorization,
 an out-of-scope city, exhausted capacity, or newly unhealthy control plane even when the CLI or

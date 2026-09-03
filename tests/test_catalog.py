@@ -295,6 +295,44 @@ def test_manual_attestation_retains_evidence_but_no_optional_provider_fields():
     ]
 
 
+def test_reviewed_identity_exception_can_restore_one_conflict_flagged_fsq_identity():
+    fsq = _fsq(
+        consumer_facing=False,
+        public_access="unknown",
+        quality_flags=("consumer_identity_conflict",),
+        primary_type_slug="bar",
+    )
+    abc = _abc(primary_type_slug="bar")
+
+    ordinary_manual = manual_attestation(
+        fsq,
+        reviewer="github:reviewer",
+        evidence_urls=("https://official.example/location",),
+        venue_type="bar",
+        note="Current first-party page confirms the distinct public venue.",
+        observed_at=NOW,
+    )
+    blocked = decide_candidate(_links(fsq, abc), [ordinary_manual], now=NOW)
+
+    reviewed = manual_attestation(
+        fsq,
+        reviewer="github:reviewer",
+        evidence_urls=("https://official.example/location",),
+        venue_type="bar",
+        note="Current first-party page confirms the distinct public venue.",
+        identity_override="consumer_identity_conflict",
+        observed_at=NOW,
+    )
+    allowed = decide_candidate(_links(fsq, abc), [reviewed], now=NOW)
+
+    assert blocked.reason == "missing_current_fsq_os_anchor:v7"
+    assert allowed.state == "verified"
+    assert (
+        reviewed.permitted_snapshot["_attestation"]["identity_override"]
+        == "consumer_identity_conflict"
+    )
+
+
 def test_manual_attestation_can_correct_coarse_type_but_still_requires_compatible_abc():
     fsq = _fsq(primary_type_slug="pub")
     abc = _abc(

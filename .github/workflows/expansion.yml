@@ -8,7 +8,7 @@ on:
         required: true
         default: status
         type: choice
-        options: [status, discover, trial, verify, reevaluate, audit, resolve-review, review-field-conflict, review-field-conflicts, observe-establishment, attest, observe-field, observe-manifest, publish]
+        options: [status, discover, trial, verify, reevaluate, audit, resolve-review, review-field-conflict, review-field-conflicts, observe-establishment, attest, seed-reviewed, observe-field, observe-manifest, publish]
       release_id:
         description: Versioned bounded release
         required: true
@@ -32,6 +32,11 @@ on:
         type: string
       candidate_id:
         description: Exact private candidate UUID for attest
+        required: false
+        default: ''
+        type: string
+      source_record_id:
+        description: Exact FSQ source record ID for a reviewed identity exception
         required: false
         default: ''
         type: string
@@ -156,6 +161,7 @@ jobs:
           LIMIT: ${{ inputs.limit }}
           CONFIRMATION: ${{ inputs.confirmation }}
           CANDIDATE_ID: ${{ inputs.candidate_id }}
+          SOURCE_RECORD_ID: ${{ inputs.source_record_id }}
           REVIEW_ID: ${{ inputs.review_id }}
           RESOLUTION: ${{ inputs.resolution }}
           REVIEW_NOTE: ${{ inputs.review_note }}
@@ -180,7 +186,7 @@ jobs:
             exit 2
           fi
           case "$ACTION" in
-            resolve-review|review-field-conflict|observe-establishment|attest|observe-field)
+            resolve-review|review-field-conflict|observe-establishment|attest|seed-reviewed|observe-field)
               CITY="$CITY" python - <<'PY'
           import os
 
@@ -330,6 +336,37 @@ jobs:
                 ARGS+=(--note "$ATTESTATION_NOTE")
               fi
               paloma-data catalog-attest "${ARGS[@]}"
+              ;;
+            seed-reviewed)
+              test "$CONFIRMATION" = "REVIEWED_IDENTITY_EXCEPTION"
+              test -n "$SOURCE_RECORD_ID"
+              test -n "$VENUE_TYPE"
+              test -n "$ATTESTATION_NOTE"
+              mapfile -t EVIDENCE < <(python - <<'PY'
+          import json
+          import os
+
+          values = json.loads(os.environ["EVIDENCE_URLS"])
+          if not isinstance(values, list) or not values or len(values) > 10:
+              raise SystemExit("evidence_urls must be a JSON array with 1-10 values")
+          for value in values:
+              if not isinstance(value, str) or "\n" in value or "\r" in value:
+                  raise SystemExit("each evidence URL must be one line of text")
+              print(value)
+          PY
+              )
+              ARGS=(
+                --source-record-id "$SOURCE_RECORD_ID"
+                --reviewer "$REVIEWER"
+                --city "$CITY"
+                --venue-type "$VENUE_TYPE"
+                --note "$ATTESTATION_NOTE"
+                --confirm "$CONFIRMATION"
+              )
+              for url in "${EVIDENCE[@]}"; do
+                ARGS+=(--evidence-url "$url")
+              done
+              paloma-data catalog-seed-reviewed "${ARGS[@]}"
               ;;
             observe-field)
               test "$CONFIRMATION" = "RECORD_FIELD_OBSERVATION"
