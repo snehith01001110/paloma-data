@@ -1476,10 +1476,10 @@ class CatalogRepository:
                 and csl.identity_confidence >= 0.96
                 and source_record.retired_at is null
                 and source_record.source_status = 'open'
-                and source_record.public_access = 'walk_in'
                 and (
                   (
                     source_record.consumer_facing
+                    and source_record.public_access = 'walk_in'
                     and not (source_record.quality_flags && %s::text[])
                   )
                   or (
@@ -1492,6 +1492,14 @@ class CatalogRepository:
                     )
                     and exists (
                       select 1
+                      from public.establishments establishment
+                      where establishment.id = %s::uuid
+                        and establishment.publication_state = 'published'
+                        and establishment.status = 'open'
+                        and establishment.access_mode = 'walk_in'
+                    )
+                    and exists (
+                      select 1
                       from ingest.candidate_verifications verification
                       where verification.candidate_id = %s::uuid
                         and verification.verifier_record_id = csl.source_record_id
@@ -1499,6 +1507,7 @@ class CatalogRepository:
                         and verification.verification_tier = 'manual'
                         and verification.storage_policy = 'manual'
                         and verification.expires_at > now()
+                        and verification.checks @> '{"identity":true,"currently_operating":true,"public_access":true,"display_name":true,"venue_type":true}'::jsonb
                         and verification.permitted_snapshot->'_attestation'->>'identity_override'
                           = 'consumer_identity_conflict'
                     )
@@ -1543,6 +1552,7 @@ class CatalogRepository:
             (
                 candidate_id,
                 sorted(POTENTIAL_SOURCE_EXCLUDED_FLAGS),
+                candidate_id,
                 candidate_id,
                 candidate_id,
                 candidate_id,

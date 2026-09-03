@@ -137,10 +137,12 @@ def test_runtime_provider_link_stores_only_the_allowed_foursquare_identifier():
     assert "csl.identity_confidence >= 0.96" in connection.query
     assert "reviewed_identity_exception:anchor_source_id" in connection.query
     assert "candidate_verifications" in connection.query
+    assert "establishment.publication_state = 'published'" in connection.query
     assert "not exists (select 1 from eligible)" in connection.query
     assert connection.params[0] == "candidate-id"
     assert set(connection.params[1]) == POTENTIAL_SOURCE_EXCLUDED_FLAGS
     assert connection.params[2:] == (
+        "candidate-id",
         "candidate-id",
         "candidate-id",
         "candidate-id",
