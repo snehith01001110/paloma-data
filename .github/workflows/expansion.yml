@@ -40,6 +40,11 @@ on:
         required: false
         default: ''
         type: string
+      abc_source_record_id:
+        description: Exact ABC source record ID for a reviewed premise link (optional)
+        required: false
+        default: ''
+        type: string
       review_id:
         description: Exact pending match-review ID for resolve-review
         required: false
@@ -162,6 +167,7 @@ jobs:
           CONFIRMATION: ${{ inputs.confirmation }}
           CANDIDATE_ID: ${{ inputs.candidate_id }}
           SOURCE_RECORD_ID: ${{ inputs.source_record_id }}
+          ABC_SOURCE_RECORD_ID: ${{ inputs.abc_source_record_id }}
           REVIEW_ID: ${{ inputs.review_id }}
           RESOLUTION: ${{ inputs.resolution }}
           REVIEW_NOTE: ${{ inputs.review_note }}
@@ -363,6 +369,9 @@ jobs:
                 --note "$ATTESTATION_NOTE"
                 --confirm "$CONFIRMATION"
               )
+              if [ -n "$ABC_SOURCE_RECORD_ID" ]; then
+                ARGS+=(--abc-source-record-id "$ABC_SOURCE_RECORD_ID")
+              fi
               for url in "${EVIDENCE[@]}"; do
                 ARGS+=(--evidence-url "$url")
               done

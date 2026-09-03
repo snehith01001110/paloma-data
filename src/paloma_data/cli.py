@@ -454,6 +454,10 @@ def catalog_discover(
 @app.command("catalog-seed-reviewed")
 def catalog_seed_reviewed(
     source_record_id: str = typer.Option(..., help="Exact FSQ source record ID"),
+    abc_source_record_id: str | None = typer.Option(
+        None,
+        help="Exact ABC source record ID when the legal premise name needs manual linking",
+    ),
     reviewer: str = typer.Option(..., help="Identified Paloma reviewer"),
     evidence_url: list[str] = typer.Option(
         ...,
@@ -487,6 +491,7 @@ def catalog_seed_reviewed(
                 expected_city=city,
                 venue_type=venue_type,
                 note=note,
+                abc_source_record_id=abc_source_record_id,
                 lease_days=lease_days,
             ),
             indent=2,

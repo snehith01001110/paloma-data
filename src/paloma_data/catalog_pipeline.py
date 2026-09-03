@@ -126,6 +126,7 @@ class CatalogPipeline:
         expected_city: str,
         venue_type: str,
         note: str,
+        abc_source_record_id: str | None = None,
         lease_days: int = 90,
     ) -> dict[str, Any]:
         """Stage and manually verify one exact FSQ row with a reviewed identity conflict.
@@ -190,6 +191,34 @@ class CatalogPipeline:
                     },
                 )
             self.repo.promote_anchor_if_better(conn, candidate_id, anchor)
+            abc_linked = False
+            if abc_source_record_id:
+                abc = self.repo.source_record(
+                    conn,
+                    source="ca_abc",
+                    source_record_id=abc_source_record_id,
+                )
+                if abc is None:
+                    raise ValueError(
+                        f"Unknown or retired ABC source record: {abc_source_record_id}"
+                    )
+                if not _reviewed_abc_identity_allowed(anchor, abc, expected_city):
+                    raise ValueError(
+                        "The reviewed ABC source does not match the exact FSQ premise"
+                    )
+                abc_linked = self.repo.link_source(
+                    conn,
+                    candidate_id,
+                    abc,
+                    confidence=0.99,
+                    method="reviewed_identity_exception:abc_premise",
+                    metadata={
+                        "policy": "paloma-curation-v1",
+                        "reviewer": reviewer.strip(),
+                        "evidence_urls": list(evidence_urls),
+                        "note": note.strip(),
+                    },
+                )
             linked, reviews = self._correlate(conn, candidate_id, anchor)
             verification = manual_attestation(
                 anchor,
@@ -208,6 +237,7 @@ class CatalogPipeline:
         return {
             "candidate_id": candidate_id,
             "candidate_created": created,
+            "abc_source_linked": abc_linked,
             "sources_linked": linked,
             "match_reviews": reviews,
             "candidate_state": decision.state,
@@ -677,6 +707,12 @@ class CatalogPipeline:
             ):
                 validated.append(link)
                 continue
+            if (
+                link.match_method.startswith("reviewed_identity_exception:abc_premise")
+                and _reviewed_abc_identity_allowed(anchor, record, anchor.city)
+            ):
+                validated.append(link)
+                continue
             identity = decide_identity(anchor, record)
             types_compatible = _types_compatible(
                 anchor.primary_type_slug, record.primary_type_slug
@@ -1021,6 +1057,61 @@ def _types_compatible(left: str | None, right: str | None) -> bool:
         frozenset({"distillery", "tasting_room"}),
     }
     return frozenset({left, right}) in compatible
+
+
+def _reviewed_abc_identity_allowed(
+    anchor: SourceRecord,
+    abc: SourceRecord,
+    expected_city: str,
+) -> bool:
+    """Validate the narrow, human-reviewed FSQ-to-ABC premise exception."""
+    if abc.source != "ca_abc" or abc.city.casefold() != expected_city.casefold():
+        return False
+    if abc.source_status != "open":
+        return False
+    metadata = abc.permitted_metadata
+    if str(metadata.get("type_status") or "").strip().upper() != "ACTIVE":
+        return False
+    if str(metadata.get("license_or_application") or "").strip().upper().startswith(
+        "APP"
+    ):
+        return False
+
+    def address_core(value: str) -> tuple[str, ...]:
+        suffixes = {
+            "st",
+            "ave",
+            "blvd",
+            "rd",
+            "dr",
+            "ln",
+            "hwy",
+            "pkwy",
+            "way",
+            "ct",
+            "pl",
+            "plz",
+            "ter",
+            "trl",
+            "cir",
+            "loop",
+            "sq",
+        }
+        tokens = normalize_address(value).split()
+        for index, token in enumerate(tokens):
+            if token in suffixes:
+                return tuple(tokens[: index + 1])
+        return ()
+
+    anchor_name = normalize_name(anchor.name)
+    abc_name = normalize_name(abc.name)
+    return bool(
+        anchor_name
+        and abc_name
+        and (anchor_name == abc_name or anchor_name in abc_name or abc_name in anchor_name)
+        and address_core(anchor.address)
+        and address_core(anchor.address) == address_core(abc.address)
+    )
 
 
 def _manual_review_reason(
