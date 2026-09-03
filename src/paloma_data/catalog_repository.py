@@ -1478,7 +1478,30 @@ class CatalogRepository:
                 and source_record.source_status = 'open'
                 and source_record.consumer_facing
                 and source_record.public_access = 'walk_in'
-                and not (source_record.quality_flags && %s::text[])
+                and (
+                  not (source_record.quality_flags && %s::text[])
+                  or (
+                    source_record.quality_flags @> array['consumer_identity_conflict']::text[]
+                    and csl.match_method = 'reviewed_identity_exception:anchor_source_id'
+                    and csl.source_record_id = (
+                      select candidate.anchor_source_record_id
+                      from ingest.catalog_candidates candidate
+                      where candidate.id = %s::uuid
+                    )
+                    and exists (
+                      select 1
+                      from ingest.candidate_verifications verification
+                      where verification.candidate_id = %s::uuid
+                        and verification.verifier_record_id = csl.source_record_id
+                        and verification.outcome = 'pass'
+                        and verification.verification_tier = 'manual'
+                        and verification.storage_policy = 'manual'
+                        and verification.expires_at > now()
+                        and verification.permitted_snapshot->'_attestation'->>'identity_override'
+                          = 'consumer_identity_conflict'
+                    )
+                  )
+                )
               order by csl.identity_confidence desc, csl.last_checked_at desc
               limit 1
             ), upserted as (
@@ -1518,6 +1541,8 @@ class CatalogRepository:
             (
                 candidate_id,
                 sorted(POTENTIAL_SOURCE_EXCLUDED_FLAGS),
+                candidate_id,
+                candidate_id,
                 candidate_id,
                 candidate_id,
             ),
