@@ -1078,7 +1078,7 @@ def _reapply_manual_projections(conn: Any) -> None:
                  observation.expires_at,
                  observation.source,
                  observation.source_items,
-                 observation.metadata,
+                 observation.metadata as observation_metadata,
                  source_link.url as source_url
           from decisions d
           left join lateral (
@@ -1133,7 +1133,7 @@ def _reapply_manual_projections(conn: Any) -> None:
             end,
             hours_source_kind = case
               when d.decision_status <> 'selected' or d.observation_id is null then null
-              when d.metadata->>'evidence_kind' = 'first_party'
+              when d.observation_metadata->>'evidence_kind' = 'first_party'
                 or exists (
                   select 1
                   from jsonb_array_elements(coalesce(d.source_items, '[]'::jsonb)) item

@@ -214,6 +214,8 @@ def test_manual_projection_reconciles_all_mutable_durable_fields():
         assert field in sql
     assert "hours_expires_at" in sql
     assert "evidence.expires_at > now()" in sql
+    assert "observation.metadata as observation_metadata" in sql
+    assert "d.observation_metadata->>'evidence_kind'" in sql
 
 
 def test_first_party_hours_do_not_require_a_second_origin() -> None:
