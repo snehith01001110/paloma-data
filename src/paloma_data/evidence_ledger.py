@@ -495,14 +495,13 @@ def _append_civic_neighborhood_observations(
         return 0
     matches = conn.execute(
         """
-        with current_candidates as (
-          select c.id, c.location, c.identity_confidence,
-                 c.resolved_snapshot->>'neighborhood' as resolved_neighborhood,
-                 c.resolved_snapshot#>>'{field_sources,neighborhood}' as resolved_source
-          from ingest.catalog_candidates c
-          where c.candidate_state in ('verified', 'published')
-            and c.decision_version = 'v7'
-            and c.verification_expires_at > now()
+        with current_establishments as (
+          select e.id, e.location, e.identity_confidence,
+                 e.neighborhood as resolved_neighborhood,
+                 e.neighborhood_source as resolved_source
+          from public.establishments e
+          where e.publication_state in ('published', 'suppressed')
+            and e.verification_expires_at > now()
         ), direct_ranked as (
           select c.id, c.location, c.identity_confidence,
                  nb.source_record_id, nb.name, nb.normalized_name,
@@ -517,7 +516,7 @@ def _append_civic_neighborhood_observations(
                    order by nb.authority desc, ST_Area(nb.boundary::geography),
                             nb.source_record_id
                  ) as rank
-          from current_candidates c
+          from current_establishments c
           join ingest.neighborhood_boundaries nb
             on nb.source = 'datasf_neighborhoods'
            and nb.retired_at is null
@@ -545,18 +544,21 @@ def _append_civic_neighborhood_observations(
                    'datasf:gfpk-269f',
                    coalesce(origins.origin_keys, '{}'::text[])
                  ) as origin_keys
-          from current_candidates c
+          from current_establishments c
           join ingest.neighborhood_boundaries nb
             on nb.source = 'datasf_neighborhoods'
            and nb.retired_at is null
            and nb.name = c.resolved_neighborhood
           left join lateral (
             select array_agg(distinct origin order by origin) as origin_keys
-            from ingest.candidate_source_links link
+            from ingest.establishment_sources link
+            join ingest.source_records source_record
+              on source_record.source = link.source
+             and source_record.source_record_id = link.source_record_id
             cross join lateral unnest(
-              coalesce(nullif(link.origin_keys, '{}'), array[link.source])
+              coalesce(nullif(source_record.origin_keys, '{}'), array[link.source])
             ) origin
-            where link.candidate_id = c.id
+            where link.establishment_id = c.id
           ) origins on true
           where c.resolved_source = 'datasf_neighborhoods:linked_coordinate_consensus'
             and not exists (select 1 from direct where direct.id = c.id)

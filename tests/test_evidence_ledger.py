@@ -1,4 +1,23 @@
-from paloma_data.evidence_ledger import _field_provenance, _policy_allows, _record_claims
+from paloma_data.evidence_ledger import (
+    _append_civic_neighborhood_observations,
+    _field_provenance,
+    _policy_allows,
+    _record_claims,
+)
+
+
+class _EmptyRows:
+    def fetchall(self):
+        return []
+
+
+class _CaptureConnection:
+    def __init__(self):
+        self.queries = []
+
+    def execute(self, query, params=None):
+        self.queries.append((query, params))
+        return _EmptyRows()
 
 
 def test_record_claims_uses_source_specific_status_semantics():
@@ -60,3 +79,21 @@ def test_website_identity_groups_same_host_across_location_paths():
     }
     claims = {claim.field_name: claim for claim in _record_claims(record)}
     assert claims["website_url"].normalized_value == "example.com"
+
+
+def test_civic_observations_target_materialized_establishment_ids():
+    connection = _CaptureConnection()
+    policy = {
+        "normalized_persistence_allowed": True,
+        "source_derivation_allowed": True,
+        "durable_storage_allowed": True,
+        "canonical_derivation_allowed": True,
+    }
+
+    assert _append_civic_neighborhood_observations(connection, policy) == 0
+
+    query = connection.queries[0][0]
+    assert "from public.establishments e" in query
+    assert "from ingest.catalog_candidates" not in query
+    assert "from ingest.establishment_sources link" in query
+    assert "where link.establishment_id = c.id" in query
