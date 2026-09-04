@@ -25,6 +25,16 @@ if (duplicateIds.length || missingIds.length) {
   throw new Error(JSON.stringify({ duplicateIds, missingIds }));
 }
 
+if (html.includes("Pipeline readiness")) {
+  throw new Error("The removed pipeline-readiness panel must not return");
+}
+
+for (const requirement of ["published_types", "categoryBreakdown", "categorySummary"]) {
+  if (!html.includes(requirement)) {
+    throw new Error(`Dashboard category breakdown is missing ${requirement}`);
+  }
+}
+
 console.log(
   `Dashboard contract OK: ${idSet.size} IDs, ${new Set(referencedIds).size} referenced`,
 );

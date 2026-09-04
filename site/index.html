@@ -83,13 +83,17 @@
     .city-swatch { width: 9px; height: 9px; border-radius: 3px; }
     .city-legend-name { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
     .city-legend-value { color: var(--ink); font-size: 10px; font-weight: 800; text-align: right; white-space: nowrap; }
-    .ops { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); gap: 9px; margin-top: 9px; }
+    .ops { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(230px, .45fr); gap: 9px; margin-top: 9px; }
     .ops-block { min-width: 0; padding: 15px 18px; }
-    .ops-block h3 { margin: 0 0 10px; font-size: 12px; }
-    .ops-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 16px; margin: 0; }
-    .ops-list div { min-width: 0; }
-    .ops-list dt { color: var(--muted); font-size: 9px; }
-    .ops-list dd { margin: 1px 0 0; font-size: 15px; font-weight: 800; letter-spacing: -.03em; }
+    .ops-block h3 { margin: 0; font-size: 12px; }
+    .category-head { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; margin-bottom: 11px; }
+    .category-summary { color: var(--muted); font-size: 9px; text-align: right; }
+    .category-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 18px; }
+    .category-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; align-items: end; min-width: 0; padding: 8px 0; border-top: 1px solid #edf0eb; }
+    .category-name { overflow: hidden; font-size: 10px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+    .category-value { color: var(--muted); font-size: 9px; font-weight: 750; white-space: nowrap; }
+    .category-track { grid-column: 1 / -1; overflow: hidden; height: 5px; background: #e5eae4; border-radius: 999px; }
+    .category-fill { display: block; width: var(--category-width); height: 100%; background: linear-gradient(90deg, #216446, #63a77e); border-radius: inherit; }
     .source-list { display: flex; flex-wrap: wrap; gap: 7px; }
     .source-status { padding: 5px 7px; color: var(--muted); background: #fafbf8; border: 1px solid var(--line); border-radius: 7px; font-size: 9px; }
     .source-status strong { color: var(--ink); }
@@ -202,6 +206,7 @@
       .review-tools .review-field { flex: 1 1 150px; }
       .city-breakdown { grid-template-columns: 1fr; }
       .city-donut { margin: 0 auto; }
+      .category-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
     @media (max-width: 440px) {
       .metrics { grid-template-columns: 1fr 1fr; }
@@ -214,6 +219,9 @@
       footer { flex-direction: column; }
       .conflict-summary { grid-template-columns: 1fr; }
       .field-chart { grid-template-columns: 1fr; }
+      .category-head { align-items: flex-start; flex-direction: column; gap: 2px; }
+      .category-summary { text-align: left; }
+      .category-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -248,18 +256,8 @@
       <article class="card insight"><h3>Published by city</h3><p>Safe live establishments · share of the catalog</p><div id="cityChart" role="list" aria-label="Published establishments by city"><div class="empty">Loading…</div></div></article>
       <article class="card insight"><h3>Durable field coverage</h3><p id="coverageSubtitle">Stored values across live establishments · green is stored, light is missing</p><div class="field-chart" id="coverageChart" role="list" aria-label="Durable field coverage"><div class="empty">Loading…</div></div></article>
     </section>
-    <section class="ops" aria-label="Pipeline operations">
-      <article class="card ops-block"><h3>Pipeline readiness</h3><dl class="ops-list">
-        <div><dt>Detail-ready</dt><dd id="detailReady">—</dd></div>
-        <div><dt>Warm provider cache</dt><dd id="warmDetails">—</dd></div>
-        <div><dt>Ready to publish</dt><dd id="readyToPublish">—</dd></div>
-        <div><dt>Needs verification</dt><dd id="needsVerification">—</dd></div>
-        <div><dt>Identity reviews</dt><dd id="reviewQueue">—</dd></div>
-        <div><dt>Match prompts</dt><dd id="matchPrompts">—</dd></div>
-        <div><dt>Leases due soon</dt><dd id="leasesDue">—</dd></div>
-        <div><dt>Release capacity</dt><dd id="expansionCapacity">—</dd></div>
-        <div><dt>Active scope</dt><dd id="expansionScope">—</dd></div>
-      </dl></article>
+    <section class="ops" aria-label="Catalog composition and sources">
+      <article class="card ops-block"><div class="category-head"><h3>Published by category</h3><span class="category-summary" id="categorySummary">Loading current category mix…</span></div><div class="category-grid" id="categoryBreakdown" role="list" aria-label="Published establishments by category"><div class="empty">Loading…</div></div></article>
       <article class="card ops-block"><h3>Source freshness</h3><div class="source-list" id="sourceFreshness"><span class="source-status">Loading…</span></div></article>
     </section>
 
@@ -404,6 +402,15 @@
       return `<div class="field-card" role="listitem" aria-label="${esc(label)}: ${fmt(value)} of ${fmt(denominator)} stored, ${fmt(missing)} missing"><div class="field-donut" aria-hidden="true" style="--coverage:${percent}%"><span class="field-donut-value">${percent}%</span></div><div class="field-copy"><span class="field-label">${esc(label)}</span><span class="field-stat">${fmt(value)} stored</span><small class="field-missing">${fmt(missing)} missing</small></div></div>`;
     }
 
+    function categoryRow(category, total, maximum) {
+      const count = num(category.count);
+      const share = total > 0 ? (count / total) * 100 : 0;
+      const relativeWidth = maximum > 0 ? Math.max(4, (count / maximum) * 100) : 0;
+      const percent = new Intl.NumberFormat([], { maximumFractionDigits: 1 }).format(share);
+      const name = category.name || human(category.slug);
+      return `<div class="category-row" role="listitem" aria-label="${esc(name)}: ${fmt(count)} establishments, ${percent} percent of the published catalog"><span class="category-name">${esc(name)}</span><span class="category-value">${fmt(count)} · ${percent}%</span><span class="category-track" aria-hidden="true"><span class="category-fill" style="--category-width:${relativeWidth}%"></span></span></div>`;
+    }
+
     function renderInsights(data) {
       const coverage = data.coverage || {};
       const denominator = num(data.overall?.safe_live);
@@ -435,18 +442,17 @@
       setText('coverageSubtitle', `${fmt(denominator)} live establishments · green is stored, light is missing`);
       document.getElementById('coverageChart').innerHTML = fields.map(([label, count]) => fieldCard(label, count, denominator)).join('');
 
-      const runtime = data.runtime || {};
-      const queue = data.work_queue || {};
-      setText('detailReady', `${fmt(runtime.detail_ready)} / ${fmt(runtime.eligible_establishments)}`);
-      setText('warmDetails', `${fmt(runtime.warm_establishments)} / ${fmt(runtime.eligible_establishments)}`);
-      setText('readyToPublish', fmt(queue.ready_to_publish));
-      setText('needsVerification', fmt(queue.candidates_needing_verification));
-      setText('reviewQueue', fmt(queue.candidates_needing_review));
-      setText('matchPrompts', fmt(queue.pending_match_reviews));
-      setText('leasesDue', fmt(queue.leases_due));
-      const expansion = data.expansion || {};
-      setText('expansionCapacity', expansion.available_slots == null ? '—' : `${fmt(expansion.available_slots)} left`);
-      setText('expansionScope', expansion.scope_cities?.length ? expansion.scope_cities.join(', ') : 'None');
+      const categories = (data.published_types || []).slice().sort((left, right) =>
+        num(right.count) - num(left.count) || String(left.name || left.slug).localeCompare(String(right.name || right.slug))
+      );
+      const categoryTotal = categories.reduce((sum, category) => sum + num(category.count), 0);
+      const categoryMaximum = categories.reduce((maximum, category) => Math.max(maximum, num(category.count)), 0);
+      setText('categorySummary', categories.length
+        ? `${fmt(categoryTotal)} live · ${fmt(categories.length)} active categor${categories.length === 1 ? 'y' : 'ies'}`
+        : 'No published categories');
+      document.getElementById('categoryBreakdown').innerHTML = categories.length
+        ? categories.map(category => categoryRow(category, categoryTotal, categoryMaximum)).join('')
+        : '<div class="empty">No category data</div>';
       const sources = data.sources || [];
       document.getElementById('sourceFreshness').innerHTML = sources.length
         ? sources.map(source => `<span class="source-status${source.fresh ? '' : ' stale'}"><strong>${esc(source.label)}</strong> · ${source.fresh ? 'fresh' : 'refresh due'}${source.required ? ' · required' : ''}</span>`).join('')
