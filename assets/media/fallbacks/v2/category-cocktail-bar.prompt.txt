@@ -1,0 +1,8 @@
+Use case: stylized-concept
+Asset type: durable establishment-category cover for a mobile nightlife app
+Input image: style reference only; match its refined editorial illustration quality and tactile linework, but use a visibly different facade, camera angle, and palette.
+Primary request: create an elegant independent cocktail bar entrance at blue hour with a sculptural curved doorway, art-deco geometric windows, jewel-like bottles, coupe glasses, a marble bar, and a single dramatic floral arrangement visible inside.
+Style/medium: sophisticated modern comic-book realism with linocut/screenprint texture.
+Composition/framing: cinematic three-quarter close exterior, asymmetric architectural rhythm, safe for an 8:5 center crop; important details central and lower third calm for white title text.
+Lighting/mood: intimate and polished; aubergine, dusty rose, brass, black cherry, and soft amber highlights.
+Constraints: generic category concept, not an actual venue; no readable text, names, logos, trademarks, watermark, border, frame, or identifiable foreground people.

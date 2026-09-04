@@ -27,7 +27,7 @@ state is a projection, not overwritten history.
 | Overture | Yes, property-scoped | Each field retains SourceItems, upstream origins, and licenses. |
 | Wikidata | Yes, field-scoped | CC0 corroboration; sparse and lower authority. |
 | Merchant/firsthand | After review | Requires active terms, attestation, and merchant verification where applicable. |
-| Official websites | No | Ephemeral identity verification only; public access is not a storage license. |
+| Official websites | Reviewed atomic facts only | A reviewer may normalize a current factual schedule and retain its URL; never archive page copy, imagery, or expressive content. |
 | Yelp/FSQ API cache | No canonical use | TTL runtime layer only under provider-specific policy. |
 | OpenStreetMap | Excluded | Reconsider only after an explicit ODbL product and database-boundary review. |
 
@@ -48,3 +48,12 @@ place ID may supersede it: a response retained under a written provider contract
 reviewed Paloma manual attestation. Ephemeral API responses never renew production publication.
 Manual attestations record their evidence trail, expire after a bounded lease, and do not copy
 third-party hours, price, or other restricted response attributes into the durable catalog.
+
+Durable hours are a separate freshness contract. A reviewed first-party or merchant schedule is
+normalized into `paloma-hours-v1`, carries its evidence URL, verification timestamp, provenance
+class, and a hard expiry (30 days by default). The public projection is cleared when that exact
+evidence expires. Yelp and Foursquare may fill the resulting gap at runtime under their own cache
+policies, but their responses never renew or become durable hours. Disagreeing active schedules
+remain visible in `review.field_conflicts`; missing and soon-to-expire schedules are prioritized in
+`review.hours_verification_queue`. Holiday or one-off exceptions live in the schedule's `special`
+array instead of overwriting the weekly schedule.

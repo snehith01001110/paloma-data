@@ -53,6 +53,9 @@ export type LiveFieldRequest = {
 };
 
 export type LiveDetails = {
+  // This is licensed provider content for the current detail view. It must
+  // never be copied into the durable establishment record.
+  cover_image_url: string | null;
   phone_e164: string | null;
   website_url: string | null;
   hours: { weekday_text: string[] } | null;
@@ -117,6 +120,8 @@ export function projectLiveDetails(
   const hours = requested.hours ? normalizedHours(raw.hours) : null;
   const price = requested.price ? finiteNumber(raw.price) : null;
   return {
+    // Foursquare's no-store detail path does not request or display imagery.
+    cover_image_url: null,
     phone_e164: requested.phone ? e164(raw.tel) : null,
     website_url: requested.website ? safeHttpUrl(raw.website) : null,
     hours,
@@ -130,7 +135,8 @@ export function projectLiveDetails(
 }
 
 export function hasLiveDetails(details: LiveDetails): boolean {
-  return details.phone_e164 !== null ||
+  return details.cover_image_url !== null ||
+    details.phone_e164 !== null ||
     details.website_url !== null ||
     details.hours !== null ||
     details.price_level !== null ||

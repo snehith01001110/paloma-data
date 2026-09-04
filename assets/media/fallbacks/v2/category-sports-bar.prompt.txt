@@ -1,0 +1,8 @@
+Use case: stylized-concept
+Asset type: durable establishment-category cover for a mobile nightlife app
+Input image: style reference only; use its polished print texture but introduce a bright open layout and distinctly sports-oriented cues.
+Primary request: create a spacious modern sports bar on game night with several screens showing only abstract colored field diagrams and score-like shapes with no readable numbers or team marks, a long central bar, high-top tables, and neutral pennant silhouettes.
+Style/medium: energetic editorial comic-book realism with tactile screenprint grain.
+Composition/framing: wide open corner facade, slight elevated street view, safe for an 8:5 center crop; screens and bar centralized, lower third simplified for title text.
+Lighting/mood: lively and communal; emerald, navy, warm orange, cream, and steel gray.
+Constraints: no team branding, league marks, readable broadcasts, names, logos, trademarks, watermark, border, frame, crowds, or identifiable foreground people; generic concept only.

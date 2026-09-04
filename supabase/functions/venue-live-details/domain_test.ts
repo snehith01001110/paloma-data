@@ -44,6 +44,7 @@ Deno.test("validates a high-veracity matching place and projects transient field
     settings: true,
   });
   assertEquals(details, {
+    cover_image_url: null,
     phone_e164: "+14155551212",
     website_url: "https://nightowl.example/",
     hours: { weekday_text: ["Friday: 4 PM–2 AM", "Saturday: 4 PM–2 AM"] },
@@ -130,6 +131,7 @@ Deno.test("drops malformed optional fields rather than returning questionable va
     settings: true,
   });
   assertEquals(details, {
+    cover_image_url: null,
     phone_e164: null,
     website_url: null,
     hours: null,

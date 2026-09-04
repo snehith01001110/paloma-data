@@ -1,0 +1,10 @@
+Use case: stylized-concept
+Asset type: thumbnail-first category artwork for a mobile nightlife directory
+Input images: Image 1 is a style reference only; do not reuse its bottle or glass composition.
+Primary request: create a minimal generic illustration representing a winery.
+Subject: one oversized grape cluster made from seven broad circles with one large simple leaf, reduced to bold geometric forms.
+Style/medium: match Image 1's premium flat editorial screenprint system, clean vector-like shapes and faint paper grain; warm and agricultural, not photorealistic.
+Composition/framing: landscape with one centered square-safe symbol filling roughly 68 percent of the canvas and generous outer padding; instantly readable in a rounded 72-by-68-point thumbnail.
+Color palette: warm olive-green background, dusty plum grapes, cream leaf, muted mint stem, restrained ochre accent.
+Constraints: maximum 10 major shapes solely because of the grape circles; thick clear edges; strong contrast; no vineyard scenery, building, bottle, glass, people, perspective, tiny veins, fine linework, gradients, readable text, letters, logos, trademarks, border, frame, or watermark.
+Avoid: realistic fruit, landscape detail, clutter.

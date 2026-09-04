@@ -327,9 +327,42 @@
     const human = value => String(value || '').replace(/:v\d+$/, '').replaceAll('_', ' ').replace(/\b\w/g, character => character.toUpperCase());
     const setText = (id, value) => { document.getElementById(id).textContent = value; };
     const sourceName = source => ({ fsq:'Foursquare', overture:'Overture', manual:'Manual review', datasf:'DataSF', ca_abc:'California ABC' }[String(source)] || human(source));
-    const formatValue = (text, json) => {
+    const formatClock = value => {
+      const [hourText, minute = '00'] = String(value || '').split(':');
+      const hour = Number(hourText);
+      if (!Number.isFinite(hour)) return String(value || '');
+      const suffix = hour < 12 ? 'AM' : 'PM';
+      const displayHour = hour % 12 || 12;
+      return `${displayHour}${minute === '00' ? '' : `:${minute}`} ${suffix}`;
+    };
+    const formatHours = value => {
+      if (!value || typeof value !== 'object' || value.schema_version !== 'paloma-hours-v1' || !Array.isArray(value.weekly)) return null;
+      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      const schedules = days.map((_, index) => {
+        const intervals = value.weekly.filter(interval => Number(interval.day) === index + 1);
+        if (!intervals.length) return 'Closed';
+        return intervals.map(interval => `${formatClock(interval.opens)}–${formatClock(interval.closes)}`).join(', ');
+      });
+      const groups = [];
+      schedules.forEach((schedule, index) => {
+        const previous = groups[groups.length - 1];
+        if (previous && previous.schedule === schedule) previous.end = index;
+        else groups.push({ start:index, end:index, schedule });
+      });
+      const weekly = groups.map(group => `${days[group.start]}${group.end > group.start ? `–${days[group.end]}` : ''} ${group.schedule}`);
+      const special = Array.isArray(value.special) ? value.special.map(interval => {
+        const date = interval.date ? new Date(`${interval.date}T12:00:00`).toLocaleDateString([], { month:'short', day:'numeric' }) : 'Special date';
+        return `${date} ${interval.closed ? 'Closed' : `${formatClock(interval.opens)}–${formatClock(interval.closes)}`}`;
+      }) : [];
+      return [...weekly, ...special].join('; ');
+    };
+    const formatValue = (text, json, field = '') => {
       const value = json !== null && json !== undefined ? json : text;
       if (value === null || value === undefined || value === '') return 'No value';
+      if (field === 'hours') {
+        const hours = formatHours(value);
+        if (hours) return hours;
+      }
       return typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value);
     };
     const formatDate = value => value ? new Date(value).toLocaleDateString([], { month:'short', day:'numeric', year:'numeric' }) : 'Date unavailable';
@@ -393,9 +426,14 @@
         setText(`${field}Meta`, `${fmt(missing)} missing · of ${fmt(denominator)} live`);
       }
       const fieldConflicts = num(queue.pending_field_conflicts);
+      const hoursDue = num(queue.hours_reverification_due);
       setText('fieldConflictCount', fmt(fieldConflicts));
       setText('fieldConflictMeta', publishedFieldConflicts ? `${fmt(publishedFieldConflicts)} block expansion` : 'No pending admin decisions');
       setText('conflictSectionMeta', fieldConflicts ? `${fmt(fieldConflicts)} pending · private admin queue` : 'No pending field conflicts');
+      setText(
+        'coverageSubtitle',
+        `${fmt(denominator)} live establishments · only unexpired durable values count${hoursDue ? ` · ${fmt(hoursDue)} hours schedule${hoursDue === 1 ? '' : 's'} due within 14 days` : ''}`
+      );
       if (schemaReady && unsafe === 0 && sourcesReady && publishedFieldConflicts > 0) {
         setText('statusDetail', `${fmt(overall.safe_live)} verified establishments are currently safe to show. ${fmt(publishedFieldConflicts)} pending field conflict${publishedFieldConflicts === 1 ? '' : 's'} block the next expansion.`);
       }
@@ -446,7 +484,10 @@
         document.getElementById('cityChart').innerHTML = '<div class="empty">No city data</div>';
       }
       const fields = [['Phone', coverage.phone], ['Website', coverage.website], ['Neighborhood', coverage.neighborhood], ['Hours', coverage.hours], ['Price', coverage.price], ['Setting', coverage.settings]];
-      setText('coverageSubtitle', `${fmt(denominator)} live establishments · green is stored, light is missing`);
+      const queue = data.work_queue || {};
+      const missingHours = num(queue.hours_missing_or_stale);
+      const dueHours = num(queue.hours_reverification_due);
+      setText('coverageSubtitle', `${fmt(denominator)} live establishments · only unexpired values count · ${fmt(missingHours)} hours missing or stale${dueHours ? ` · ${fmt(dueHours)} due within 14 days` : ''}`);
       document.getElementById('coverageChart').innerHTML = fields.map(([label, count]) => fieldCard(label, count, denominator)).join('');
 
       const categories = (data.published_types || []).slice().sort((left, right) =>
@@ -707,13 +748,15 @@
     function reviewReason(reason) {
       return reason === 'single_origin_high_risk_field'
         ? 'High-risk field has only one independent origin.'
+        : reason === 'authoritative_hours_disagreement'
+        ? 'A current hours schedule disagrees with another admissible schedule.'
         : reason === 'conflicting_admissible_evidence'
         ? 'Admissible sources disagree on the value.'
         : human(reason);
     }
 
     function evidenceOption(item, evidence) {
-      const value = formatValue(evidence.value_text, evidence.value_json);
+      const value = formatValue(evidence.value_text, evidence.value_json, item.field_name);
       const confidence = evidence.evidence_confidence == null ? '' : ` · evidence ${Math.round(Number(evidence.evidence_confidence) * 100)}%`;
       const identity = evidence.identity_confidence == null ? '' : ` · identity ${Math.round(Number(evidence.identity_confidence) * 100)}%`;
       const links = (evidence.links || []).map(link => `<a href="${esc(link.url)}" target="_blank" rel="noopener noreferrer">${esc(link.kind || 'Source')}</a>`).join('');
@@ -725,7 +768,7 @@
       const evidence = item.evidence || [];
       const options = evidence.map(option => evidenceOption(item, option)).join('');
       const evidenceCopy = options || '<div class="conflict-help">No current admissible evidence is available in the ledger.</div>';
-      return `<article class="conflict"><div class="conflict-head"><div><div class="conflict-name">${esc(establishment.name)}</div><div class="conflict-location">${esc([establishment.address, establishment.city, establishment.region].filter(Boolean).join(' · '))}</div></div><span class="conflict-badge">Priority ${esc(item.priority)}</span></div><div class="conflict-summary"><div><span>Field</span><strong>${esc(human(item.field_name))}</strong></div><div><span>Current value</span><strong>${esc(formatValue(item.current?.value_text, item.current?.value_json))}</strong></div><div><span>Why it is held</span><strong>${esc(reviewReason(item.reason))}</strong></div></div><div class="evidence-title">Choose the durable value</div><form class="conflict-review-form" data-conflict-id="${esc(item.conflict_id)}" data-city="${esc(establishment.city)}"><div class="evidence-list">${evidenceCopy}<label class="evidence-option"><input type="radio" name="evidence-${esc(item.conflict_id)}" value="__unknown"><span class="evidence-copy"><span class="evidence-value">Record audited unknown</span><span class="evidence-meta">Do not select any source; preserve the decision trail without asserting a value.</span></span></label></div><label class="review-field">Review note<textarea class="review-note" name="notes" maxlength="2000" placeholder="Explain why this evidence is correct, or why the field must remain unknown." required></textarea></label><div class="conflict-actions"><span class="conflict-help">Conflict ${esc(item.conflict_id)} · created ${esc(formatDate(item.created_at))}</span><button class="review-button" type="submit">Record review</button></div><div class="conflict-form-message" role="alert" hidden></div></form></article>`;
+      return `<article class="conflict"><div class="conflict-head"><div><div class="conflict-name">${esc(establishment.name)}</div><div class="conflict-location">${esc([establishment.address, establishment.city, establishment.region].filter(Boolean).join(' · '))}</div></div><span class="conflict-badge">Priority ${esc(item.priority)}</span></div><div class="conflict-summary"><div><span>Field</span><strong>${esc(human(item.field_name))}</strong></div><div><span>Current value</span><strong>${esc(formatValue(item.current?.value_text, item.current?.value_json, item.field_name))}</strong></div><div><span>Why it is held</span><strong>${esc(reviewReason(item.reason))}</strong></div></div><div class="evidence-title">Choose the durable value</div><form class="conflict-review-form" data-conflict-id="${esc(item.conflict_id)}" data-city="${esc(establishment.city)}"><div class="evidence-list">${evidenceCopy}<label class="evidence-option"><input type="radio" name="evidence-${esc(item.conflict_id)}" value="__unknown"><span class="evidence-copy"><span class="evidence-value">Record audited unknown</span><span class="evidence-meta">Do not select any source; preserve the decision trail without asserting a value.</span></span></label></div><label class="review-field">Review note<textarea class="review-note" name="notes" maxlength="2000" placeholder="Explain why this evidence is correct, or why the field must remain unknown." required></textarea></label><div class="conflict-actions"><span class="conflict-help">Conflict ${esc(item.conflict_id)} · created ${esc(formatDate(item.created_at))}</span><button class="review-button" type="submit">Record review</button></div><div class="conflict-form-message" role="alert" hidden></div></form></article>`;
     }
 
     function renderConflicts() {

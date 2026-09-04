@@ -1,0 +1,10 @@
+Use case: stylized-concept
+Asset type: thumbnail-first category artwork for a mobile nightlife directory
+Input images: Image 1 is a style reference only; do not reuse its bottle or glass composition.
+Primary request: create a minimal generic illustration representing a brewery.
+Subject: three oversized rounded fermentation tanks with simple domed tops and one broad connecting pipe, reduced to bold geometric forms.
+Style/medium: match Image 1's premium flat editorial screenprint system, clean vector-like shapes and faint paper grain; not photorealistic.
+Composition/framing: landscape with a centered square-safe cluster filling roughly 72 percent of the canvas and generous outer padding; instantly readable in a rounded 72-by-68-point thumbnail.
+Color palette: warm charcoal background, cream tanks, muted mint shadows, restrained ochre pipe.
+Constraints: maximum 7 major shapes; thick clear edges; strong contrast; no industrial room, building, scenery, people, perspective, gauges, valves, tiny pipes, fine linework, gradients, readable text, letters, logos, trademarks, border, frame, or watermark.
+Avoid: machinery detail, photoreal metal, clutter.

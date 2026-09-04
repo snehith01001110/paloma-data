@@ -1,0 +1,8 @@
+Use case: stylized-concept
+Asset type: durable establishment-category cover for a mobile nightlife app
+Input image: style reference only; preserve the premium illustrated craftsmanship but use a modern minimalist facade and distinct palette.
+Primary request: create a small contemporary wine bar at evening with a slender arched doorway, floor-to-ceiling bottle shelving without labels, a stone counter, stemware, candlelit two-top tables, and a quiet urban terrace.
+Style/medium: elegant editorial comic-book realism with fine etched screenprint texture.
+Composition/framing: intimate off-axis storefront close-up, safe for an 8:5 center crop; bottle wall and arch central, lower third calm and dark for white interface text.
+Lighting/mood: intimate and cultivated; burgundy, bone white, dusty mauve, walnut, and candle gold.
+Constraints: generic Paloma-owned category concept; no readable text or labels, names, logos, trademarks, watermark, border, frame, or identifiable foreground people.

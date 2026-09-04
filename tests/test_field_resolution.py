@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from paloma_data.field_resolution import (
     SOURCE_POLICIES,
@@ -8,6 +8,7 @@ from paloma_data.field_resolution import (
     _manual_review_covers_current_evidence,
     _require_candidate_contact_corroboration,
     _reapply_manual_projections,
+    _review_reason,
 )
 
 
@@ -211,3 +212,34 @@ def test_manual_projection_reconciles_all_mutable_durable_fields():
         "price_level",
     ):
         assert field in sql
+    assert "hours_expires_at" in sql
+    assert "evidence.expires_at > now()" in sql
+
+
+def test_first_party_hours_do_not_require_a_second_origin() -> None:
+    now = datetime.now(timezone.utc)
+    selected = {
+        "best_source": "manual",
+        "observed_at": now,
+        "expires_at": now + timedelta(days=30),
+        "source_items": [
+            {"kind": "first_party", "url": "https://example.com/hours"}
+        ],
+        "metadata": {"evidence_kind": "first_party"},
+        "independent_origin_keys": ["manual:reviewer"],
+    }
+
+    assert _review_reason("hours", [], selected, True) is None
+
+
+def test_disagreeing_current_hours_enter_the_conflict_queue() -> None:
+    selected = {"independent_origin_keys": ["merchant"]}
+    rows = [
+        {"normalized_value": "schedule-a"},
+        {"normalized_value": "schedule-b"},
+    ]
+
+    assert (
+        _review_reason("hours", rows, selected, True)
+        == "authoritative_hours_disagreement"
+    )

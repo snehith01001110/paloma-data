@@ -11,9 +11,11 @@ from paloma_data.evidence_ledger import (
 class _Connection:
     def __init__(self) -> None:
         self.queries: list[str] = []
+        self.params: list[tuple] = []
 
     def execute(self, query, params):
         self.queries.append(query)
+        self.params.append(params)
         if "from public.establishments" in query:
             return _Result({"name": "Closed Pub", "city": "San Francisco"})
         if "current_source_field_policies" in query:
@@ -67,3 +69,28 @@ def test_append_manual_establishment_status_uses_establishment_column() -> None:
     assert "establishment_id, field_name" in insert
     assert result["value_text"] == "closed"
     assert result["establishment_name"] == "Closed Pub"
+
+
+def test_published_hours_accept_first_party_evidence_with_a_bounded_lease() -> None:
+    conn = _Connection()
+    result = append_manual_establishment_observation(
+        conn,
+        "00000000-0000-0000-0000-000000000001",
+        field_name="hours",
+        value={"monday": [["10:00", "00:00"]]},
+        reviewer="github:reviewer",
+        evidence_urls=("https://example.com/location",),
+        evidence_kind="first_party",
+        note="Reviewed the venue's current official location page.",
+        lease_days=30,
+        observed_at=datetime(2026, 9, 3, tzinfo=timezone.utc),
+    )
+
+    insert_index = next(
+        index for index, query in enumerate(conn.queries) if "insert into" in query
+    )
+    serialized_params = " ".join(str(value) for value in conn.params[insert_index])
+    assert '"kind": "first_party"' in serialized_params
+    assert '"evidence_kind": "first_party"' in serialized_params
+    assert result["value_json"]["schema_version"] == "paloma-hours-v1"
+    assert result["expires_at"].startswith("2026-10-03")

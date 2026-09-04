@@ -114,7 +114,7 @@ on:
         default: ''
         type: string
       field_name:
-        description: Atomic field for observe-field
+        description: Atomic field for observe-field or a structured observe-establishment action
         required: false
         default: hours
         type: choice
@@ -295,11 +295,22 @@ jobs:
               print(value)
           PY
               )
-              ARGS=(
-                --establishment-id "$ESTABLISHMENT_ID"
-                --city "$CITY"
-                --field-name operating_status
-                --value "$ESTABLISHMENT_STATUS"
+              ARGS=(--establishment-id "$ESTABLISHMENT_ID" --city "$CITY")
+              if [ "$FIELD_VALUE_JSON" != "null" ]; then
+                ARGS+=(
+                  --field-name "$FIELD_NAME"
+                  --value-json "$FIELD_VALUE_JSON"
+                  --evidence-kind first_party
+                  --lease-days "${FIELD_LEASE_DAYS:-30}"
+                )
+              else
+                ARGS+=(
+                  --field-name operating_status
+                  --value "$ESTABLISHMENT_STATUS"
+                  --lease-days "${FIELD_LEASE_DAYS:-90}"
+                )
+              fi
+              ARGS+=(
                 --reviewer "$REVIEWER"
                 --notes "$FIELD_REVIEW_NOTE"
                 --confirm "$CONFIRMATION"

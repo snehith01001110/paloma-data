@@ -12,3 +12,4 @@ __pycache__/
 *.zip
 supabase/.temp/
 gha-creds-*.json
+artifacts/

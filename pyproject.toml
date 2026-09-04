@@ -11,6 +11,7 @@ requires-python = ">=3.12"
 dependencies = [
   "httpx>=0.28,<0.29",
   "overturemaps>=1.0,<2",
+  "pillow>=11,<13",
   "psycopg[binary]>=3.2,<4",
   "rapidfuzz>=3.12,<4",
   "shapely>=2.1,<3",

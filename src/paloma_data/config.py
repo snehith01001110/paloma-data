@@ -7,6 +7,8 @@ import os
 @dataclass(frozen=True, slots=True)
 class Settings:
     database_url: str
+    supabase_url: str | None
+    supabase_secret_key: str | None
     datasf_dataset_id: str
     abc_reports_url: str
     overture_bbox: str
@@ -17,6 +19,7 @@ class Settings:
     fsq_catalog_warehouse: str | None
     fsq_places_api_key: str | None
     yelp_api_key: str | None
+    mapillary_access_token: str | None
     fsq_server_storage_licensed: bool
     catalog_provider_lease_days: int
     allow_snapshot_shrink: bool
@@ -32,6 +35,11 @@ class Settings:
             raise RuntimeError("SUPABASE_DB_URL (or DATABASE_URL) is required")
         return cls(
             database_url=database_url,
+            supabase_url=os.getenv("SUPABASE_URL"),
+            supabase_secret_key=(
+                os.getenv("SUPABASE_SECRET_KEY")
+                or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+            ),
             datasf_dataset_id=os.getenv("DATASF_DATASET_ID", "g8m3-pdis"),
             abc_reports_url=os.getenv(
                 "ABC_REPORTS_URL", "https://www.abc.ca.gov/licensing/licensing-reports/"
@@ -48,6 +56,7 @@ class Settings:
             fsq_catalog_warehouse=os.getenv("FSQ_CATALOG_WAREHOUSE"),
             fsq_places_api_key=os.getenv("FSQ_PLACES_API_KEY"),
             yelp_api_key=os.getenv("YELP_API_KEY"),
+            mapillary_access_token=os.getenv("MAPILLARY_ACCESS_TOKEN"),
             fsq_server_storage_licensed=_boolean(
                 os.getenv("FSQ_SERVER_STORAGE_LICENSED", "false")
             ),

@@ -1,0 +1,10 @@
+Use case: stylized-concept
+Asset type: thumbnail-first category artwork for a mobile nightlife directory
+Input images: Image 1 is a style reference only; do not reuse its bottle or lowball-glass composition.
+Primary request: create a minimal generic illustration representing a wine bar.
+Subject: one oversized wine glass beside one tall simple bottle silhouette, reduced to elegant bold geometric forms.
+Style/medium: match Image 1's premium flat editorial screenprint system, clean vector-like shapes and faint paper grain; refined and modern, not photorealistic.
+Composition/framing: landscape with a centered square-safe symbol filling roughly 68 percent of the canvas and generous outer padding; instantly readable in a rounded 72-by-68-point thumbnail.
+Color palette: deep burgundy-plum background, cream glass and bottle, dusty rose wine, muted mint label shape, restrained ochre cap.
+Constraints: maximum 7 major shapes; thick clear edges; strong contrast; no wine-bar room, shelves, vineyard, people, perspective, small objects, fine linework, gradients, readable text, letters, logos, trademarks, border, frame, or watermark.
+Avoid: realistic glass reflections, grapes, decorative clutter.

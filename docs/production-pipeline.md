@@ -116,7 +116,8 @@ twice weekly, refreshes the larger durable open-source snapshots monthly, and pe
    when configured.
 2. Stage ABC and DataSF twice weekly; stage FSQ OS when configured, Overture, Wikidata, and civic
    boundaries monthly without discovering or publishing new establishments.
-3. Append rights-approved observations, resolve the existing cohort, and report field coverage.
+3. Append rights-approved observations, resolve the existing cohort, clear expired durable hours,
+   report field coverage, and expose the hours re-verification queue.
 4. Queue published/suppressed cohort refreshes and a bounded provider-link sync.
 5. Leave scheduled publication disabled. A separate daily action queues the expiry sweep, and the
    managed worker drains all queued work. Every scheduled maintenance invocation also runs

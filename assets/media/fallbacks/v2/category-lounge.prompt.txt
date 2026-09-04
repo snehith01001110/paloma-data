@@ -1,0 +1,8 @@
+Use case: stylized-concept
+Asset type: durable establishment-category cover for a mobile nightlife app
+Input image: style reference only; use its rich editorial linework and atmosphere, but create a different mid-century setting and viewpoint.
+Primary request: create a refined mid-century lounge viewed through a sweeping glass wall, with low velvet sofas, curved banquettes, sculptural table lamps, a small bar, layered curtains, and generous open space.
+Style/medium: sophisticated modern comic-book realism with soft screenprint texture.
+Composition/framing: oblique wide interior-exterior view, flowing horizontal lines, safe for an 8:5 center crop; seating is central and the lower third remains calm for interface copy.
+Lighting/mood: quiet and luxurious; plum, moss, blush, walnut, smoked glass, and pools of soft gold light.
+Constraints: generic category concept, not a real lounge; no readable text, logos, trademarks, watermark, border, frame, or identifiable foreground people.

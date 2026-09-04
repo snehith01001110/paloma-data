@@ -16,6 +16,7 @@ export type ProviderLiveDetails = {
 };
 
 type FieldSources = {
+  cover_image_url: LiveDetailsProvider | null;
   phone_e164: LiveDetailsProvider | null;
   website_url: LiveDetailsProvider | null;
   hours: LiveDetailsProvider | null;
@@ -25,6 +26,7 @@ type FieldSources = {
 };
 
 const emptyDetails = (): LiveDetails => ({
+  cover_image_url: null,
   phone_e164: null,
   website_url: null,
   hours: null,
@@ -34,6 +36,7 @@ const emptyDetails = (): LiveDetails => ({
 });
 
 const emptySources = (): FieldSources => ({
+  cover_image_url: null,
   phone_e164: null,
   website_url: null,
   hours: null,
@@ -116,6 +119,10 @@ function mergeProviderValues(providerResults: ProviderLiveDetails[]): {
   // fields, preventing a lower-priority source from replacing a valid value.
   for (const result of providerResults) {
     const value = result.details;
+    if (details.cover_image_url === null && value.cover_image_url !== null) {
+      details.cover_image_url = value.cover_image_url;
+      sources.cover_image_url = result.provider;
+    }
     if (details.phone_e164 === null && value.phone_e164 !== null) {
       details.phone_e164 = value.phone_e164;
       sources.phone_e164 = result.provider;

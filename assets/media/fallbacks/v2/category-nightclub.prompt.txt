@@ -1,0 +1,8 @@
+Use case: stylized-concept
+Asset type: durable establishment-category cover for a mobile nightlife app
+Input image: style reference only; preserve the premium illustrated finish while radically changing lighting, architecture, and composition.
+Primary request: create a contemporary warehouse nightclub entrance at midnight with a deep recessed doorway, abstract light bars, velvet ropes, a glimpse of a geometric dance floor and suspended lighting rig, and dramatic haze inside.
+Style/medium: bold editorial comic-book realism with crisp screenprint texture and controlled glow.
+Composition/framing: symmetrical monumental entrance, safe for an 8:5 center crop; focal doorway in the middle and dark lower margin for white UI title text.
+Lighting/mood: electric and anticipatory; cobalt, magenta, ultraviolet violet, charcoal, and a restrained acid-green accent.
+Constraints: generic category concept only; no readable text, club name, logos, trademarks, recognizable DJs, watermark, border, frame, crowds, or identifiable foreground people.

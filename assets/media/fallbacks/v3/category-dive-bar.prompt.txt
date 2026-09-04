@@ -1,0 +1,10 @@
+Use case: stylized-concept
+Asset type: thumbnail-first category artwork for a mobile nightlife directory
+Input images: Image 1 is a style reference only; do not reuse its bottle or glass composition.
+Primary request: create a minimal generic illustration representing a dive bar.
+Subject: one oversized arched jukebox silhouette with a large central circle and two simple side panels, reduced to bold geometric forms.
+Style/medium: match Image 1's premium flat editorial screenprint system, clean vector-like shapes and faint paper grain; playful but not photorealistic.
+Composition/framing: landscape with one centered square-safe symbol filling roughly 68 percent of the canvas and generous outer padding; instantly readable in a rounded 72-by-68-point thumbnail.
+Color palette: midnight navy-green background, dusty rose jukebox, cream arch, muted mint circle, restrained ochre accent.
+Constraints: maximum 7 major shapes; thick clear edges; strong contrast; no bar room, storefront, neon words, scenery, people, perspective, buttons, song labels, fine linework, gradients, readable text, letters, logos, trademarks, border, frame, or watermark.
+Avoid: realistic machinery, tiny decorative details, clutter.

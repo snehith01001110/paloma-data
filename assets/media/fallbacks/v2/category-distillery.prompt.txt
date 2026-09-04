@@ -1,0 +1,8 @@
+Use case: stylized-concept
+Asset type: durable establishment-category cover for a mobile nightlife app
+Input image: style reference only; retain the handcrafted editorial texture and cinematic depth, but do not replicate the storefront.
+Primary request: create a small urban distillery in a renovated stone-and-brick warehouse at smoky dusk, with a large copper pot still, coiled condenser, stacked unbranded oak barrels, and a compact tasting counter visible through open workshop doors.
+Style/medium: premium architectural comic-book realism with etched linocut texture.
+Composition/framing: wide industrial doorway seen from a slight angle, safe for an 8:5 center crop; copper still centered and a subdued lower zone for UI text.
+Lighting/mood: artisanal and atmospheric; oxidized copper, slate, tobacco brown, deep petrol blue, and furnace amber.
+Constraints: generic Paloma-owned concept; no readable text, names, logos, trademarks, branded barrels, watermark, border, frame, or identifiable foreground people.

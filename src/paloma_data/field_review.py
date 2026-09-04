@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from paloma_data.db import Database
+from paloma_data.hours_provenance import hours_observation_provenance
 from paloma_data.normalizers import normalize_address
 
 
@@ -70,7 +71,8 @@ class FieldConflictReviewer:
                     """
                     select id::text, value_text, normalized_value, value_json,
                            evidence_confidence::float, identity_confidence::float,
-                           authority::float, upstream_origin_keys
+                           authority::float, upstream_origin_keys, source,
+                           observed_at, expires_at, source_items, metadata
                     from catalog.field_observations
                     where id = %s::uuid
                       and (
@@ -80,6 +82,7 @@ class FieldConflictReviewer:
                       and field_name = %s
                       and observation_status = 'asserted'
                       and (expires_at is null or expires_at > now())
+                      and (field_name <> 'hours' or expires_at is not null)
                     """,
                     (
                         selected_evidence_id,
@@ -125,7 +128,8 @@ class FieldConflictReviewer:
                   %s::uuid[], %s, %s, %s, %s,
                   jsonb_build_object(
                     'reviewer', %s::text, 'notes', %s::text,
-                    'conflict_id', %s::bigint
+                    'conflict_id', %s::bigint,
+                    'selected_evidence_id', %s::text
                   )
                 )
                 returning id
@@ -147,6 +151,7 @@ class FieldConflictReviewer:
                     reviewer,
                     notes,
                     conflict_id,
+                    selected_evidence_id,
                 ),
             ).fetchone()
             decision_id = int(decision["id"])
@@ -291,17 +296,26 @@ def _project_reviewed_value(
             (evidence["value_text"], establishment_id),
         )
     elif field_name == "hours":
+        provenance = hours_observation_provenance(evidence)
         conn.execute(
             """
             update public.establishments
             set hours = %s::jsonb, hours_source = %s,
-                hours_confidence = %s, updated_at = now()
+                hours_confidence = %s, hours_verified_at = %s,
+                hours_expires_at = %s, hours_source_url = %s,
+                hours_source_kind = %s, updated_at = now()
             where id = %s::uuid
             """,
             (
-                json.dumps(evidence["value_json"]) if evidence else None,
-                "manual" if evidence else None,
-                confidence,
+                json.dumps(evidence["value_json"])
+                if evidence and provenance
+                else None,
+                "manual" if evidence and provenance else None,
+                confidence if provenance else None,
+                provenance.verified_at if provenance else None,
+                provenance.expires_at if provenance else None,
+                provenance.source_url if provenance else None,
+                provenance.source_kind if provenance else None,
                 establishment_id,
             ),
         )

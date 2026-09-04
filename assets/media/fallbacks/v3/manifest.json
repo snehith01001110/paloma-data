@@ -1,0 +1,559 @@
+{
+  "version": "v3",
+  "created_at": "2026-09-03",
+  "generator": "openai-imagegen",
+  "generator_version": "codex-builtin",
+  "output_license_id": "Paloma-Proprietary",
+  "disclosure": "Paloma category symbol; not a photograph or depiction of this establishment",
+  "intended_surfaces": [
+    "card",
+    "thumbnail"
+  ],
+  "detail_surface": "pinned_map",
+  "templates": [
+    {
+      "key": "category-bar",
+      "source": "category-bar.jpg",
+      "source_sha256": "e2826b410bbbd0edaad636f9f6a2246cdd619fdd5153be820cffe9531332b7f1",
+      "generated_source_sha256": "82e2d30fca51968e7a0280076b8a40eea6d7dc21204f77edd8cdfedbb0a5c5f7",
+      "prompt": "category-bar.prompt.txt",
+      "prompt_sha256": "4d2b2e980d6c046096b0102c602a04d2aca68633ed798a00174ebed1f813ddc1",
+      "variants": {
+        "hero": {
+          "local_path": "artifacts/media/fallbacks-v3/category-bar-hero-e2826b410bbbd0ed.jpg",
+          "object_path": "templates/v3/category-bar/hero-e2826b410bbbd0ed.jpg",
+          "width": 1600,
+          "height": 1000,
+          "byte_size": 89891,
+          "sha256": "e2826b410bbbd0edaad636f9f6a2246cdd619fdd5153be820cffe9531332b7f1"
+        },
+        "card": {
+          "local_path": "artifacts/media/fallbacks-v3/category-bar-card-196e6525d536f3d1.jpg",
+          "object_path": "templates/v3/category-bar/card-196e6525d536f3d1.jpg",
+          "width": 960,
+          "height": 600,
+          "byte_size": 28888,
+          "sha256": "196e6525d536f3d109c1a5aef3ac6b4188f0073adbfd02b9033caf283597cf7d"
+        },
+        "thumbnail": {
+          "local_path": "artifacts/media/fallbacks-v3/category-bar-thumbnail-8b76170a5a018ccf.jpg",
+          "object_path": "templates/v3/category-bar/thumbnail-8b76170a5a018ccf.jpg",
+          "width": 320,
+          "height": 200,
+          "byte_size": 5022,
+          "sha256": "8b76170a5a018ccfc1950763d1d4daeb8eabbc2af213374d57f74b177ef3cefb"
+        }
+      }
+    },
+    {
+      "key": "category-beer-bar",
+      "source": "category-beer-bar.jpg",
+      "source_sha256": "b672cb617a5f1a80a5af13d063ff9fc048e3c328d1884a4ee01cc4760afe323e",
+      "generated_source_sha256": "ae3713a09f85b3757d46dad8c0445505d6536ba31f3b81882a905401835ba1fd",
+      "prompt": "category-beer-bar.prompt.txt",
+      "prompt_sha256": "e3b8a9b54942f79771846d9c89b17407e546ff1836425ed19945701b881f0457",
+      "variants": {
+        "hero": {
+          "local_path": "artifacts/media/fallbacks-v3/category-beer-bar-hero-b672cb617a5f1a80.jpg",
+          "object_path": "templates/v3/category-beer-bar/hero-b672cb617a5f1a80.jpg",
+          "width": 1600,
+          "height": 1000,
+          "byte_size": 77455,
+          "sha256": "b672cb617a5f1a80a5af13d063ff9fc048e3c328d1884a4ee01cc4760afe323e"
+        },
+        "card": {
+          "local_path": "artifacts/media/fallbacks-v3/category-beer-bar-card-f0571703e08cdc94.jpg",
+          "object_path": "templates/v3/category-beer-bar/card-f0571703e08cdc94.jpg",
+          "width": 960,
+          "height": 600,
+          "byte_size": 26764,
+          "sha256": "f0571703e08cdc946e795a9edb075346a45c4d2d840a154d8a5ef9bd0a75bdac"
+        },
+        "thumbnail": {
+          "local_path": "artifacts/media/fallbacks-v3/category-beer-bar-thumbnail-542b5cacad81c893.jpg",
+          "object_path": "templates/v3/category-beer-bar/thumbnail-542b5cacad81c893.jpg",
+          "width": 320,
+          "height": 200,
+          "byte_size": 4906,
+          "sha256": "542b5cacad81c893ca4ca0d31efb9ae475dd146d4e391a155f6faadb3fdcf36f"
+        }
+      }
+    },
+    {
+      "key": "category-billiards-bar",
+      "source": "category-billiards-bar.jpg",
+      "source_sha256": "b5ec362a329eb8b94de483678e4afe1c298aba91dc0b8f61b02fc9eddd571fc2",
+      "generated_source_sha256": "712c8333af875b41bfca185a7b3e8c961c86025c15861f444070c30e22b686ce",
+      "prompt": "category-billiards-bar.prompt.txt",
+      "prompt_sha256": "11869e6fe194b79455ddafd6358bead963d519b7b09c2974d27648840e5fb2b9",
+      "variants": {
+        "hero": {
+          "local_path": "artifacts/media/fallbacks-v3/category-billiards-bar-hero-b5ec362a329eb8b9.jpg",
+          "object_path": "templates/v3/category-billiards-bar/hero-b5ec362a329eb8b9.jpg",
+          "width": 1600,
+          "height": 1000,
+          "byte_size": 72825,
+          "sha256": "b5ec362a329eb8b94de483678e4afe1c298aba91dc0b8f61b02fc9eddd571fc2"
+        },
+        "card": {
+          "local_path": "artifacts/media/fallbacks-v3/category-billiards-bar-card-157d45e9662bfeed.jpg",
+          "object_path": "templates/v3/category-billiards-bar/card-157d45e9662bfeed.jpg",
+          "width": 960,
+          "height": 600,
+          "byte_size": 25695,
+          "sha256": "157d45e9662bfeedd9443f89219fd3d9be29a6589329e82694c2b347e7b053e6"
+        },
+        "thumbnail": {
+          "local_path": "artifacts/media/fallbacks-v3/category-billiards-bar-thumbnail-5c327a680562eaa0.jpg",
+          "object_path": "templates/v3/category-billiards-bar/thumbnail-5c327a680562eaa0.jpg",
+          "width": 320,
+          "height": 200,
+          "byte_size": 5143,
+          "sha256": "5c327a680562eaa07b09f006b1cd8b2a4ccf3bc038ad14725967ab64d1b2fffc"
+        }
+      }
+    },
+    {
+      "key": "category-brewery",
+      "source": "category-brewery.jpg",
+      "source_sha256": "6b811e8bf6da8b699551ec2141caadb38bf94d288aa6696fe69df006d709bf0b",
+      "generated_source_sha256": "cf81f565bd8fc81c6a75f25f36b682755c961f0d5389992ac288e76850b94b71",
+      "prompt": "category-brewery.prompt.txt",
+      "prompt_sha256": "8215bc49a83589e8921c63ff2078f4796c08949bcce1dd900391730dcfb59998",
+      "variants": {
+        "hero": {
+          "local_path": "artifacts/media/fallbacks-v3/category-brewery-hero-6b811e8bf6da8b69.jpg",
+          "object_path": "templates/v3/category-brewery/hero-6b811e8bf6da8b69.jpg",
+          "width": 1600,
+          "height": 1000,
+          "byte_size": 95367,
+          "sha256": "6b811e8bf6da8b699551ec2141caadb38bf94d288aa6696fe69df006d709bf0b"
+        },
+        "card": {
+          "local_path": "artifacts/media/fallbacks-v3/category-brewery-card-ac59125101fd8e9b.jpg",
+          "object_path": "templates/v3/category-brewery/card-ac59125101fd8e9b.jpg",
+          "width": 960,
+          "height": 600,
+          "byte_size": 33206,
+          "sha256": "ac59125101fd8e9bc8d095c9a8fa2a6bd9381cf8926ad96b7b73065d0d673c3b"
+        },
+        "thumbnail": {
+          "local_path": "artifacts/media/fallbacks-v3/category-brewery-thumbnail-d72fa69e0250fc76.jpg",
+          "object_path": "templates/v3/category-brewery/thumbnail-d72fa69e0250fc76.jpg",
+          "width": 320,
+          "height": 200,
+          "byte_size": 5964,
+          "sha256": "d72fa69e0250fc760dc70e9d4dc9e9c84e47d50ce79c3174635c45abf339cbdd"
+        }
+      }
+    },
+    {
+      "key": "category-brewpub",
+      "source": "category-brewpub.jpg",
+      "source_sha256": "3eacdddcfd8746e5a7d2d35efe9ed1beb1be00038c625b1accf2dac1a16ab188",
+      "generated_source_sha256": "aab166cc7c50fd87079de60f2524b707c964d104f1a7f792bf9244e462f5372f",
+      "prompt": "category-brewpub.prompt.txt",
+      "prompt_sha256": "03e6c111d11ac8073237d2c1719343b8b2ce0fd3e6cbf440bb0528bf7c06069c",
+      "variants": {
+        "hero": {
+          "local_path": "artifacts/media/fallbacks-v3/category-brewpub-hero-3eacdddcfd8746e5.jpg",
+          "object_path": "templates/v3/category-brewpub/hero-3eacdddcfd8746e5.jpg",
+          "width": 1600,
+          "height": 1000,
+          "byte_size": 95637,
+          "sha256": "3eacdddcfd8746e5a7d2d35efe9ed1beb1be00038c625b1accf2dac1a16ab188"
+        },
+        "card": {
+          "local_path": "artifacts/media/fallbacks-v3/category-brewpub-card-206b61026061799a.jpg",
+          "object_path": "templates/v3/category-brewpub/card-206b61026061799a.jpg",
+          "width": 960,
+          "height": 600,
+          "byte_size": 31110,
+          "sha256": "206b61026061799a7fee8e20b4406b0eb6dc235a08e764e9385e207e40f02e47"
+        },
+        "thumbnail": {
+          "local_path": "artifacts/media/fallbacks-v3/category-brewpub-thumbnail-fcf023556e2bcf71.jpg",
+          "object_path": "templates/v3/category-brewpub/thumbnail-fcf023556e2bcf71.jpg",
+          "width": 320,
+          "height": 200,
+          "byte_size": 5201,
+          "sha256": "fcf023556e2bcf71b9a236a4c8302efaa94de958cdcf0d2ca0b7ec66b96609a7"
+        }
+      }
+    },
+    {
+      "key": "category-cocktail-bar",
+      "source": "category-cocktail-bar.jpg",
+      "source_sha256": "11dce627c72c027869f5bf1d95988dc9e2c4fc7cc81c11648a56740cd8c91c94",
+      "generated_source_sha256": "c9b9f2472f7bc047f0c0f42c877ca51607823941c7e3017cc3fecedf1c2bd7d7",
+      "prompt": "category-cocktail-bar.prompt.txt",
+      "prompt_sha256": "f61bfc665b8908927d66a5153c304d276a31645f1550467590f6ab611d75e27d",
+      "variants": {
+        "hero": {
+          "local_path": "artifacts/media/fallbacks-v3/category-cocktail-bar-hero-11dce627c72c0278.jpg",
+          "object_path": "templates/v3/category-cocktail-bar/hero-11dce627c72c0278.jpg",
+          "width": 1600,
+          "height": 1000,
+          "byte_size": 56253,
+          "sha256": "11dce627c72c027869f5bf1d95988dc9e2c4fc7cc81c11648a56740cd8c91c94"
+        },
+        "card": {
+          "local_path": "artifacts/media/fallbacks-v3/category-cocktail-bar-card-264d827e72ba75a1.jpg",
+          "object_path": "templates/v3/category-cocktail-bar/card-264d827e72ba75a1.jpg",
+          "width": 960,
+          "height": 600,
+          "byte_size": 21345,
+          "sha256": "264d827e72ba75a1ab6c01aa3e64fdf31a67a53f2980931e11140d83350ec78c"
+        },
+        "thumbnail": {
+          "local_path": "artifacts/media/fallbacks-v3/category-cocktail-bar-thumbnail-5ba698ad50485ba7.jpg",
+          "object_path": "templates/v3/category-cocktail-bar/thumbnail-5ba698ad50485ba7.jpg",
+          "width": 320,
+          "height": 200,
+          "byte_size": 4190,
+          "sha256": "5ba698ad50485ba7678b138c36978ebcc059dbf4f8e68a078df5be210891e234"
+        }
+      }
+    },
+    {
+      "key": "category-distillery",
+      "source": "category-distillery.jpg",
+      "source_sha256": "b362bf96b19b0ada796ad488cb552b5538065e303bb573bf32a431e6bd4c19c8",
+      "generated_source_sha256": "26f0bd2f00d47808705a5e48b1593542876a9697f5b239bef8ebf934d32d32ae",
+      "prompt": "category-distillery.prompt.txt",
+      "prompt_sha256": "ed6a82a3c99a8abc6efffbf0beff20027f4bb8cf645ef8b246763a76ca27d86b",
+      "variants": {
+        "hero": {
+          "local_path": "artifacts/media/fallbacks-v3/category-distillery-hero-b362bf96b19b0ada.jpg",
+          "object_path": "templates/v3/category-distillery/hero-b362bf96b19b0ada.jpg",
+          "width": 1600,
+          "height": 1000,
+          "byte_size": 68389,
+          "sha256": "b362bf96b19b0ada796ad488cb552b5538065e303bb573bf32a431e6bd4c19c8"
+        },
+        "card": {
+          "local_path": "artifacts/media/fallbacks-v3/category-distillery-card-598e18a626b545f4.jpg",
+          "object_path": "templates/v3/category-distillery/card-598e18a626b545f4.jpg",
+          "width": 960,
+          "height": 600,
+          "byte_size": 24504,
+          "sha256": "598e18a626b545f4d8966862771e25db6c4f33e436116e8e2f6e0ab47f2d5978"
+        },
+        "thumbnail": {
+          "local_path": "artifacts/media/fallbacks-v3/category-distillery-thumbnail-5e4d45359b817b7e.jpg",
+          "object_path": "templates/v3/category-distillery/thumbnail-5e4d45359b817b7e.jpg",
+          "width": 320,
+          "height": 200,
+          "byte_size": 4543,
+          "sha256": "5e4d45359b817b7e7b0570697373f1053d792460f3b064645f5b825829ba2f5b"
+        }
+      }
+    },
+    {
+      "key": "category-dive-bar",
+      "source": "category-dive-bar.jpg",
+      "source_sha256": "884b746799bfe5955d4cad05d4159985ff9587d6b3ec8561a6ac0a9ab45554cb",
+      "generated_source_sha256": "f757ae2ebacb904f8dcd3d790b3a4ddd55d9728b9e529113eb2d361efeacfc2f",
+      "prompt": "category-dive-bar.prompt.txt",
+      "prompt_sha256": "1fc46abf9bd39743e2b640309074bf068d1bded696046cd1d981011e8279f09a",
+      "variants": {
+        "hero": {
+          "local_path": "artifacts/media/fallbacks-v3/category-dive-bar-hero-884b746799bfe595.jpg",
+          "object_path": "templates/v3/category-dive-bar/hero-884b746799bfe595.jpg",
+          "width": 1600,
+          "height": 1000,
+          "byte_size": 79990,
+          "sha256": "884b746799bfe5955d4cad05d4159985ff9587d6b3ec8561a6ac0a9ab45554cb"
+        },
+        "card": {
+          "local_path": "artifacts/media/fallbacks-v3/category-dive-bar-card-b95a9b00955015db.jpg",
+          "object_path": "templates/v3/category-dive-bar/card-b95a9b00955015db.jpg",
+          "width": 960,
+          "height": 600,
+          "byte_size": 31289,
+          "sha256": "b95a9b00955015db2ad2632212f9032e8796d01fd8b53eafd20bb035cede56a1"
+        },
+        "thumbnail": {
+          "local_path": "artifacts/media/fallbacks-v3/category-dive-bar-thumbnail-e4d99b9de7dd2834.jpg",
+          "object_path": "templates/v3/category-dive-bar/thumbnail-e4d99b9de7dd2834.jpg",
+          "width": 320,
+          "height": 200,
+          "byte_size": 6133,
+          "sha256": "e4d99b9de7dd28344776952394c719e0ee80a45bb870471c0d25ce4222827120"
+        }
+      }
+    },
+    {
+      "key": "category-lounge",
+      "source": "category-lounge.jpg",
+      "source_sha256": "069d04ff41db7a6c48ff62166733229711cc5e9cc0d1f9271b01759e075f46dd",
+      "generated_source_sha256": "15aed63e564802292f6822e45f4fffdb90ddf37cbae45756ad698e52148b31f8",
+      "prompt": "category-lounge.prompt.txt",
+      "prompt_sha256": "45652e0c6932d3bbbbafa43c7f0a38ac8dd24f3ba0d2c78d49fd7ae068da1ff5",
+      "variants": {
+        "hero": {
+          "local_path": "artifacts/media/fallbacks-v3/category-lounge-hero-069d04ff41db7a6c.jpg",
+          "object_path": "templates/v3/category-lounge/hero-069d04ff41db7a6c.jpg",
+          "width": 1600,
+          "height": 1000,
+          "byte_size": 101962,
+          "sha256": "069d04ff41db7a6c48ff62166733229711cc5e9cc0d1f9271b01759e075f46dd"
+        },
+        "card": {
+          "local_path": "artifacts/media/fallbacks-v3/category-lounge-card-c99ee94d5ac47a9e.jpg",
+          "object_path": "templates/v3/category-lounge/card-c99ee94d5ac47a9e.jpg",
+          "width": 960,
+          "height": 600,
+          "byte_size": 33327,
+          "sha256": "c99ee94d5ac47a9ec8e392540679b1573edbf1a83140ef9d14d15461dddd8944"
+        },
+        "thumbnail": {
+          "local_path": "artifacts/media/fallbacks-v3/category-lounge-thumbnail-ef29172a7099e569.jpg",
+          "object_path": "templates/v3/category-lounge/thumbnail-ef29172a7099e569.jpg",
+          "width": 320,
+          "height": 200,
+          "byte_size": 5790,
+          "sha256": "ef29172a7099e569fca4b6a4105df93f78e7092d8390d0b00a24334c19a30d26"
+        }
+      }
+    },
+    {
+      "key": "category-nightclub",
+      "source": "category-nightclub.jpg",
+      "source_sha256": "db77a9bf49c477c08a9adcf458d972f660983f95d370deb31899501dae172863",
+      "generated_source_sha256": "9731de79dc2c98feff3bde7b79f86a5a7a70cef6ee4d7e74555dc799e64f72a3",
+      "prompt": "category-nightclub.prompt.txt",
+      "prompt_sha256": "0ac99d96bad1c10d0c02f29196db9f2cb523f82387954e17f8ec867b6f05908e",
+      "variants": {
+        "hero": {
+          "local_path": "artifacts/media/fallbacks-v3/category-nightclub-hero-db77a9bf49c477c0.jpg",
+          "object_path": "templates/v3/category-nightclub/hero-db77a9bf49c477c0.jpg",
+          "width": 1600,
+          "height": 1000,
+          "byte_size": 95211,
+          "sha256": "db77a9bf49c477c08a9adcf458d972f660983f95d370deb31899501dae172863"
+        },
+        "card": {
+          "local_path": "artifacts/media/fallbacks-v3/category-nightclub-card-e703e12ca7f2455b.jpg",
+          "object_path": "templates/v3/category-nightclub/card-e703e12ca7f2455b.jpg",
+          "width": 960,
+          "height": 600,
+          "byte_size": 32967,
+          "sha256": "e703e12ca7f2455b96e91a939227c71ed0f8252a6c3df197f458cded83e6ed66"
+        },
+        "thumbnail": {
+          "local_path": "artifacts/media/fallbacks-v3/category-nightclub-thumbnail-466c16663db510e5.jpg",
+          "object_path": "templates/v3/category-nightclub/thumbnail-466c16663db510e5.jpg",
+          "width": 320,
+          "height": 200,
+          "byte_size": 5611,
+          "sha256": "466c16663db510e5a5809af453a1563490e67023df541ff04ed5d5281518bb0b"
+        }
+      }
+    },
+    {
+      "key": "category-pub",
+      "source": "category-pub.jpg",
+      "source_sha256": "77e6c6d1cbdfbcc3da49597dd08b5ba22764c34ccbb1290f1e16d6138afa85fa",
+      "generated_source_sha256": "738c5ae9ddae7d15853aeef58aa3a1b4e21225e3a4ae11edada01b39def87442",
+      "prompt": "category-pub.prompt.txt",
+      "prompt_sha256": "136c4bfa1981b4eb40c1d57796dce49d4050a6737589352bed02fbf61d8f8ad7",
+      "variants": {
+        "hero": {
+          "local_path": "artifacts/media/fallbacks-v3/category-pub-hero-77e6c6d1cbdfbcc3.jpg",
+          "object_path": "templates/v3/category-pub/hero-77e6c6d1cbdfbcc3.jpg",
+          "width": 1600,
+          "height": 1000,
+          "byte_size": 90324,
+          "sha256": "77e6c6d1cbdfbcc3da49597dd08b5ba22764c34ccbb1290f1e16d6138afa85fa"
+        },
+        "card": {
+          "local_path": "artifacts/media/fallbacks-v3/category-pub-card-8f55e607b4887d41.jpg",
+          "object_path": "templates/v3/category-pub/card-8f55e607b4887d41.jpg",
+          "width": 960,
+          "height": 600,
+          "byte_size": 30661,
+          "sha256": "8f55e607b4887d413d59cd60558e6ce75b233ef6cd719639c054980749094bdf"
+        },
+        "thumbnail": {
+          "local_path": "artifacts/media/fallbacks-v3/category-pub-thumbnail-4c504c79ac3c9452.jpg",
+          "object_path": "templates/v3/category-pub/thumbnail-4c504c79ac3c9452.jpg",
+          "width": 320,
+          "height": 200,
+          "byte_size": 5188,
+          "sha256": "4c504c79ac3c9452f743332c895451dcb79b26ebce6d1d805ad79a656c26a7df"
+        }
+      }
+    },
+    {
+      "key": "category-sports-bar",
+      "source": "category-sports-bar.jpg",
+      "source_sha256": "b83e2036f8f3a4693be3e303665fcdde8fbcdafddcce0caacea09ba42d0f4dca",
+      "generated_source_sha256": "07f5ac632884a8bd06c9001def10cf2cff31a218bee81252b91281eb00698912",
+      "prompt": "category-sports-bar.prompt.txt",
+      "prompt_sha256": "eef4a068b968540b9ac9b20bbe64cc2d27e3d8ef3b6e00e768824340bc0ccd8e",
+      "variants": {
+        "hero": {
+          "local_path": "artifacts/media/fallbacks-v3/category-sports-bar-hero-b83e2036f8f3a469.jpg",
+          "object_path": "templates/v3/category-sports-bar/hero-b83e2036f8f3a469.jpg",
+          "width": 1600,
+          "height": 1000,
+          "byte_size": 106474,
+          "sha256": "b83e2036f8f3a4693be3e303665fcdde8fbcdafddcce0caacea09ba42d0f4dca"
+        },
+        "card": {
+          "local_path": "artifacts/media/fallbacks-v3/category-sports-bar-card-3b01da774b4d5e9d.jpg",
+          "object_path": "templates/v3/category-sports-bar/card-3b01da774b4d5e9d.jpg",
+          "width": 960,
+          "height": 600,
+          "byte_size": 36489,
+          "sha256": "3b01da774b4d5e9d35e95dfb63728f6d9c8719f7d62d6c42dc803128bba3a6ad"
+        },
+        "thumbnail": {
+          "local_path": "artifacts/media/fallbacks-v3/category-sports-bar-thumbnail-b360a5b07d2f712b.jpg",
+          "object_path": "templates/v3/category-sports-bar/thumbnail-b360a5b07d2f712b.jpg",
+          "width": 320,
+          "height": 200,
+          "byte_size": 6226,
+          "sha256": "b360a5b07d2f712bc7a434a99b31b1efbf0b7b9fdab0d0dc70056927a2108ce4"
+        }
+      }
+    },
+    {
+      "key": "category-taproom",
+      "source": "category-taproom.jpg",
+      "source_sha256": "1b6a7d335b0506b7bd871c3a50d51534cbf2c009d0ae20b7cc3fc31c4c28f642",
+      "generated_source_sha256": "bc2bed3215f94cdab5f59e6806f471e22b22a85fd265eaca098e257eef04d478",
+      "prompt": "category-taproom.prompt.txt",
+      "prompt_sha256": "ce893096e1e676abb524184df31e2e1eaa995e2d4257ed81c0cb9febc5806a61",
+      "variants": {
+        "hero": {
+          "local_path": "artifacts/media/fallbacks-v3/category-taproom-hero-1b6a7d335b0506b7.jpg",
+          "object_path": "templates/v3/category-taproom/hero-1b6a7d335b0506b7.jpg",
+          "width": 1600,
+          "height": 1000,
+          "byte_size": 100571,
+          "sha256": "1b6a7d335b0506b7bd871c3a50d51534cbf2c009d0ae20b7cc3fc31c4c28f642"
+        },
+        "card": {
+          "local_path": "artifacts/media/fallbacks-v3/category-taproom-card-91c82a18d77b1556.jpg",
+          "object_path": "templates/v3/category-taproom/card-91c82a18d77b1556.jpg",
+          "width": 960,
+          "height": 600,
+          "byte_size": 38481,
+          "sha256": "91c82a18d77b1556e3fba1e0ae8df1dae3600301d10216d55e9923183501ced8"
+        },
+        "thumbnail": {
+          "local_path": "artifacts/media/fallbacks-v3/category-taproom-thumbnail-f900da631ebdec10.jpg",
+          "object_path": "templates/v3/category-taproom/thumbnail-f900da631ebdec10.jpg",
+          "width": 320,
+          "height": 200,
+          "byte_size": 7300,
+          "sha256": "f900da631ebdec105c9d90fdc9ad186802ceae12f2d9dc5b17d0d99f1a20809f"
+        }
+      }
+    },
+    {
+      "key": "category-tasting-room",
+      "source": "category-tasting-room.jpg",
+      "source_sha256": "a668c0068344e791ba2e0783dca91b24a80f0ea58533aaf92ba7ddbad5ea809f",
+      "generated_source_sha256": "355b99b669c6d542bac3e7f051e0fbefe90dd54c4a6f33c73726d5e2780f9b8a",
+      "prompt": "category-tasting-room.prompt.txt",
+      "prompt_sha256": "9eb3baea7b45f1d7585157cb48a48cd8a0632f5025d7e80d82024a028b704fff",
+      "variants": {
+        "hero": {
+          "local_path": "artifacts/media/fallbacks-v3/category-tasting-room-hero-a668c0068344e791.jpg",
+          "object_path": "templates/v3/category-tasting-room/hero-a668c0068344e791.jpg",
+          "width": 1600,
+          "height": 1000,
+          "byte_size": 104986,
+          "sha256": "a668c0068344e791ba2e0783dca91b24a80f0ea58533aaf92ba7ddbad5ea809f"
+        },
+        "card": {
+          "local_path": "artifacts/media/fallbacks-v3/category-tasting-room-card-8006a679e211b122.jpg",
+          "object_path": "templates/v3/category-tasting-room/card-8006a679e211b122.jpg",
+          "width": 960,
+          "height": 600,
+          "byte_size": 30709,
+          "sha256": "8006a679e211b122d0b3b927498d6f5a153787a359052e491d4681e7a4d3cca5"
+        },
+        "thumbnail": {
+          "local_path": "artifacts/media/fallbacks-v3/category-tasting-room-thumbnail-c8052cbaf5807b7c.jpg",
+          "object_path": "templates/v3/category-tasting-room/thumbnail-c8052cbaf5807b7c.jpg",
+          "width": 320,
+          "height": 200,
+          "byte_size": 4632,
+          "sha256": "c8052cbaf5807b7ccf431ce8fa4e7059124b24c4760e9e082a27bce154b9c233"
+        }
+      }
+    },
+    {
+      "key": "category-wine-bar",
+      "source": "category-wine-bar.jpg",
+      "source_sha256": "533120793f6728cb9f79d57c75d875532be7e088a017f4cb0b19376ad5ffa99b",
+      "generated_source_sha256": "806989a7c9e0edf7b93029fda19c382af4a7ee447e546a9a0fb99e959c28094a",
+      "prompt": "category-wine-bar.prompt.txt",
+      "prompt_sha256": "372cf3b267079ae91cc7845d0f379cfbe6177da3798c8d140821fab33949a58a",
+      "variants": {
+        "hero": {
+          "local_path": "artifacts/media/fallbacks-v3/category-wine-bar-hero-533120793f6728cb.jpg",
+          "object_path": "templates/v3/category-wine-bar/hero-533120793f6728cb.jpg",
+          "width": 1600,
+          "height": 1000,
+          "byte_size": 71470,
+          "sha256": "533120793f6728cb9f79d57c75d875532be7e088a017f4cb0b19376ad5ffa99b"
+        },
+        "card": {
+          "local_path": "artifacts/media/fallbacks-v3/category-wine-bar-card-9791fa7301a5f9d0.jpg",
+          "object_path": "templates/v3/category-wine-bar/card-9791fa7301a5f9d0.jpg",
+          "width": 960,
+          "height": 600,
+          "byte_size": 25645,
+          "sha256": "9791fa7301a5f9d0297bd86f58e9b639a213d6f6e090d4bf182c119e8588ac87"
+        },
+        "thumbnail": {
+          "local_path": "artifacts/media/fallbacks-v3/category-wine-bar-thumbnail-1d3deaefc39c4ff5.jpg",
+          "object_path": "templates/v3/category-wine-bar/thumbnail-1d3deaefc39c4ff5.jpg",
+          "width": 320,
+          "height": 200,
+          "byte_size": 5008,
+          "sha256": "1d3deaefc39c4ff59f3d0a5cf507682f2cb54107ff7dfa166a1a07602f4263a2"
+        }
+      }
+    },
+    {
+      "key": "category-winery",
+      "source": "category-winery.jpg",
+      "source_sha256": "b1a89f8fe14ca57117471d04c9c05f5105ae0ea810d61b84de0e89a97d805e4d",
+      "generated_source_sha256": "a44efc619d60d22e4cf665939305009130d7d77192de486df979ba73af3ba43a",
+      "prompt": "category-winery.prompt.txt",
+      "prompt_sha256": "3352b7bb014255ccded827cc2429db349d3950f1fa2a16c5c5f8044df072e11c",
+      "variants": {
+        "hero": {
+          "local_path": "artifacts/media/fallbacks-v3/category-winery-hero-b1a89f8fe14ca571.jpg",
+          "object_path": "templates/v3/category-winery/hero-b1a89f8fe14ca571.jpg",
+          "width": 1600,
+          "height": 1000,
+          "byte_size": 105087,
+          "sha256": "b1a89f8fe14ca57117471d04c9c05f5105ae0ea810d61b84de0e89a97d805e4d"
+        },
+        "card": {
+          "local_path": "artifacts/media/fallbacks-v3/category-winery-card-7277e0a5706e9502.jpg",
+          "object_path": "templates/v3/category-winery/card-7277e0a5706e9502.jpg",
+          "width": 960,
+          "height": 600,
+          "byte_size": 31603,
+          "sha256": "7277e0a5706e950229618a463f2c1a64cdcb7f68d8bcb32004f65f6e4fb3c21e"
+        },
+        "thumbnail": {
+          "local_path": "artifacts/media/fallbacks-v3/category-winery-thumbnail-8a4098f52008f9f3.jpg",
+          "object_path": "templates/v3/category-winery/thumbnail-8a4098f52008f9f3.jpg",
+          "width": 320,
+          "height": 200,
+          "byte_size": 4850,
+          "sha256": "8a4098f52008f9f3123a1d525fb507fd41f63a4b9829d60e3c80ed2d9d9ab0b7"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+Use case: precise-object-edit
+Asset type: durable sports-bar category cover for a mobile nightlife app
+Input image: edit target
+Primary request: replace only the large blank dark band across the bottom quarter with a natural continuation of the existing sports-bar floor and foreground, including subtle floor perspective and a few table/chair legs consistent with the scene.
+Constraints: preserve the entire sports-bar scene above the band, its screens, bar, lighting, palette, print texture, perspective, and 3:2 landscape framing; fill the full canvas edge to edge with scene; no blank or solid bands; keep the lowest area moderately dark and low-detail for white UI text; no new text, logos, trademarks, people, watermark, border, or frame.

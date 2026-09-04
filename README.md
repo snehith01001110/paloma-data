@@ -179,7 +179,7 @@ Optional fields remain `NULL` when trustworthy evidence is unavailable:
 | phone | transient Place Details display | two independent durable sources/manual | persist a self-service API response |
 | website | transient Place Details display | two independent durable sources/manual | persist a self-service API response |
 | neighborhood | reviewed civic polygon | reviewed division polygon | free-text guess from address |
-| hours | transient Place Details display | contracted FSQ/manual owner attestation | cache or fabricate a schedule |
+| hours | reviewed first-party/merchant schedule with a bounded lease | transient licensed provider display when durable hours are absent or expired | persist a provider response, retain stale hours, or fabricate a schedule |
 | price | transient Place Details display | contracted FSQ/manual | infer from type or neighborhood |
 | setting | transient objective provider attributes | contracted FSQ/manual | infer subjective vibe |
 | cover image | licensed/owner-supplied asset | none | reuse a URL without display rights |
@@ -259,12 +259,13 @@ paloma-data catalog-attest --candidate-id 00000000-0000-0000-0000-000000000000 \
   --note "Current first-party page confirms identity and ordinary walk-in service." \
   --confirm MANUAL_ATTESTATION
 # Record one reviewed atomic fact without retaining the source page or provider response.
+# Durable hours use paloma-hours-v1 and should normally receive a 30-day first-party lease.
 paloma-data catalog-observe-field \
   --candidate-id 00000000-0000-0000-0000-000000000000 --city "Oakland" \
   --field-name hours \
-  --value-json '{"monday":[["15:00","22:00"]]}' \
+  --value-json '{"schema_version":"paloma-hours-v1","timezone":"America/Los_Angeles","weekly":[{"day":1,"opens":"15:00","closes":"22:00","closes_day_offset":0}],"special":[]}' \
   --evidence-url "https://merchant.example/oakland" --reviewer "github:owner" \
-  --note "Current first-party location page reviewed." \
+  --note "Current first-party location page reviewed." --lease-days 30 \
   --confirm RECORD_FIELD_OBSERVATION
 # Transactional, idempotent execution of the reviewed East Bay pilot fact manifest.
 paloma-data catalog-observe-manifest --reviewer "github:owner" \

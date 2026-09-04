@@ -7,6 +7,7 @@ import {
 } from "./live_details_merge.ts";
 
 const details = (overrides: Partial<LiveDetails>): LiveDetails => ({
+  cover_image_url: null,
   phone_e164: null,
   website_url: null,
   hours: null,
@@ -94,6 +95,7 @@ Deno.test("merges complementary providers with field-level provenance", () => {
       price_level: "yelp",
       setting_slugs: "foursquare",
     },
+    cover_image_url: null,
     phone_e164: "+14155550100",
     website_url: "https://nightowl.example/",
     hours: { weekday_text: ["Monday: 4:00 PM–12:00 AM"] },
@@ -101,6 +103,24 @@ Deno.test("merges complementary providers with field-level provenance", () => {
     price_level: 2,
     setting_slugs: ["outdoor_patio"],
   });
+});
+
+Deno.test("keeps a Yelp cover image paired with its Yelp attribution", () => {
+  const yelp = result(
+    "yelp",
+    details({
+      cover_image_url:
+        "https://s3-media1.fl.yelpcdn.com/bphoto/night-owl/o.jpg",
+    }),
+  );
+  const response = liveDetailsResponse([yelp]);
+
+  assertEquals(response?.provider, "yelp");
+  assertEquals(response?.cover_image_url, yelp.details.cover_image_url);
+  assertEquals(response?.field_sources, { cover_image_url: "yelp" });
+  assertEquals(response?.attributions, [
+    { provider: "yelp", name: "Yelp", url: "https://yelp.example/place" },
+  ]);
 });
 
 Deno.test("single-provider responses retain their reusable cache metadata", () => {

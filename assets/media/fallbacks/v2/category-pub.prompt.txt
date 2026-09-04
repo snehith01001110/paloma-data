@@ -1,0 +1,8 @@
+Use case: stylized-concept
+Asset type: durable establishment-category cover for a mobile nightlife app
+Input image: style reference only; retain its tactile architectural illustration quality while changing era, silhouette, and palette.
+Primary request: create a cozy independent pub in an old brick row building at golden dusk, with multipane frosted windows, dark timber trim, brass lanterns, a snug fireplace glow, wooden settles, and unbranded hand-pull taps visible inside.
+Style/medium: warm editorial comic-book realism with engraved linocut texture.
+Composition/framing: slightly angled street view with a tall narrow pub silhouette, safe for an 8:5 center crop; central doorway and a quiet lower band for UI text.
+Lighting/mood: storied and welcoming; moss green, russet brick, aged brass, cream, and soft gray-blue dusk.
+Constraints: generic category concept, not a real pub; no readable signage, names, logos, trademarks, flags, watermark, border, frame, or identifiable foreground people.

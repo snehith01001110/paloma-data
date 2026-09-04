@@ -1,0 +1,10 @@
+Use case: stylized-concept
+Asset type: thumbnail-first category artwork for a mobile nightlife directory
+Input images: Image 1 is a style reference only; do not reuse its bottle or lowball-glass composition.
+Primary request: create a minimal generic illustration representing a sports bar.
+Subject: one oversized widescreen rectangle containing one simple ball circle, paired with one small foamy pint silhouette; reduced to bold geometric forms.
+Style/medium: match Image 1's premium flat editorial screenprint system, clean vector-like shapes and faint paper grain; not photorealistic.
+Composition/framing: landscape with a centered square-safe symbol filling roughly 70 percent of the canvas and generous outer padding; instantly readable in a rounded 72-by-68-point thumbnail.
+Color palette: dark teal background, cream screen, muted mint ball, dusty rose stand, restrained ochre pint.
+Constraints: maximum 7 major shapes; thick clear edges; strong contrast; no sports logos, team colors, scores, players, room, crowd, perspective, fine linework, gradients, readable text, numbers, letters, trademarks, border, frame, or watermark.
+Avoid: detailed television interface, field markings, realism, clutter.

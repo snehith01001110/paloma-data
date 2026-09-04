@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
+import hashlib
+from pathlib import Path
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
+import httpx
 import typer
 
 from paloma_data.adapters import (
@@ -41,6 +44,22 @@ from paloma_data.jobs import (
     default_requester,
     default_worker_id,
     utc_now_iso,
+)
+from paloma_data.media_discovery import (
+    EstablishmentMediaTarget,
+    MapillaryMediaClient,
+    WikimediaCommonsMediaClient,
+)
+from paloma_data.media_processing import inspect_source_image, render_artwork_variants
+from paloma_data.media_repository import (
+    MEDIA_REVIEW_VERDICTS,
+    EstablishmentMediaRepository,
+    MediaVariantRegistration,
+)
+from paloma_data.media_storage import (
+    PRIVATE_SOURCE_BUCKET,
+    PUBLIC_MEDIA_BUCKET,
+    SupabaseMediaStorage,
 )
 from paloma_data.neighborhoods import DataSFNeighborhoodAdapter, NeighborhoodStager
 from paloma_data.provider_links import ProviderLinkSync, YelpProviderAudit
@@ -184,17 +203,493 @@ def field_coverage() -> None:
             order by priority desc, field_name
             """
         ).fetchall()
+        hours_queue = conn.execute(
+            """
+            select reason, count(*) as establishments
+            from review.hours_verification_queue
+            group by reason
+            order by reason
+            """
+        ).fetchall()
     typer.echo(
         json.dumps(
             {
                 "coverage": [dict(row) for row in coverage],
                 "pending_conflicts": [dict(row) for row in conflicts],
+                "hours_verification_queue": [dict(row) for row in hours_queue],
             },
             indent=2,
             sort_keys=True,
             default=str,
         )
     )
+
+
+@app.command("hours-review-queue")
+def hours_review_queue(
+    city: str | None = typer.Option(None),
+    limit: int = typer.Option(100, min=1, max=1_000),
+) -> None:
+    """List missing or soon-expiring durable hours in review order."""
+    _, db, _, _ = _components()
+    with db.connection() as conn:
+        rows = conn.execute(
+            """
+            select establishment_id::text, name, address, city, region,
+                   reason, priority, hours_verified_at, hours_expires_at,
+                   hours_source_kind, hours_source_url
+            from review.hours_verification_queue
+            where (%s::text is null or lower(city) = lower(%s::text))
+            order by priority desc, hours_expires_at nulls first, city, name
+            limit %s
+            """,
+            (city, city, limit),
+        ).fetchall()
+    typer.echo(json.dumps([dict(row) for row in rows], indent=2, default=str))
+
+
+@app.command("media-discover")
+def media_discover(
+    establishment_id: str = typer.Option(...),
+    provider: list[str] = typer.Option(
+        ["mapillary", "wikimedia_commons"],
+        "--provider",
+        help="Open media provider to query; repeat to use more than one",
+    ),
+    radius_meters: float = typer.Option(180, min=25, max=1_000),
+    limit: int = typer.Option(20, min=1, max=100),
+) -> None:
+    """Find rights-compatible photo candidates; never infer that a nearby frame is the venue."""
+    try:
+        establishment_id = str(UUID(establishment_id))
+    except ValueError as exc:
+        raise typer.BadParameter("establishment_id must be a UUID") from exc
+    selected = tuple(dict.fromkeys(value.strip().casefold() for value in provider))
+    unsupported = sorted(set(selected) - {"mapillary", "wikimedia_commons"})
+    if unsupported:
+        raise typer.BadParameter("Unsupported media provider: " + ", ".join(unsupported))
+
+    settings, db, _, _ = _components()
+    with db.connection() as conn:
+        row = conn.execute(
+            """
+            select id::text, name, address, city,
+                   st_y(location::geometry)::float as latitude,
+                   st_x(location::geometry)::float as longitude
+            from public.establishments
+            where id = %s::uuid
+              and publication_state in ('published', 'suppressed')
+            """,
+            (establishment_id,),
+        ).fetchone()
+    if row is None:
+        raise typer.BadParameter(f"Unknown materialized establishment: {establishment_id}")
+    target = EstablishmentMediaTarget(**dict(row))
+
+    candidates = []
+    provider_errors: dict[str, str] = {}
+    if "mapillary" in selected:
+        if not settings.mapillary_access_token:
+            provider_errors["mapillary"] = "MAPILLARY_ACCESS_TOKEN is not configured"
+        else:
+            try:
+                with MapillaryMediaClient(settings.mapillary_access_token) as client:
+                    candidates.extend(
+                        client.search(
+                            target,
+                            radius_meters=radius_meters,
+                            limit=limit,
+                        )
+                    )
+            except (httpx.HTTPError, ValueError) as exc:
+                provider_errors["mapillary"] = str(exc)
+    if "wikimedia_commons" in selected:
+        try:
+            with WikimediaCommonsMediaClient() as client:
+                candidates.extend(client.search(target, limit=limit))
+        except (httpx.HTTPError, ValueError) as exc:
+            provider_errors["wikimedia_commons"] = str(exc)
+
+    candidates.sort(key=lambda item: (-item.review_priority, item.provider, item.source_asset_id))
+    typer.echo(
+        json.dumps(
+            {
+                "target": asdict(target),
+                "candidate_count": len(candidates[:limit]),
+                "candidates": [item.manifest() for item in candidates[:limit]],
+                "provider_errors": provider_errors,
+                "publication_mutated": False,
+                "generation_started": False,
+                "review_contract": (
+                    "A candidate is generation-eligible only after a reviewer can see the exact "
+                    "storefront/building or deliberately classifies it as location context."
+                ),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
+@app.command("media-discover-batch")
+def media_discover_batch(
+    city: list[str] = typer.Option(
+        [],
+        "--city",
+        help="Published city to process; repeat or omit to process every city",
+    ),
+    provider: list[str] = typer.Option(
+        ["mapillary", "wikimedia_commons"],
+        "--provider",
+        help="Open media provider to query; repeat to use more than one",
+    ),
+    radius_meters: float = typer.Option(180, min=25, max=1_000),
+    candidate_limit: int = typer.Option(12, min=1, max=50),
+    establishment_limit: int = typer.Option(100, min=1, max=10_000),
+    missing_cover_only: bool = typer.Option(True, "--missing-only/--include-covered"),
+    persist: bool = typer.Option(True, "--persist/--dry-run"),
+) -> None:
+    """Discover rights-qualified candidates for any current or future published venue."""
+    selected = tuple(dict.fromkeys(value.strip().casefold() for value in provider))
+    unsupported = sorted(set(selected) - {"mapillary", "wikimedia_commons"})
+    if unsupported:
+        raise typer.BadParameter("Unsupported media provider: " + ", ".join(unsupported))
+
+    settings, db, _, _ = _components()
+    repository = EstablishmentMediaRepository(db)
+    targets = repository.targets(
+        cities=city,
+        missing_cover_only=missing_cover_only,
+        limit=establishment_limit,
+    )
+
+    mapillary = None
+    commons = None
+    provider_setup_errors: dict[str, str] = {}
+    if "mapillary" in selected:
+        if settings.mapillary_access_token:
+            mapillary = MapillaryMediaClient(settings.mapillary_access_token)
+        else:
+            provider_setup_errors["mapillary"] = "MAPILLARY_ACCESS_TOKEN is not configured"
+    if "wikimedia_commons" in selected:
+        commons = WikimediaCommonsMediaClient()
+
+    results: list[dict[str, Any]] = []
+    totals = {"targets": len(targets), "candidates": 0, "inserted": 0, "known": 0}
+    try:
+        for target in targets:
+            candidates = []
+            errors: dict[str, str] = dict(provider_setup_errors)
+            if mapillary is not None:
+                try:
+                    candidates.extend(
+                        mapillary.search(
+                            target,
+                            radius_meters=radius_meters,
+                            limit=candidate_limit,
+                        )
+                    )
+                except (httpx.HTTPError, ValueError) as exc:
+                    errors["mapillary"] = str(exc)
+            if commons is not None:
+                try:
+                    candidates.extend(commons.search(target, limit=candidate_limit))
+                except (httpx.HTTPError, ValueError) as exc:
+                    errors["wikimedia_commons"] = str(exc)
+            candidates.sort(
+                key=lambda item: (-item.review_priority, item.provider, item.source_asset_id)
+            )
+            candidates = candidates[:candidate_limit]
+            persistence = None
+            if persist and candidates:
+                persistence = repository.persist_candidates(target, candidates)
+                totals["inserted"] += persistence.inserted
+                totals["known"] += persistence.already_known
+            totals["candidates"] += len(candidates)
+            results.append(
+                {
+                    "target": asdict(target),
+                    "candidate_count": len(candidates),
+                    "persisted": asdict(persistence) if persistence else None,
+                    "provider_errors": errors,
+                    "review_queue": [
+                        item.manifest(include_ephemeral_preview=False)
+                        for item in candidates[:3]
+                    ],
+                }
+            )
+    finally:
+        if mapillary is not None:
+            mapillary.close()
+        if commons is not None:
+            commons.close()
+
+    typer.echo(
+        json.dumps(
+            {
+                "scope": {"cities": city or "all", "missing_cover_only": missing_cover_only},
+                "persisted": persist,
+                "totals": totals,
+                "results": results,
+                "identity_inferred_from_proximity": False,
+            },
+            indent=2,
+            sort_keys=True,
+            default=str,
+        )
+    )
+
+
+@app.command("media-queue")
+def media_queue(
+    city: list[str] = typer.Option([], "--city", help="Repeat to filter the queue by city"),
+) -> None:
+    """Show the next safe media action for every published establishment."""
+    _, db, _, _ = _components()
+    rows = EstablishmentMediaRepository(db).work_queue(cities=city)
+    counts: dict[str, int] = {}
+    for row in rows:
+        action = str(row["next_action"])
+        counts[action] = counts.get(action, 0) + 1
+    typer.echo(
+        json.dumps(
+            {"counts": counts, "establishments": rows},
+            indent=2,
+            sort_keys=True,
+            default=str,
+        )
+    )
+
+
+@app.command("media-review-source")
+def media_review_source(
+    source_id: str = typer.Option(...),
+    verdict: str = typer.Option(
+        ...,
+        help="exact_storefront, exact_building, site_context, not_venue, or unusable",
+    ),
+    notes: str = typer.Option(..., help="Concrete visual evidence for this verdict"),
+    reviewed_by: str = typer.Option("paloma-media-review"),
+) -> None:
+    """Append a visual identity decision; never rewrite prior review history."""
+    try:
+        source_id = str(UUID(source_id))
+    except ValueError as exc:
+        raise typer.BadParameter("source_id must be a UUID") from exc
+    if verdict not in MEDIA_REVIEW_VERDICTS:
+        raise typer.BadParameter("Unsupported verdict: " + verdict)
+    _, db, _, _ = _components()
+    review_id = EstablishmentMediaRepository(db).record_source_review(
+        source_id,
+        verdict=verdict,
+        reviewed_by=reviewed_by,
+        notes=notes,
+    )
+    typer.echo(json.dumps({"review_id": review_id, "source_id": source_id, "verdict": verdict}))
+
+
+@app.command("media-render")
+def media_render(
+    source: Path = typer.Option(..., exists=True, dir_okay=False, readable=True),
+    output_directory: Path = typer.Option(Path("artifacts/media")),
+    filename_prefix: str = typer.Option(...),
+) -> None:
+    """Render fixed hero/card/thumbnail files without touching production state."""
+    variants = render_artwork_variants(
+        source,
+        output_directory,
+        filename_prefix=filename_prefix,
+    )
+    typer.echo(json.dumps({"variants": [item.manifest() for item in variants]}, indent=2))
+
+
+@app.command("media-ingest-artwork")
+def media_ingest_artwork(
+    establishment_id: str = typer.Option(...),
+    artwork: Path = typer.Option(..., exists=True, dir_okay=False, readable=True),
+    prompt_file: Path = typer.Option(..., exists=True, dir_okay=False, readable=True),
+    disclosure: str = typer.Option(...),
+    asset_kind: str = typer.Option("category_illustration"),
+    source_id: str | None = typer.Option(None),
+    source_input: Path | None = typer.Option(None, exists=True, dir_okay=False, readable=True),
+    attribution: str | None = typer.Option(None),
+    output_license_id: str | None = typer.Option(None),
+    output_license_url: str | None = typer.Option(None),
+    generator: str = typer.Option("openai-imagegen"),
+    generator_version: str = typer.Option("codex-builtin"),
+    output_directory: Path = typer.Option(Path("artifacts/media")),
+) -> None:
+    """Upload a rendered artwork set and register it for a separate quality review."""
+    try:
+        establishment_id = str(UUID(establishment_id))
+    except ValueError as exc:
+        raise typer.BadParameter("establishment_id must be a UUID") from exc
+    if source_id is not None:
+        try:
+            source_id = str(UUID(source_id))
+        except ValueError as exc:
+            raise typer.BadParameter("source_id must be a UUID") from exc
+    allowed_kinds = {
+        "licensed_photo",
+        "storefront_illustration",
+        "location_illustration",
+        "category_illustration",
+    }
+    if asset_kind not in allowed_kinds:
+        raise typer.BadParameter("Unsupported asset_kind: " + asset_kind)
+    if asset_kind == "category_illustration":
+        if source_id is not None or source_input is not None:
+            raise typer.BadParameter("Category illustrations do not accept a source")
+        output_license_id = output_license_id or "Paloma-Proprietary"
+    else:
+        if source_id is None or source_input is None:
+            raise typer.BadParameter("Source-derived artwork requires source_id and source_input")
+        if not attribution or not output_license_id or not output_license_url:
+            raise typer.BadParameter(
+                "Source-derived artwork requires attribution and output license metadata"
+            )
+
+    prompt = prompt_file.read_text(encoding="utf-8").strip()
+    if not prompt:
+        raise typer.BadParameter("prompt_file must not be empty")
+    prompt_sha256 = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+    asset_id = uuid4()
+    render_directory = output_directory / establishment_id / str(asset_id)
+    variants = render_artwork_variants(
+        artwork,
+        render_directory,
+        filename_prefix=establishment_id,
+    )
+
+    settings, db, _, _ = _components()
+    if not settings.supabase_url or not settings.supabase_secret_key:
+        raise typer.BadParameter(
+            "SUPABASE_URL and SUPABASE_SECRET_KEY are required for immutable uploads"
+        )
+    repository = EstablishmentMediaRepository(db)
+    input_sha256 = None
+    with SupabaseMediaStorage(
+        settings.supabase_url,
+        settings.supabase_secret_key,
+    ) as storage:
+        if source_id is not None and source_input is not None:
+            source_summary = inspect_source_image(source_input)
+            extension = _media_extension(source_summary.mime_type)
+            source_object_path = (
+                f"{establishment_id}/{source_id}/source-{source_summary.sha256}.{extension}"
+            )
+            stored_source = storage.upload_immutable(
+                source_input,
+                bucket_id=PRIVATE_SOURCE_BUCKET,
+                object_path=source_object_path,
+                content_type=source_summary.mime_type,
+                public=False,
+            )
+            repository.register_source_file(
+                source_id,
+                bucket_id=stored_source.bucket_id,
+                object_path=stored_source.object_path,
+                mime_type=source_summary.mime_type,
+                width=source_summary.width,
+                height=source_summary.height,
+                byte_size=source_summary.byte_size,
+                sha256=source_summary.sha256,
+            )
+            input_sha256 = source_summary.sha256
+
+        registrations = []
+        for variant in variants:
+            object_path = (
+                f"{establishment_id}/{asset_id}/"
+                f"{variant.variant}-{variant.sha256[:16]}.jpg"
+            )
+            stored = storage.upload_immutable(
+                variant.path,
+                bucket_id=PUBLIC_MEDIA_BUCKET,
+                object_path=object_path,
+                content_type=variant.mime_type,
+                public=True,
+            )
+            if stored.public_url is None:
+                raise RuntimeError("Public media upload did not produce a URL")
+            registrations.append(
+                MediaVariantRegistration(
+                    variant=variant.variant,
+                    bucket_id=stored.bucket_id,
+                    object_path=stored.object_path,
+                    public_url=stored.public_url,
+                    mime_type=variant.mime_type,
+                    width=variant.width,
+                    height=variant.height,
+                    byte_size=variant.byte_size,
+                    sha256=variant.sha256,
+                )
+            )
+
+    repository.register_rendered_asset(
+        asset_id=asset_id,
+        establishment_id=establishment_id,
+        source_id=source_id,
+        asset_kind=asset_kind,
+        generator=generator,
+        generator_version=generator_version,
+        prompt_sha256=prompt_sha256,
+        input_sha256=input_sha256,
+        attribution_text=attribution,
+        disclosure_text=disclosure,
+        output_license_id=output_license_id or "Paloma-Proprietary",
+        output_license_url=output_license_url,
+        variants=registrations,
+        metadata={"prompt_file": prompt_file.name},
+    )
+    typer.echo(
+        json.dumps(
+            {
+                "asset_id": str(asset_id),
+                "establishment_id": establishment_id,
+                "state": "rendered",
+                "next_action": "independent quality review",
+                "variants": [item.manifest() for item in variants],
+            },
+            indent=2,
+        )
+    )
+
+
+@app.command("media-approve-asset")
+def media_approve_asset(
+    asset_id: str = typer.Option(...),
+    notes: str = typer.Option(...),
+    reviewed_by: str = typer.Option("paloma-media-quality-review"),
+) -> None:
+    """Approve a rendered asset after visual QA; publication remains a separate action."""
+    try:
+        asset_id = str(UUID(asset_id))
+    except ValueError as exc:
+        raise typer.BadParameter("asset_id must be a UUID") from exc
+    _, db, _, _ = _components()
+    EstablishmentMediaRepository(db).approve_asset(
+        asset_id,
+        reviewed_by=reviewed_by,
+        notes=notes,
+    )
+    typer.echo(json.dumps({"asset_id": asset_id, "state": "quality_approved"}))
+
+
+@app.command("media-publish-asset")
+def media_publish_asset(asset_id: str = typer.Option(...)) -> None:
+    """Publish only an asset that satisfies the database media contract."""
+    try:
+        asset_id = str(UUID(asset_id))
+    except ValueError as exc:
+        raise typer.BadParameter("asset_id must be a UUID") from exc
+    _, db, _, _ = _components()
+    published_id = EstablishmentMediaRepository(db).publish_asset(asset_id)
+    typer.echo(json.dumps({"asset_id": published_id, "state": "published"}))
+
+
+def _media_extension(mime_type: str) -> str:
+    return {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}[mime_type]
 
 
 @app.command("live-details-health")
@@ -240,21 +735,43 @@ def review_field_conflict(
 def observe_establishment_field(
     establishment_id: str = typer.Option(...),
     city: str = typer.Option(..., help="Exact city of the published establishment"),
-    field_name: str = typer.Option(..., help="Currently limited to operating_status"),
-    value: str = typer.Option(...),
+    field_name: str = typer.Option(..., help="Atomic durable field to verify"),
+    value: str | None = typer.Option(None, help="Scalar field value"),
+    value_json: str | None = typer.Option(
+        None,
+        help="Structured JSON value; required for hours",
+    ),
     reviewer: str = typer.Option(...),
     notes: str = typer.Option(...),
     evidence_url: list[str] = typer.Option(..., "--evidence-url"),
     lease_days: int = typer.Option(90, min=1, max=90),
+    evidence_kind: str = typer.Option(
+        "factual_reference",
+        help="factual_reference or first_party",
+    ),
+    idempotency_key: str | None = typer.Option(None),
     confirm: str = typer.Option(""),
 ) -> None:
-    """Append one bounded staff observation for a materialized establishment."""
+    """Append and immediately resolve one bounded materialized-establishment fact."""
     if confirm != "RECORD_ESTABLISHMENT_OBSERVATION":
         raise typer.BadParameter("Pass --confirm RECORD_ESTABLISHMENT_OBSERVATION")
     try:
         establishment_id = str(UUID(establishment_id))
     except ValueError as exc:
         raise typer.BadParameter("establishment_id must be a UUID") from exc
+    if value is not None and value_json is not None:
+        raise typer.BadParameter("Pass either --value or --value-json, not both")
+    if value_json is not None:
+        try:
+            parsed_value: Any = json.loads(value_json)
+        except json.JSONDecodeError as exc:
+            raise typer.BadParameter("value_json must be valid JSON") from exc
+    elif value is not None:
+        parsed_value = value
+    else:
+        raise typer.BadParameter("Pass --value or --value-json")
+    if field_name == "hours" and value_json is None:
+        raise typer.BadParameter("hours must be supplied with --value-json")
     _, db, _, _ = _components()
     with db.connection() as conn:
         conn.execute(
@@ -275,14 +792,24 @@ def observe_establishment_field(
             conn,
             establishment_id,
             field_name=field_name,
-            value=value,
+            value=parsed_value,
             reviewer=reviewer,
             evidence_urls=tuple(evidence_url),
             note=notes,
             lease_days=lease_days,
+            evidence_kind=evidence_kind,
+            idempotency_key=idempotency_key,
         )
+        resolution = FieldResolver(db).resolve(conn)
         conn.commit()
-    typer.echo(json.dumps(result, indent=2, sort_keys=True))
+    typer.echo(
+        json.dumps(
+            {**result, "resolution": resolution},
+            indent=2,
+            sort_keys=True,
+            default=str,
+        )
+    )
 
 
 def _parse_field_reviews(reviews_json: str) -> list[dict[str, Any]]:

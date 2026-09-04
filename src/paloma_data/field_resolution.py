@@ -9,9 +9,10 @@ from typing import Any
 
 from paloma_data.db import Database, execute_many
 from paloma_data.evidence_ledger import append_linked_source_observations
+from paloma_data.hours_provenance import hours_observation_provenance
 from paloma_data.normalizers import consumer_display_name, normalize_name
 
-RESOLUTION_VERSION = "v5-rights-aware"
+RESOLUTION_VERSION = "v6-hours-freshness"
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,7 +110,8 @@ class FieldResolver:
                    ST_X(e.location::geometry) as longitude,
                    e.neighborhood, e.hours, e.price_level,
                    e.phone_source, e.website_source, e.neighborhood_source,
-                   e.hours_source, e.price_source,
+                   e.hours_source, e.hours_verified_at, e.hours_expires_at,
+                   e.hours_source_url, e.hours_source_kind, e.price_source,
                    pt.slug as primary_type_slug
             from public.establishments e
             join public.primary_types pt on pt.id = e.primary_type_id
@@ -141,10 +143,12 @@ class FieldResolver:
                    field_name,
                    value_text, normalized_value, value_json, source,
                    evidence_confidence::float, identity_confidence::float,
-                   authority::float, source_updated_at, upstream_origin_keys
+                   authority::float, source_updated_at, observed_at, expires_at,
+                   upstream_origin_keys, source_items, metadata
             from catalog.field_observations
             where observation_status = 'asserted'
               and (expires_at is null or expires_at > now())
+              and (field_name <> 'hours' or expires_at is not null)
               and field_name in (
                 'display_name', 'primary_type_slug', 'phone_e164', 'website_url',
                 'address', 'latitude', 'longitude', 'operating_status',
@@ -277,6 +281,7 @@ class FieldResolver:
             )
             neighborhood = self._select_neighborhood(by_field["neighborhood"])
             hours = self._select_attribute(by_field["hours"], 0.58)
+            hours_provenance = hours_observation_provenance(hours)
             price = self._select_attribute(by_field["price_level"], 0.75)
             for selected, metric in (
                 (phone, "phones"),
@@ -330,9 +335,15 @@ class FieldResolver:
                     ),
                     _selected_source(neighborhood, establishment, "neighborhood_source"),
                     _selected_score(neighborhood),
-                    _selected_json(hours, establishment, "hours", "hours_source"),
-                    _selected_source(hours, establishment, "hours_source"),
+                    _selected_json(hours),
+                    _selected_source(
+                        hours, establishment, "hours_source", retain_manual=False
+                    ),
                     _selected_score(hours),
+                    hours_provenance.verified_at if hours_provenance else None,
+                    hours_provenance.expires_at if hours_provenance else None,
+                    hours_provenance.source_url if hours_provenance else None,
+                    hours_provenance.source_kind if hours_provenance else None,
                     _selected_price(price, establishment),
                     _selected_source(price, establishment, "price_source"),
                     _selected_score(price),
@@ -382,7 +393,9 @@ class FieldResolver:
             ):
                 if field_name in protected_fields:
                     continue
-                reason = _review_reason(by_field[field_name], selected, high_risk)
+                reason = _review_reason(
+                    field_name, by_field[field_name], selected, high_risk
+                )
                 if reason:
                     evidence_ids = _conflict_evidence_ids(by_field[field_name])
                     conflicts.append(
@@ -420,6 +433,10 @@ class FieldResolver:
                 hours = %s::jsonb,
                 hours_source = %s,
                 hours_confidence = %s,
+                hours_verified_at = %s,
+                hours_expires_at = %s,
+                hours_source_url = %s,
+                hours_source_kind = %s,
                 price_level = %s::smallint,
                 price_source = %s,
                 price_confidence = %s,
@@ -536,6 +553,10 @@ class FieldResolver:
                     ),
                     "independent_origin_keys": sorted(independent_origins),
                     "best_source": value_row["source"],
+                    "observed_at": value_row.get("observed_at"),
+                    "expires_at": value_row.get("expires_at"),
+                    "source_items": value_row.get("source_items") or [],
+                    "metadata": value_row.get("metadata") or {},
                     "source_count": len(independent_origins),
                     "has_official_web": any(
                         row["source"] == "official_web" for row in matching
@@ -616,11 +637,12 @@ def resolve_candidate_observations(
                id::text as evidence_id, field_name, value_text, normalized_value,
                value_json, source, evidence_confidence::float,
                identity_confidence::float, authority::float, source_updated_at,
-               upstream_origin_keys
+               observed_at, expires_at, upstream_origin_keys, source_items, metadata
         from catalog.field_observations
         where candidate_id = %s::uuid
           and observation_status = 'asserted'
           and (expires_at is null or expires_at > now())
+          and (field_name <> 'hours' or expires_at is not null)
           and field_name in (
             'phone_e164', 'website_url', 'neighborhood', 'hours',
             'price_level', 'setting_slug'
@@ -658,6 +680,8 @@ def resolve_candidate_observations(
         selected = _require_candidate_contact_corroboration(field_name, selected)
         if selected is None:
             result[output_key] = None
+            if field_name == "hours":
+                result.pop("hours_provenance", None)
             field_sources[provenance_key] = None
             field_confidences[provenance_key] = None
             field_evidence_ids[provenance_key] = []
@@ -678,6 +702,17 @@ def resolve_candidate_observations(
             if value not in range(1, 5):
                 value = None
         result[output_key] = value
+        if field_name == "hours":
+            provenance = hours_observation_provenance(selected)
+            if provenance:
+                result["hours_provenance"] = {
+                    "verified_at": provenance.verified_at.isoformat(),
+                    "expires_at": provenance.expires_at.isoformat(),
+                    "source_url": provenance.source_url,
+                    "source_kind": provenance.source_kind,
+                }
+            else:
+                result.pop("hours_provenance", None)
         field_sources[provenance_key] = str(selected["best_source"])
         field_confidences[provenance_key] = round(float(selected["score"]), 3)
         field_evidence_ids[provenance_key] = list(
@@ -758,19 +793,12 @@ def _selected_text(
     return current.get(value_key) if current.get(source_key) == "manual" else None
 
 
-def _selected_json(
-    selected: dict[str, Any] | None,
-    current: dict[str, Any],
-    value_key: str,
-    source_key: str,
-) -> str | None:
+def _selected_json(selected: dict[str, Any] | None) -> str | None:
     if selected:
         value = selected.get("value_json")
         if value is None:
             value = selected.get("value_text")
         return json.dumps(value, sort_keys=True)
-    if current.get(source_key) == "manual" and current.get(value_key) is not None:
-        return json.dumps(current[value_key], sort_keys=True)
     return None
 
 
@@ -792,10 +820,12 @@ def _selected_source(
     selected: dict[str, Any] | None,
     current: dict[str, Any],
     source_key: str,
+    *,
+    retain_manual: bool = True,
 ) -> str | None:
     if selected:
         return str(selected["best_source"])
-    return "manual" if current.get(source_key) == "manual" else None
+    return "manual" if retain_manual and current.get(source_key) == "manual" else None
 
 
 def _selected_score(selected: dict[str, Any] | None) -> float | None:
@@ -891,6 +921,7 @@ def _filter_changed_decisions(
 
 
 def _review_reason(
+    field_name: str,
     rows: list[dict[str, Any]],
     selected: dict[str, Any] | None,
     high_risk: bool,
@@ -902,6 +933,12 @@ def _review_reason(
     }
     if selected is None and len(distinct_values) > 1:
         return "conflicting_admissible_evidence"
+    if field_name == "hours" and selected and len(distinct_values) > 1:
+        return "authoritative_hours_disagreement"
+    if field_name == "hours" and selected:
+        provenance = hours_observation_provenance(selected)
+        if provenance and provenance.source_kind in {"first_party", "merchant"}:
+            return None
     if high_risk and selected and len(selected.get("independent_origin_keys") or ()) < 2:
         return "single_origin_high_risk_field"
     return None
@@ -1034,13 +1071,85 @@ def _reapply_manual_projections(conn: Any) -> None:
           select * from catalog.current_field_decisions
           where resolver_version like 'manual-review-%'
             and field_name = 'hours'
+        ), selected as (
+          select d.*,
+                 observation.id as observation_id,
+                 observation.observed_at,
+                 observation.expires_at,
+                 observation.source,
+                 observation.source_items,
+                 observation.metadata,
+                 source_link.url as source_url
+          from decisions d
+          left join lateral (
+            select evidence.*
+            from catalog.field_observations evidence
+            where evidence.id = any(d.evidence_ids)
+              and evidence.field_name = 'hours'
+              and evidence.observation_status = 'asserted'
+              and evidence.expires_at > now()
+              and evidence.value_json = d.value_json
+            order by
+              (evidence.metadata->>'evidence_kind' = 'first_party') desc,
+              (evidence.source = 'merchant') desc,
+              evidence.authority desc,
+              evidence.evidence_confidence desc,
+              evidence.observed_at desc,
+              evidence.id desc
+            limit 1
+          ) observation on true
+          left join lateral (
+            select item->>'url' as url
+            from jsonb_array_elements(coalesce(observation.source_items, '[]'::jsonb)) item
+            where item->>'url' ~ '^https://[^[:space:]]+$'
+            order by (item->>'kind' = 'first_party') desc, item->>'url'
+            limit 1
+          ) source_link on true
         )
         update public.establishments e
-        set hours = case when d.decision_status = 'selected' then d.value_json end,
-            hours_source = case when d.decision_status = 'selected' then 'manual' end,
-            hours_confidence = case when d.decision_status = 'selected' then d.confidence end,
+        set hours = case
+              when d.decision_status = 'selected' and d.observation_id is not null
+                then d.value_json
+            end,
+            hours_source = case
+              when d.decision_status = 'selected' and d.observation_id is not null
+                then 'manual'
+            end,
+            hours_confidence = case
+              when d.decision_status = 'selected' and d.observation_id is not null
+                then d.confidence
+            end,
+            hours_verified_at = case
+              when d.decision_status = 'selected' and d.observation_id is not null
+                then d.observed_at
+            end,
+            hours_expires_at = case
+              when d.decision_status = 'selected' and d.observation_id is not null
+                then d.expires_at
+            end,
+            hours_source_url = case
+              when d.decision_status = 'selected' and d.observation_id is not null
+                then d.source_url
+            end,
+            hours_source_kind = case
+              when d.decision_status <> 'selected' or d.observation_id is null then null
+              when d.metadata->>'evidence_kind' = 'first_party'
+                or exists (
+                  select 1
+                  from jsonb_array_elements(coalesce(d.source_items, '[]'::jsonb)) item
+                  where item->>'kind' = 'first_party'
+                ) then 'first_party'
+              when d.source = 'merchant' then 'merchant'
+              when d.source = 'firsthand' then 'firsthand'
+              when d.source = 'manual' then 'manual_review'
+              when d.source in (
+                'ca_abc', 'datasf', 'datasf_neighborhoods', 'fsq',
+                'osm', 'overture', 'wikidata'
+              ) then 'open_data'
+              else 'other'
+            end,
             updated_at = now()
-        from decisions d where d.establishment_id = e.id
+        from selected d where d.establishment_id = e.id
         """
     )
     conn.execute(

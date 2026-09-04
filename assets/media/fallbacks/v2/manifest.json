@@ -1,0 +1,133 @@
+{
+  "version": "v2",
+  "created_at": "2026-09-03",
+  "generator": "openai-imagegen",
+  "generator_version": "codex-builtin",
+  "output_license_id": "Paloma-Proprietary",
+  "disclosure": "Paloma category concept artwork; not a photograph or depiction of this establishment",
+  "retained_template": "category-billiards-bar",
+  "templates": [
+    {
+      "key": "category-bar",
+      "source": "category-bar.jpg",
+      "source_sha256": "062389ab81a9b8c76502c1a049e7e328dd31ace0711f8c284feacf5da77b65f9",
+      "prompt": "category-bar.prompt.txt",
+      "prompt_sha256": "390c145f2fedb37eb1122de3ac80ae4714620f74fcbe017b5a6063e0e1142e3c",
+      "style_reference": "family-other"
+    },
+    {
+      "key": "category-beer-bar",
+      "source": "category-beer-bar.jpg",
+      "source_sha256": "c698c60ef7b4071e408cdb3f1ff1969011982c9855018f4a9c0db64f0555f49c",
+      "prompt": "category-beer-bar.prompt.txt",
+      "prompt_sha256": "23c3f2993e965728288a8a6a702c9eb69ce1c3468a90e453d9b1445c42ad64b4",
+      "style_reference": "family-beer"
+    },
+    {
+      "key": "category-brewery",
+      "source": "category-brewery.jpg",
+      "source_sha256": "2f0f459c2ec9a96410e23496b60d0309c6f880652ea0220fab25564d43714cc5",
+      "prompt": "category-brewery.prompt.txt",
+      "prompt_sha256": "6f92b51712501c0e2f8025431735c25e8d5715a8b3d3b68d9d3e7d2f5374335b",
+      "style_reference": "family-beer"
+    },
+    {
+      "key": "category-brewpub",
+      "source": "category-brewpub.jpg",
+      "source_sha256": "7db12ec3bdcf9e2d750bdef94269a268fb17a7ff8baf73f6a0590e21adf3711b",
+      "prompt": "category-brewpub.prompt.txt",
+      "prompt_sha256": "08a944317035a83ae7093db10ef0ae618f397c3cc3ed7ab139d9514ba3d88188",
+      "style_reference": "family-beer"
+    },
+    {
+      "key": "category-cocktail-bar",
+      "source": "category-cocktail-bar.jpg",
+      "source_sha256": "034caacbcada0e8538bbc3074d811bafac2a028c44593ddfddc3751bb7a144ae",
+      "prompt": "category-cocktail-bar.prompt.txt",
+      "prompt_sha256": "d2cdc1293ebbc1da773f31ff6b8f593b8c43f4431e330c096553432531bcc146",
+      "style_reference": "family-spirits"
+    },
+    {
+      "key": "category-distillery",
+      "source": "category-distillery.jpg",
+      "source_sha256": "5be6bb1db793d76d8b081c2d3cc6502d095a3bdaa9cfedcba5d68a0987010b34",
+      "prompt": "category-distillery.prompt.txt",
+      "prompt_sha256": "05d56aadb348f708c068de87632bc4447261766719de3e70987a81875e6a5ee7",
+      "style_reference": "family-spirits"
+    },
+    {
+      "key": "category-dive-bar",
+      "source": "category-dive-bar.jpg",
+      "source_sha256": "80f1d11e8cb1b3bd74646f44f7329a8ed5a625c8e30a17555e239a6f97e79fa0",
+      "prompt": "category-dive-bar.prompt.txt",
+      "prompt_sha256": "199169ec54cb9447c3639ede9d2f0be3316bc51376bc2413938cc094858ce754",
+      "style_reference": "family-other"
+    },
+    {
+      "key": "category-lounge",
+      "source": "category-lounge.jpg",
+      "source_sha256": "20d08c06807fd0ad3990ccaab70adbc3481f1478e89a2dedeb1d368add3a8577",
+      "prompt": "category-lounge.prompt.txt",
+      "prompt_sha256": "6aaba564a991a6114992bbbdd90ba7600337d5ba770b64cfc9fb703a952b45d2",
+      "style_reference": "family-spirits"
+    },
+    {
+      "key": "category-nightclub",
+      "source": "category-nightclub.jpg",
+      "source_sha256": "0f80d918a2cd68037bba09e221fe6405561fe4ab0a6a004e659015164cf44a09",
+      "prompt": "category-nightclub.prompt.txt",
+      "prompt_sha256": "f5c71d8c5fb687ec9024b15a8d65504d68efaee04ad96dadd3cd9e9ef67637a5",
+      "style_reference": "family-spirits"
+    },
+    {
+      "key": "category-pub",
+      "source": "category-pub.jpg",
+      "source_sha256": "948a832b5cec9238138e0eae8697381661c920dc40f22d5599bd38c96b5376b8",
+      "prompt": "category-pub.prompt.txt",
+      "prompt_sha256": "53cfa04085a918bc737844d2fe2ef187bf37dc54bb3094e51603f7fa1a922f5b",
+      "style_reference": "family-other"
+    },
+    {
+      "key": "category-sports-bar",
+      "source": "category-sports-bar.jpg",
+      "source_sha256": "ce470d1c43a4d10b6f04c8419aedd57c1d2f51478dff8b75a8af6df77bc41b67",
+      "prompt": "category-sports-bar.prompt.txt",
+      "prompt_sha256": "e5bc67aa6ceaee5ddf28732341e10e74e2a655d0c5ed05f69bb6c9962e3c98e5",
+      "edit_prompt": "category-sports-bar.edit.prompt.txt",
+      "edit_prompt_sha256": "fcf3f6500157729b3ced47aa6e632dd07682f4f86a437033b5a06bcec807d122",
+      "style_reference": "family-beer"
+    },
+    {
+      "key": "category-taproom",
+      "source": "category-taproom.jpg",
+      "source_sha256": "324bba52bf94f26ad62c20dfcb051db2d53f5df87057deeed8ae31c815c8bdee",
+      "prompt": "category-taproom.prompt.txt",
+      "prompt_sha256": "795cffd046383faecdbfe30c43b21313d56fac6fdcea93ba27e4b64f87c17f3d",
+      "style_reference": "family-beer"
+    },
+    {
+      "key": "category-tasting-room",
+      "source": "category-tasting-room.jpg",
+      "source_sha256": "e61caf422289d455895fc6774cb8460769eec730c63665bd89a8a6b142d05dbd",
+      "prompt": "category-tasting-room.prompt.txt",
+      "prompt_sha256": "53827f596acb80f9aa78f1ef211d42dca649cd77c013adcdc22eaada01b8e15e",
+      "style_reference": "family-wine"
+    },
+    {
+      "key": "category-wine-bar",
+      "source": "category-wine-bar.jpg",
+      "source_sha256": "dea819795e119b7b1df5916ba871fdfeab5832811fe3061668b4d81c0fe69367",
+      "prompt": "category-wine-bar.prompt.txt",
+      "prompt_sha256": "febc9c094e1e2a1258b4f0388459ed2131f972e16c05793ab863ffd57188d1b6",
+      "style_reference": "family-wine"
+    },
+    {
+      "key": "category-winery",
+      "source": "category-winery.jpg",
+      "source_sha256": "d756589a709e66760380b26216da275fd39cae2ed2afe2ed246e5eb3c1daf8ea",
+      "prompt": "category-winery.prompt.txt",
+      "prompt_sha256": "87cb3ad8c498ab8bb2eda9d09a51d2ceef3567d4bc375477af7cbdc7d2f69fe0",
+      "style_reference": "family-wine"
+    }
+  ]
+}

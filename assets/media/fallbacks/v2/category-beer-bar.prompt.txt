@@ -1,0 +1,8 @@
+Use case: stylized-concept
+Asset type: durable establishment-category cover for a mobile nightlife app
+Input image: style reference only; preserve its premium editorial print texture and craft detail, but create a new composition and palette.
+Primary request: create a narrow urban craft beer bar at early evening, with a long illuminated tap wall clearly visible through one broad window, chalkboard-like blank panels with absolutely no writing, high communal tables, and stacks of clean tasting glasses.
+Style/medium: sophisticated modern comic-book realism with screenprint/linocut texture.
+Composition/framing: landscape, slightly off-center street-level perspective, safe for an 8:5 center crop; category cues centered and lower third visually quiet for UI copy.
+Lighting/mood: social and energetic; deep teal facade, mustard-gold light, cobalt shadows, restrained coral accents.
+Constraints: generic category concept, not a real venue; no readable text, logos, trademarks, branded taps, watermark, border, frame, or identifiable foreground people.

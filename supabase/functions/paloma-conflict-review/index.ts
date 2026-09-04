@@ -213,6 +213,10 @@ async function listConflicts(
           establishment.website_url,
           establishment.neighborhood,
           establishment.hours,
+          establishment.hours_verified_at,
+          establishment.hours_expires_at,
+          establishment.hours_source_url,
+          establishment.hours_source_kind,
           establishment.price_level,
           establishment.status,
           extensions.st_y(establishment.location::geometry)::text as latitude,
@@ -256,6 +260,14 @@ async function listConflicts(
         end as current_value_text,
         case when page.field_name = 'hours' then page.hours else null::jsonb end
           as current_value_json,
+        case when page.field_name = 'hours' then page.hours_verified_at end
+          as current_verified_at,
+        case when page.field_name = 'hours' then page.hours_expires_at end
+          as current_expires_at,
+        case when page.field_name = 'hours' then page.hours_source_url end
+          as current_source_url,
+        case when page.field_name = 'hours' then page.hours_source_kind end
+          as current_source_kind,
         evidence.id::text as evidence_id,
         evidence.value_text as evidence_value_text,
         evidence.value_json as evidence_value_json,
@@ -320,6 +332,10 @@ async function listConflicts(
         current: {
           value_text: row.current_value_text ?? null,
           value_json: row.current_value_json ?? null,
+          verified_at: row.current_verified_at ?? null,
+          expires_at: row.current_expires_at ?? null,
+          source_url: row.current_source_url ?? null,
+          source_kind: row.current_source_kind ?? null,
         },
         evidence: [],
       };
@@ -438,7 +454,12 @@ async function reviewConflict(
                evidence_confidence::float8,
                identity_confidence::float8,
                authority::float8,
-               upstream_origin_keys
+               upstream_origin_keys,
+               source,
+               observed_at,
+               expires_at,
+               source_items,
+               metadata
         from catalog.field_observations
         where id = ${body.selectedEvidenceId}::uuid
           and (
@@ -448,6 +469,7 @@ async function reviewConflict(
           and field_name = ${fieldName}
           and observation_status = 'asserted'
           and (expires_at is null or expires_at > now())
+          and (${fieldName} <> 'hours' or expires_at is not null)
       `;
       evidence = evidenceRows[0] ?? null;
       if (!evidence) {
@@ -514,7 +536,8 @@ async function reviewConflict(
           'reviewer', ${user.id}::text,
           'reviewer_email', ${user.email}::text,
           'notes', ${body.notes}::text,
-          'conflict_id', ${body.conflictId}::bigint
+          'conflict_id', ${body.conflictId}::bigint,
+          'selected_evidence_id', ${body.selectedEvidenceId}::text
         )
       )
       returning id::text
@@ -623,11 +646,16 @@ async function projectReviewedValue(
     `;
   } else if (fieldName === "hours") {
     const valueJson = evidenceJsonText(evidence);
+    const provenance = hoursProvenance(evidence);
     await tx`
       update public.establishments
-      set hours = ${valueJson}::jsonb,
-          hours_source = ${source},
-          hours_confidence = ${confidence},
+      set hours = ${provenance ? valueJson : null}::jsonb,
+          hours_source = ${provenance ? source : null},
+          hours_confidence = ${provenance ? confidence : null},
+          hours_verified_at = ${provenance?.verifiedAt ?? null}::timestamptz,
+          hours_expires_at = ${provenance?.expiresAt ?? null}::timestamptz,
+          hours_source_url = ${provenance?.sourceURL ?? null},
+          hours_source_kind = ${provenance?.sourceKind ?? null},
           updated_at = now()
       where id = ${establishmentId}::uuid
     `;
@@ -641,6 +669,63 @@ async function projectReviewedValue(
       where id = ${establishmentId}::uuid
     `;
   }
+}
+
+function hoursProvenance(evidence: Record<string, unknown> | null): {
+  verifiedAt: string;
+  expiresAt: string;
+  sourceURL: string | null;
+  sourceKind: string;
+} | null {
+  if (!evidence?.observed_at || !evidence.expires_at) return null;
+  const verifiedAt = String(evidence.observed_at);
+  const expiresAt = String(evidence.expires_at);
+  if (
+    !Number.isFinite(Date.parse(verifiedAt)) ||
+    !Number.isFinite(Date.parse(expiresAt)) ||
+    Date.parse(expiresAt) <= Date.parse(verifiedAt)
+  ) return null;
+  const metadata = object(evidence.metadata) ?? {};
+  const sourceItems = array(evidence.source_items).map(object).filter(
+    Boolean,
+  ) as Record<string, unknown>[];
+  const evidenceKind = optionalText(String(metadata.evidence_kind ?? ""), 64);
+  const firstParty = evidenceKind === "first_party" ||
+    sourceItems.some((item) => item.kind === "first_party");
+  const source = String(evidence.source ?? "");
+  const sourceKind = firstParty
+    ? "first_party"
+    : source === "merchant"
+    ? "merchant"
+    : source === "firsthand"
+    ? "firsthand"
+    : source === "manual"
+    ? "manual_review"
+    : [
+        "ca_abc",
+        "datasf",
+        "datasf_neighborhoods",
+        "fsq",
+        "osm",
+        "overture",
+        "wikidata",
+      ].includes(source)
+    ? "open_data"
+    : "other";
+  const sourceURL = sourceItems
+    .sort((left, right) =>
+      Number(right.kind === "first_party") - Number(left.kind === "first_party")
+    )
+    .map((item) => item.url)
+    .find((value) =>
+      typeof value === "string" && /^https:\/\/\S+$/.test(value)
+    ) ?? null;
+  return {
+    verifiedAt,
+    expiresAt,
+    sourceURL: typeof sourceURL === "string" ? sourceURL : null,
+    sourceKind,
+  };
 }
 
 function evidenceText(evidence: Record<string, unknown> | null): string | null {
@@ -749,6 +834,16 @@ function stringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item) => typeof item === "string").map(String)
     : [];
+}
+
+function object(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function array(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
 }
 
 function optionalText(value: string | null, maximum: number): string | null {

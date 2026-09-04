@@ -1,0 +1,8 @@
+Use case: stylized-concept
+Asset type: durable establishment-category cover for a mobile nightlife app
+Input image: style reference only; keep the tactile premium print treatment while making this scene rougher, simpler, and compositionally distinct.
+Primary request: create a beloved, weathered dive bar in a low one-story corner building just after sunset, with a dented metal awning, old brick, a glowing jukebox and vinyl stools inside, a generic geometric neon shape with no letters, and patched sidewalk texture.
+Style/medium: expressive editorial comic-book realism, heavier ink, distressed screenprint grain.
+Composition/framing: low horizontal facade from across the street, safe for an 8:5 center crop; iconic silhouette centered and lower third dark enough for white UI text.
+Lighting/mood: scruffy but inviting; faded turquoise, nicotine amber, oxblood red, asphalt gray, and electric-blue shadows.
+Constraints: celebrate character without depicting neglect or danger; not a real business; absolutely no readable text, logos, trademarks, stickers with brands, watermark, border, frame, or identifiable foreground people.

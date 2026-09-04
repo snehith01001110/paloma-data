@@ -1,0 +1,8 @@
+Use case: stylized-concept
+Asset type: durable establishment-category cover for a mobile nightlife app
+Input image: style reference only; keep the premium tactile editorial finish but move to a rural landscape with entirely different architecture and daylight.
+Primary request: create a contemporary independent winery overlooking rows of vines at golden hour, with a low stone-and-wood production building, barrel-room doors, a shaded tasting terrace, distant hills, and subtle harvest crates without markings.
+Style/medium: cinematic landscape editorial illustration, sophisticated comic-book realism, restrained linocut texture.
+Composition/framing: panoramic vineyard leading toward the winery, safe for an 8:5 center crop; building in middle 70% and lower foreground simplified enough for interface text.
+Lighting/mood: expansive and serene; sunlit ochre, vine green, dusty lavender hills, warm stone, and long indigo shadows.
+Constraints: generic category concept only; no readable text, winery name, labels, logos, trademarks, watermark, border, frame, or identifiable foreground people.

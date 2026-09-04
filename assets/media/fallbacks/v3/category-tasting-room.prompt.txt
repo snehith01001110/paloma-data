@@ -1,0 +1,10 @@
+Use case: stylized-concept
+Asset type: thumbnail-first category artwork for a mobile nightlife directory
+Input images: Image 1 is a style reference only; do not reuse its bottle or lowball-glass composition.
+Primary request: create a minimal generic illustration representing a tasting room.
+Subject: three simple stemless tasting glasses arranged on one broad horizontal tasting-flight paddle, reduced to bold geometric forms.
+Style/medium: match Image 1's premium flat editorial screenprint system, clean vector-like shapes and faint paper grain; airy and refined, not photorealistic.
+Composition/framing: landscape with a centered square-safe cluster filling roughly 68 percent of the canvas and generous outer padding; instantly readable in a rounded 72-by-68-point thumbnail.
+Color palette: warm cream background, deep forest-green paddle, dusty rose and muted ochre pours, muted mint accent.
+Constraints: maximum 7 major shapes; thick clear edges; strong contrast; no room, vineyard, table scene, people, perspective, tiny glass details, fine linework, gradients, readable text, letters, logos, trademarks, border, frame, or watermark.
+Avoid: realistic reflections, multiple accessories, clutter.

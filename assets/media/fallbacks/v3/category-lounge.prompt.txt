@@ -1,0 +1,10 @@
+Use case: stylized-concept
+Asset type: thumbnail-first category artwork for a mobile nightlife directory
+Input images: Image 1 is a style reference only; do not reuse its bottle or glass composition.
+Primary request: create a minimal generic illustration representing a lounge.
+Subject: one oversized low curved lounge chair paired with one simple globe floor lamp, reduced to elegant bold geometric forms.
+Style/medium: match Image 1's premium flat editorial screenprint system, clean vector-like shapes and faint paper grain; calm and sophisticated, not photorealistic.
+Composition/framing: landscape with a centered square-safe symbol filling roughly 68 percent of the canvas and generous outer padding; instantly readable in a rounded 72-by-68-point thumbnail.
+Color palette: deep aubergine background, dusty rose chair, cream lamp, muted mint cushion, restrained ochre glow circle.
+Constraints: maximum 7 major shapes; thick clear edges; strong contrast; no room, bar, windows, scenery, people, perspective, small furniture, fine linework, gradients, readable text, letters, logos, trademarks, border, frame, or watermark.
+Avoid: interior-design detail, realistic shadows, clutter.

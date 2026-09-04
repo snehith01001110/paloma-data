@@ -6,6 +6,7 @@ import {
   yelpAttributionUrl,
   yelpBusinessDetailsUrl,
   yelpBusinessSearchUrl,
+  yelpCoverImageUrl,
   yelpProviderErrorCode,
 } from "./yelp.ts";
 
@@ -24,6 +25,7 @@ const business = {
   coordinates: { latitude: 37.7901, longitude: -122.3901 },
   categories: [{ alias: "cocktailbars", title: "Cocktail Bars" }],
   phone: "+14155551212",
+  image_url: "https://s3-media1.fl.yelpcdn.com/bphoto/night-owl/o.jpg",
   price: "$$$",
   hours: [{
     hours_type: "REGULAR",
@@ -62,6 +64,8 @@ Deno.test("validates and projects Yelp detail fields without relabeling its URL"
       settings: true,
     }),
     {
+      cover_image_url:
+        "https://s3-media1.fl.yelpcdn.com/bphoto/night-owl/o.jpg",
       phone_e164: "+14155551212",
       website_url: null,
       hours: {
@@ -153,6 +157,7 @@ Deno.test("drops malformed Yelp optional fields", () => {
       settings: true,
     }),
     {
+      cover_image_url: null,
       phone_e164: null,
       website_url: null,
       hours: null,
@@ -160,6 +165,21 @@ Deno.test("drops malformed Yelp optional fields", () => {
       price_level: null,
       setting_slugs: [],
     },
+  );
+});
+
+Deno.test("accepts only Yelp CDN cover-image URLs", () => {
+  assertEquals(
+    yelpCoverImageUrl({
+      image_url: "http://s3-media2.fl.yelpcdn.com/bphoto/night-owl/o.jpg",
+    }),
+    "https://s3-media2.fl.yelpcdn.com/bphoto/night-owl/o.jpg",
+  );
+  assertEquals(
+    yelpCoverImageUrl({
+      image_url: "https://images.example.com/night-owl.jpg",
+    }),
+    null,
   );
 });
 

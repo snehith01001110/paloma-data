@@ -31,6 +31,6 @@ jobs:
       - run: uv run pytest -q
       - run: deno fmt --check supabase/functions
       - run: deno lint supabase/functions
-      - run: deno check supabase/functions/venue-live-details/index.ts supabase/functions/venue-live-details/provider_cache.ts supabase/functions/paloma-data-progress/index.ts supabase/functions/paloma-data-credentials/index.ts supabase/functions/paloma-abc-export/index.ts supabase/functions/paloma-conflict-review/index.ts
-      - run: deno test supabase/functions/venue-live-details
+      - run: deno check supabase/functions/venue-live-details/index.ts supabase/functions/venue-live-details/provider_cache.ts supabase/functions/paloma-data-progress/index.ts supabase/functions/paloma-data-credentials/index.ts supabase/functions/paloma-abc-export/index.ts supabase/functions/paloma-conflict-review/index.ts supabase/functions/paloma-media-upload/index.ts
+      - run: deno test supabase/functions/venue-live-details supabase/functions/paloma-media-upload
       - run: node scripts/check_dashboard.mjs

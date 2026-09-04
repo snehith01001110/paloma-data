@@ -1,0 +1,8 @@
+Use case: stylized-concept
+Asset type: durable establishment-category cover for a mobile nightlife app
+Input image: style reference only; retain the premium tactile illustration finish, not its facade or nighttime composition.
+Primary request: create a spacious independent production brewery courtyard in late afternoon, with large stainless and copper fermentation tanks visible through tall industrial windows, a loading-bay silhouette, grain sacks without markings, and a small tasting patio.
+Style/medium: architectural editorial illustration, modern comic-book realism, subtle screenprint grain.
+Composition/framing: wide low-angle industrial exterior, safe for an 8:5 center crop; tanks form the central focal point; reserve a calm darker lower band for interface text.
+Lighting/mood: open and industrious; pale blue sky, copper highlights, charcoal steel, eucalyptus green, warm late-day sun.
+Constraints: generic category concept only; no readable text, brewery name, logo, trademark, branded equipment, watermark, border, frame, or identifiable foreground people.

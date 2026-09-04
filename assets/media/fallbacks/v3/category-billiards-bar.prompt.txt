@@ -1,0 +1,10 @@
+Use case: stylized-concept
+Asset type: thumbnail-first category artwork for a mobile nightlife directory
+Input images: Image 1 is a style reference only; do not reuse its bottle or glass composition.
+Primary request: create a minimal generic illustration representing a billiards bar.
+Subject: two oversized billiard balls with one simple diagonal cue crossing behind them; bold geometric forms, with a single small solid circle on each ball and no numbers.
+Style/medium: match Image 1's premium flat editorial screenprint system, clean vector-like shapes and faint paper grain; not photorealistic.
+Composition/framing: landscape with one centered square-safe symbol filling roughly 70 percent of the canvas and generous outer padding; instantly readable in a rounded 72-by-68-point thumbnail.
+Color palette: dark forest-green background, cream cue, muted mint ball, dusty rose ball, restrained ochre circles.
+Constraints: maximum 6 major shapes; thick clear edges; strong contrast; no table scene, storefront, room, people, perspective, small objects, fine linework, gradients, readable text, numbers, letters, logos, trademarks, border, frame, or watermark.
+Avoid: realistic reflections, detailed rack, decorative clutter.

@@ -145,7 +145,10 @@ Deno.serve(async (request: Request) => {
     }
 
     requested = requestedFields(place);
-    if (!hasRequestedLiveFields(requested)) {
+    // A Yelp cover is not catalog completeness: it remains a transient,
+    // attributed detail-view enhancement even when every durable fact exists.
+    // Without Yelp credentials there is nothing safe to request for it.
+    if (!hasRequestedLiveFields(requested) && !yelpApiKey) {
       return json({ available: false, reason: "durable_details_complete" });
     }
 
@@ -178,7 +181,15 @@ Deno.serve(async (request: Request) => {
 
     foursquareRequested = missingLiveFields(requested, providerResults);
     if (!hasRequestedLiveFields(foursquareRequested)) {
-      return liveDetailsJson(liveDetailsResponse(providerResults)!);
+      if (shouldDiscoverYelp && yelpApiKey) {
+        EdgeRuntime.waitUntil(
+          discoverYelpLink(databaseUrl, userId, place, yelpApiKey),
+        );
+      }
+      const partial = liveDetailsResponse(providerResults);
+      return partial
+        ? liveDetailsJson(partial)
+        : json({ available: false, reason: "not_available" });
     }
     if (!fsqApiKey) {
       const partial = liveDetailsResponse(providerResults);
@@ -291,7 +302,11 @@ async function eligiblePlace(
       fsq.source_record_id as fsq_place_id,
       e.phone_e164 is null as needs_phone,
       e.website_url is null as needs_website,
-      e.hours is null as needs_hours,
+      (
+        e.hours is null
+        or e.hours_expires_at is null
+        or e.hours_expires_at <= now()
+      ) as needs_hours,
       e.price_level is null as needs_price,
       not exists (
         select 1 from public.establishment_settings es

@@ -100,7 +100,12 @@ jobs:
 
       - name: Daily safety sweep enqueue
         if: github.event_name == 'schedule' && github.event.schedule == '45 14 * * *'
-        run: paloma-data pipeline-enqueue-sweep
+        run: |
+          # Remove expired durable fields before the app's next normal usage window,
+          # then queue the broader publication-lease sweep.
+          paloma-data resolve-fields
+          paloma-data pipeline-enqueue-sweep
+          paloma-data hours-review-queue --limit 1000
 
       - name: Validate consumer live-details eligibility
         if: github.event_name == 'schedule'

@@ -1,0 +1,8 @@
+Use case: stylized-concept
+Asset type: durable establishment-category cover for a mobile nightlife app
+Input image: style reference only; borrow its fine editorial texture and elegance, but create a bright daytime composition unlike the reference storefront.
+Primary request: create a refined tasting room in a garden courtyard during soft daylight, with a pale stone tasting counter, neatly arranged tasting flights, stemware, sample bottles without labels, linen details, olive trees, and an intimate educational feel.
+Style/medium: luminous modern comic-book realism with delicate linocut/screenprint texture.
+Composition/framing: open courtyard seen through an arch, safe for an 8:5 center crop; tasting counter central and lower third restrained for white UI copy.
+Lighting/mood: calm and considered; warm limestone, olive green, pale peach, muted burgundy, and soft blue shadows.
+Constraints: generic category concept, not a real tasting room; no readable labels, text, names, logos, trademarks, watermark, border, frame, or identifiable foreground people.

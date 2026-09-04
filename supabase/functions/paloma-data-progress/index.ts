@@ -187,7 +187,8 @@ async function liveCatalogRows(
       countQuery,
       sql`
         select e.id::text, e.name, e.address, e.city, e.region, e.neighborhood,
-               e.phone_e164, e.website_url, e.hours is not null as has_hours,
+               e.phone_e164, e.website_url,
+               (e.hours is not null and e.hours_expires_at > now()) as has_hours,
                e.price_level is not null as has_price,
                e.access_mode, e.verification_tier, e.last_verified_at,
                e.verification_expires_at,
@@ -225,7 +226,8 @@ async function liveCatalogRows(
     countQuery,
     sql`
       select e.id::text, e.name, e.address, e.city, e.region, e.neighborhood,
-             e.phone_e164, e.website_url, e.hours is not null as has_hours,
+             e.phone_e164, e.website_url,
+             (e.hours is not null and e.hours_expires_at > now()) as has_hours,
              e.price_level is not null as has_price,
              e.access_mode, e.verification_tier, e.last_verified_at,
              e.verification_expires_at,
@@ -384,7 +386,17 @@ async function v2Payload(sql: Sql, runtimeApplied: boolean) {
         count(*) filter (where is_safe and phone_e164 is not null)::bigint as phone,
         count(*) filter (where is_safe and website_url is not null)::bigint as website,
         count(*) filter (where is_safe and neighborhood is not null)::bigint as neighborhood,
-        count(*) filter (where is_safe and hours is not null)::bigint as hours,
+        count(*) filter (
+          where is_safe and hours is not null and hours_expires_at > now()
+        )::bigint as hours,
+        count(*) filter (
+          where is_safe and (hours is null or hours_expires_at is null or hours_expires_at <= now())
+        )::bigint as hours_missing_or_stale,
+        count(*) filter (
+          where is_safe and hours is not null
+            and hours_expires_at > now()
+            and hours_expires_at <= now() + interval '14 days'
+        )::bigint as hours_reverification_due,
         count(*) filter (where is_safe and price_level is not null)::bigint as price,
         count(*) filter (
           where is_safe and exists (
@@ -793,7 +805,7 @@ async function v2Payload(sql: Sql, runtimeApplied: boolean) {
     : null;
 
   return {
-    dashboard_version: "v3",
+    dashboard_version: "v4-hours-freshness",
     schema_version: "catalog_v2",
     decision_version: decisionVersion,
     generated_at: new Date().toISOString(),
@@ -858,6 +870,8 @@ async function v2Payload(sql: Sql, runtimeApplied: boolean) {
       pending_published_field_conflicts: number(
         fieldConflictRows[0]?.pending_published_field_conflicts,
       ),
+      hours_missing_or_stale: number(overall.hours_missing_or_stale),
+      hours_reverification_due: number(overall.hours_reverification_due),
     },
     runtime: {
       applied: runtimeApplied,

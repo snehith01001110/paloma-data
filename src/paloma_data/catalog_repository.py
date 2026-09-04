@@ -13,6 +13,7 @@ from paloma_data.catalog import (
     VerificationEvidence,
 )
 from paloma_data.db import Database
+from paloma_data.hours_provenance import hours_observation_provenance
 from paloma_data.models import SourceRecord
 from paloma_data.normalizers import normalize_address, normalize_name
 
@@ -1190,7 +1191,8 @@ class CatalogRepository:
                    phone_e164, phone_source, phone_confidence,
                    website_url, website_source, website_confidence,
                    neighborhood, neighborhood_source, neighborhood_confidence,
-                   hours, hours_source, hours_confidence,
+                   hours, hours_source, hours_confidence, hours_verified_at,
+                   hours_expires_at, hours_source_url, hours_source_kind,
                    price_level, price_source, price_confidence
             from public.establishments
             where id = %s::uuid
@@ -1203,6 +1205,17 @@ class CatalogRepository:
         )
         field_sources = dict(resolved.get("field_sources") or {})
         field_confidences = dict(resolved.get("field_confidences") or {})
+        hours_provenance = _hours_projection_provenance(
+            conn,
+            candidate_id,
+            resolved.get("hours"),
+        )
+        if resolved.get("hours") is not None and hours_provenance is None:
+            # A schedule without a bounded supporting observation cannot enter the
+            # public projection. Runtime providers can still fill the resulting gap.
+            resolved["hours"] = None
+            field_sources["hours"] = None
+            field_confidences["hours"] = None
         type_row = conn.execute(
             "select id from public.primary_types where slug = %s",
             (resolved.get("primary_type_slug"),),
@@ -1273,7 +1286,8 @@ class CatalogRepository:
               public_access_verified_at, publication_evaluated_at, published_at,
               phone_source, phone_confidence, website_source,
               website_confidence, neighborhood_source, neighborhood_confidence,
-              hours_source, hours_confidence,
+              hours_source, hours_confidence, hours_verified_at,
+              hours_expires_at, hours_source_url, hours_source_kind,
               price_source, price_confidence, verification_tier,
               verification_expires_at, verification_version, updated_at
             ) values (
@@ -1287,7 +1301,8 @@ class CatalogRepository:
               %s, now(), coalesce(
                 (select published_at from public.establishments where id = %s::uuid), now()
               ),
-              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now()
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+              %s, %s, %s, now()
             )
             on conflict (id) do update set
               catalog_candidate_id = excluded.catalog_candidate_id,
@@ -1327,6 +1342,10 @@ class CatalogRepository:
               neighborhood_confidence = excluded.neighborhood_confidence,
               hours_source = excluded.hours_source,
               hours_confidence = excluded.hours_confidence,
+              hours_verified_at = excluded.hours_verified_at,
+              hours_expires_at = excluded.hours_expires_at,
+              hours_source_url = excluded.hours_source_url,
+              hours_source_kind = excluded.hours_source_kind,
               price_source = excluded.price_source,
               price_confidence = excluded.price_confidence,
               verification_tier = excluded.verification_tier,
@@ -1381,6 +1400,10 @@ class CatalogRepository:
                 _projection_confidence(
                     field_confidences, "hours", resolved.get("hours")
                 ),
+                hours_provenance.verified_at if hours_provenance else None,
+                hours_provenance.expires_at if hours_provenance else None,
+                hours_provenance.source_url if hours_provenance else None,
+                hours_provenance.source_kind if hours_provenance else None,
                 field_sources.get("price"),
                 _projection_confidence(
                     field_confidences, "price", resolved.get("price_level")
@@ -1589,6 +1612,36 @@ class CatalogRepository:
                 (f"verification_expired:{CATALOG_DECISION_VERSION}", ids),
             )
         return len(rows)
+
+def _hours_projection_provenance(
+    conn: Any,
+    candidate_id: str,
+    hours: Any,
+):
+    if hours is None:
+        return None
+    row = conn.execute(
+        """
+        select source, observed_at, expires_at, source_items, metadata
+        from catalog.field_observations
+        where (candidate_id = %s::uuid or establishment_id = %s::uuid)
+          and field_name = 'hours'
+          and observation_status = 'asserted'
+          and expires_at > now()
+          and value_json = %s::jsonb
+        order by
+          (metadata->>'evidence_kind' = 'first_party') desc,
+          (source = 'merchant') desc,
+          authority desc,
+          evidence_confidence desc,
+          observed_at desc,
+          id desc
+        limit 1
+        """,
+        (candidate_id, candidate_id, json.dumps(hours, sort_keys=True)),
+    ).fetchone()
+    return hours_observation_provenance(dict(row)) if row else None
+
 
 def _overlay_public_field_projection(
     resolved: dict[str, Any],

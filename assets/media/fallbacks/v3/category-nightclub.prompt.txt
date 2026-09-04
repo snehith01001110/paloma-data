@@ -1,0 +1,10 @@
+Use case: stylized-concept
+Asset type: thumbnail-first category artwork for a mobile nightlife directory
+Input images: Image 1 is a style reference only; do not reuse its bottle or glass composition.
+Primary request: create a minimal generic illustration representing a nightclub.
+Subject: one oversized disco ball circle above two broad crossing light-beam triangles, reduced to bold geometric forms.
+Style/medium: match Image 1's premium flat editorial screenprint system, clean vector-like shapes and faint paper grain; energetic but not photorealistic.
+Composition/framing: landscape with one centered square-safe symbol filling roughly 70 percent of the canvas and generous outer padding; instantly readable in a rounded 72-by-68-point thumbnail.
+Color palette: near-black plum background, cream disco ball, muted mint and dusty rose beams, restrained ochre center.
+Constraints: maximum 6 major shapes; thick clear edges; strong contrast; no club room, stage, crowd, people, perspective, mirror tiles, tiny lights, fine linework, gradients, readable text, letters, logos, trademarks, border, frame, or watermark.
+Avoid: laser detail, realism, clutter.

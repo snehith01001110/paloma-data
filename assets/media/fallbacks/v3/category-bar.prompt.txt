@@ -1,0 +1,10 @@
+Use case: stylized-concept
+Asset type: thumbnail-first category artwork for a mobile nightlife directory
+Primary request: create a minimal generic illustration representing a neighborhood bar.
+Subject: one oversized lowball glass beside one simple bottle silhouette, reduced to bold geometric forms.
+Style/medium: premium flat editorial screenprint illustration, clean vector-like shapes with only a faint paper grain; friendly and sophisticated, not photorealistic.
+Composition/framing: landscape 8:5-safe composition; one centered visual symbol filling roughly 70 percent of the canvas; generous outer padding; must remain instantly recognizable when cropped to a rounded 72-by-68-point thumbnail.
+Lighting/mood: graphic and calm, no realistic lighting.
+Color palette: warm charcoal-green background, cream main shape, muted mint and dusty rose accents, one restrained ochre accent.
+Constraints: maximum 5 major shapes; thick clear edges; strong contrast; no storefront, no room, no scenery, no people, no depth, no perspective, no small objects, no fine linework, no gradients, no readable text, no letters, no logo, no trademark, no border, no frame, no watermark.
+Avoid: realism, cinematic detail, architecture, shelves, windows, reflections, clutter, tiny decorations.

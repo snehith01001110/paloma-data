@@ -1,0 +1,8 @@
+Use case: stylized-concept
+Asset type: durable establishment-category cover for a mobile nightlife app
+Input image: style reference only; use its polished printmaking texture while changing architecture, viewpoint, and color story.
+Primary request: create a bustling-looking but people-free corner brewpub at sunset, combining visible copper brewing vessels on one side with dining booths, an open kitchen pass, and communal tables on the other.
+Style/medium: premium editorial screenprint illustration with sophisticated comic-book realism.
+Composition/framing: broad three-quarter corner facade, distinct restaurant-and-brewhouse zones, safe for an 8:5 center crop; keep the lower third low-detail for white UI text.
+Lighting/mood: convivial and food-forward; terracotta brick, copper, warm ivory, olive green, and dusk blue.
+Constraints: generic Paloma-owned concept, not a real business; no readable text, logo, trademark, branded glassware, watermark, border, frame, or identifiable foreground people.

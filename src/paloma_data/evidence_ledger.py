@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 
 from paloma_data.db import execute_many
 from paloma_data.hours import normalize_hours
+from paloma_data.hours_provenance import MANUAL_EVIDENCE_KINDS
 from paloma_data.normalizers import normalize_name, normalize_phone, normalize_url
 
 
@@ -23,7 +24,7 @@ MANUAL_CANDIDATE_FIELDS = frozenset(
         "setting_slug",
     }
 )
-MANUAL_ESTABLISHMENT_FIELDS = frozenset({"operating_status"})
+MANUAL_ESTABLISHMENT_FIELDS = MANUAL_CANDIDATE_FIELDS | frozenset({"operating_status"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,6 +131,7 @@ def append_manual_candidate_observation(
     lease_days: int | None = None,
     observed_at: datetime | None = None,
     idempotency_key: str | None = None,
+    evidence_kind: str = "factual_reference",
 ) -> dict[str, Any]:
     """Append one independently reviewed atomic fact for a private candidate."""
     field = field_name.strip()
@@ -153,6 +155,7 @@ def append_manual_candidate_observation(
         lease_days=lease_days,
         observed_at=observed_at,
         idempotency_key=idempotency_key,
+        evidence_kind=evidence_kind,
     )
 
 
@@ -168,6 +171,7 @@ def append_manual_establishment_observation(
     lease_days: int | None = None,
     observed_at: datetime | None = None,
     idempotency_key: str | None = None,
+    evidence_kind: str = "factual_reference",
 ) -> dict[str, Any]:
     """Append a bounded staff observation for an already materialized establishment."""
     field = field_name.strip()
@@ -195,6 +199,7 @@ def append_manual_establishment_observation(
         lease_days=lease_days,
         observed_at=observed_at,
         idempotency_key=idempotency_key,
+        evidence_kind=evidence_kind,
     )
     return {
         **result,
@@ -217,11 +222,13 @@ def _append_manual_observation(
     lease_days: int | None,
     observed_at: datetime | None,
     idempotency_key: str | None,
+    evidence_kind: str,
 ) -> dict[str, Any]:
     if entity_column not in {"establishment_id", "candidate_id"}:
         raise ValueError(f"Unsupported observation entity column: {entity_column}")
     field = field_name.strip()
     reviewer_name = reviewer.strip()
+    evidence_kind = evidence_kind.strip().casefold()
     urls = tuple(dict.fromkeys(url.strip() for url in evidence_urls if url.strip()))
     if not reviewer_name or len(reviewer_name) > 200:
         raise ValueError("Manual field observations require an identified reviewer")
@@ -231,6 +238,9 @@ def _append_manual_observation(
         raise ValueError("Manual field evidence requires 1-10 absolute HTTPS URLs")
     if note and len(note) > 1_000:
         raise ValueError("Manual field observation note is too long")
+    if evidence_kind not in MANUAL_EVIDENCE_KINDS:
+        allowed = ", ".join(sorted(MANUAL_EVIDENCE_KINDS))
+        raise ValueError(f"Manual evidence kind must be one of: {allowed}")
 
     normalized = _normalize_manual_value(field, value)
     if field == "setting_slug":
@@ -305,10 +315,11 @@ def _append_manual_observation(
             "observed_at": timestamp.isoformat(),
             "value_hash": value_hash,
             "policy_id": int(policy["source_policy_id"]),
+            "evidence_kind": evidence_kind,
         }
     )
     source_items = [
-        {"kind": "factual_reference", "url": url} for url in urls
+        {"kind": evidence_kind, "url": url} for url in urls
     ]
     row = conn.execute(
         f"""
@@ -350,6 +361,7 @@ def _append_manual_observation(
             json.dumps(
                 {
                     "evidence_urls": list(urls),
+                    "evidence_kind": evidence_kind,
                     "idempotency_key": stable_key,
                     "note": note.strip() if note and note.strip() else None,
                     "policy_version": policy["policy_version"],

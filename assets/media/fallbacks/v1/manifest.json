@@ -1,0 +1,50 @@
+{
+  "version": "v1",
+  "created_at": "2026-09-03",
+  "generator": "openai-imagegen",
+  "generator_version": "codex-builtin",
+  "output_license_id": "Paloma-Proprietary",
+  "disclosure": "Paloma concept artwork; not a photograph or depiction of this establishment",
+  "templates": [
+    {
+      "key": "category-billiards-bar",
+      "source": "category-billiards-bar.jpg",
+      "source_sha256": "4e9cff04d5ed9f5fce3476c5e408205ea4cea5b662dce8388b41fd6ffe63e1ce",
+      "prompt": "category-billiards-bar.prompt.txt",
+      "prompt_sha256": "191c1561665703ec5594044b697955a17d1142c665ef157c0c19d9936d76e037",
+      "style_reference": "family-spirits"
+    },
+    {
+      "key": "family-beer",
+      "source": "family-beer.jpg",
+      "source_sha256": "42bda9021c2d6deaa6aa0b4f5ebae3d1fd6405c9cab19c6b26f1a94a05087e3c",
+      "prompt": "family-beer.prompt.txt",
+      "prompt_sha256": "392b71fe494fda7b2e155871f97aab3f9980fc635721e65f64f895ec582cab27",
+      "style_reference": "family-spirits"
+    },
+    {
+      "key": "family-other",
+      "source": "family-other.jpg",
+      "source_sha256": "c901d7231235390fa0896a0bf8e28caddfa1be3c4ac2b3e3431b231e3052661c",
+      "prompt": "family-other.prompt.txt",
+      "prompt_sha256": "821bb96c33611735f9b7c144602920472fe22262d7b9b6c68ec57b0f3a281714",
+      "style_reference": "family-spirits"
+    },
+    {
+      "key": "family-spirits",
+      "source": "family-spirits.jpg",
+      "source_sha256": "06c54be5e628758a7217de08e57987877ae35cd99d001d7703c5b8fb9a2b6dc6",
+      "prompt": "family-spirits.prompt.txt",
+      "prompt_sha256": "8ac6d33f8a5471ab90fe7e122be20b313271f73c37ac2e4108a78960b8cbeb4e",
+      "style_reference": null
+    },
+    {
+      "key": "family-wine",
+      "source": "family-wine.jpg",
+      "source_sha256": "7fba5e4dabd3c84c3a4cf617ecfa3633a2cf1c88176945587e5696372aa02aeb",
+      "prompt": "family-wine.prompt.txt",
+      "prompt_sha256": "e84a5c90e71b9c6a63f9397400beec689840f93138adfaf42040a2da1d9cc4bf",
+      "style_reference": "family-spirits"
+    }
+  ]
+}

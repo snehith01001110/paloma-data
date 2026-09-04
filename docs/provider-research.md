@@ -73,7 +73,9 @@ Yelp is an optional transient enrichment provider. Paloma may retain a matched Y
 may server-cache API content for no more than 24 hours. The implementation uses a 22-hour serving
 window plus a fifteen-minute purge schedule, stores raw responses outside the consumer schema,
 requires Yelp attribution at display time, and never feeds cached Yelp values into publication or
-the durable establishment row. A provider outage or expired response therefore falls back to
+the durable establishment row. A Yelp CDN cover image may appear only on the active establishment
+detail view with that attribution; it is never made a catalog card image or persisted to the
+establishment row. A provider outage or expired response therefore falls back to
 Paloma's durable fields or the uncached Foursquare overlay rather than stale Yelp content.
 
 Runtime resolution is field-level rather than provider-level. Validated Yelp values have

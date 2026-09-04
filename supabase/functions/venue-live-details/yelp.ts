@@ -275,6 +275,9 @@ export function projectYelpLiveDetails(
 ): LiveDetails {
   const price = requested.price ? text(raw.price) : null;
   return {
+    // Yelp's primary listing photo is display-only, subject to the provider
+    // response policy and the same-screen Yelp credit returned below.
+    cover_image_url: yelpCoverImageUrl(raw),
     phone_e164: requested.phone ? e164(raw.phone) : null,
     // Yelp's `url` is the required Yelp attribution link, not the venue's own
     // website. Never relabel it as consumer contact data.
@@ -286,6 +289,21 @@ export function projectYelpLiveDetails(
     // safely to Paloma's durable setting slugs.
     setting_slugs: [],
   };
+}
+
+export function yelpCoverImageUrl(raw: Record<string, unknown>): string | null {
+  const supplied = safeHttpUrl(raw.image_url);
+  if (!supplied) return null;
+  const url = new URL(supplied);
+  const host = url.hostname.toLowerCase();
+  // Yelp documents CDN-hosted Business Details image URLs. Refusing every
+  // other host makes this a Yelp image field, rather than a generic remote URL
+  // that could slip into a provider response and be displayed without review.
+  if (host !== "yelpcdn.com" && !host.endsWith(".yelpcdn.com")) return null;
+  // Yelp documents both HTTP and HTTPS samples. Never hand an HTTP image to
+  // the iPhone, where App Transport Security would reject it anyway.
+  url.protocol = "https:";
+  return url.toString();
 }
 
 export function yelpAttributionUrl(
