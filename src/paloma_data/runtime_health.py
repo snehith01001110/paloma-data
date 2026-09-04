@@ -83,20 +83,32 @@ def live_details_runtime_health(conn: Any) -> dict[str, Any]:
               and exists (
                 select 1
                 from ingest.candidate_source_links link
-                join ingest.source_records source_record
+                left join ingest.source_records source_record
                   on source_record.source = link.source
                  and source_record.source_record_id = link.source_record_id
                 where link.candidate_id = candidate.id
                   and link.source = 'fsq'
                   and link.identity_confidence >= 0.96
-                  and source_record.retired_at is null
-                  and source_record.source_status = 'open'
-                  and source_record.consumer_facing
-                  and source_record.public_access = 'walk_in'
-                  and not (source_record.quality_flags && array[
-                    'closed', 'delete', 'doesnt_exist', 'does_not_exist',
-                    'duplicate', 'inappropriate', 'privatevenue', 'private_venue'
-                  ]::text[])
+                  and (
+                    (
+                      source_record.source_record_id is not null
+                      and source_record.retired_at is null
+                      and source_record.source_status = 'open'
+                      and source_record.consumer_facing
+                      and source_record.public_access = 'walk_in'
+                      and not (source_record.quality_flags && array[
+                        'closed', 'delete', 'doesnt_exist', 'does_not_exist',
+                        'duplicate', 'inappropriate', 'privatevenue', 'private_venue'
+                      ]::text[])
+                    )
+                    or (
+                      link.match_method =
+                        'reviewed_identity_exception:anchor_source_id'
+                      and candidate.anchor_source = 'fsq'
+                      and candidate.anchor_source_record_id = link.source_record_id
+                      and establishment.verification_tier = 'manual'
+                    )
+                  )
               )
           ) as eligible_publications,
           count(*) filter (

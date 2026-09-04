@@ -15,29 +15,33 @@ class _Cursor:
 class _Connection:
     def __init__(self, security, coverage):
         self.rows = iter((security, coverage))
+        self.queries = []
 
-    def execute(self, _query):
+    def execute(self, query):
+        self.queries.append(query)
         return _Cursor(next(self.rows))
 
 
 def test_live_details_runtime_health_accepts_exact_least_privilege_contract():
-    result = live_details_runtime_health(
-        _Connection(
-            {
-                "rls_enabled": True,
-                "runtime_policy_enabled": True,
-                "readable_columns": sorted(LIVE_DETAILS_SOURCE_COLUMNS),
-            },
-            {
-                "expected_publications": 92,
-                "eligible_publications": 92,
-                "publications_needing_live_hours_or_price": 92,
-            },
-        )
+    connection = _Connection(
+        {
+            "rls_enabled": True,
+            "runtime_policy_enabled": True,
+            "readable_columns": sorted(LIVE_DETAILS_SOURCE_COLUMNS),
+        },
+        {
+            "expected_publications": 92,
+            "eligible_publications": 92,
+            "publications_needing_live_hours_or_price": 92,
+        },
     )
+    result = live_details_runtime_health(connection)
 
     assert result["healthy"] is True
     assert all(result["checks"].values())
+    assert "reviewed_identity_exception:anchor_source_id" in connection.queries[1]
+    assert "candidate.anchor_source_record_id = link.source_record_id" in connection.queries[1]
+    assert "establishment.verification_tier = 'manual'" in connection.queries[1]
 
 
 def test_live_details_runtime_health_rejects_hidden_rows_or_extra_columns():
