@@ -1278,6 +1278,9 @@ def _direct_origin_for_source(source: str) -> str:
 # of one address. Grouping evidence by exact string equality read those as competing
 # claims and queued an owner decision for every rounding difference.
 COORDINATE_AGREEMENT_DEGREES = 0.0005
+# Far below the ~1cm that the seventh decimal of a degree buys, so it only absorbs the
+# representation error in the comparison above.
+_COORDINATE_EPSILON = 1e-9
 
 _ADDRESS_SECONDARY_UNIT = frozenset(
     {
@@ -1327,7 +1330,10 @@ def _coordinates_agree(left: str, right: str) -> bool:
     second = _as_coordinate(right)
     if first is None or second is None:
         return False
-    return abs(first - second) <= COORDINATE_AGREEMENT_DEGREES
+    # Coordinates are stored to four decimals, so a difference of exactly the tolerance
+    # is the common case rather than a rare one -- and binary floating point renders
+    # 0.0005 as 0.0005000000000023874, which would fail every one of them.
+    return abs(first - second) <= COORDINATE_AGREEMENT_DEGREES + _COORDINATE_EPSILON
 
 
 def _strip_secondary_unit(tokens: list[str]) -> list[str]:

@@ -7,6 +7,7 @@ from paloma_data.field_resolution import (
     _admissible_websites,
     _agreement_groups,
     _conflict_evidence_ids,
+    _coordinates_agree,
     _corroborate_operating_status,
     _filter_changed_decisions,
     _is_own_website,
@@ -576,3 +577,15 @@ def test_a_licence_that_disagrees_does_not_corroborate():
         _review_reason("operating_status", [], corroborated, True)
         == "single_origin_high_risk_field"
     )
+
+
+def test_a_difference_of_exactly_the_tolerance_still_agrees():
+    """Four-decimal coordinates make the boundary the common case, not an edge one.
+
+    Binary floating point renders this difference as 0.0005000000000023874, so a bare
+    ``<=`` against the tolerance rejects every pair that sits exactly on it.
+    """
+    assert _coordinates_agree("-122.4243", "-122.4238")
+    assert len(set(_agreement_groups("longitude", ["-122.4243", "-122.4242", "-122.4238"]).values())) == 1
+    # One step beyond the tolerance is still two readings.
+    assert not _coordinates_agree("-121.9600", "-121.9594")
