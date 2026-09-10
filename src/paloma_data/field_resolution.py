@@ -1429,14 +1429,29 @@ def _agreement_groups(field_name: str, values: list[str]) -> dict[str, str]:
     distinct = sorted({value for value in values if value})
     if agrees is None:
         return {value: value for value in distinct}
+
     if field_name in {"latitude", "longitude"}:
+        # Coordinates order on a line and agreement is a distance, so chain along
+        # neighbours: a group is every reading within tolerance of the one beside it.
+        # Anchoring on the first value instead would split three readings 39m apart
+        # whenever the outer two straddle the tolerance, and the anchor that decides
+        # it is an arbitrary choice.
         distinct.sort(
             key=lambda value: (_as_coordinate(value) is None, _as_coordinate(value) or 0.0)
         )
+        groups: dict[str, str] = {}
+        representative = previous = None
+        for value in distinct:
+            if previous is None or not agrees(previous, value):
+                representative = value
+            groups[value] = str(representative)
+            previous = value
+        return groups
 
-    # Each value joins the first representative it agrees with, so a group can never
-    # stretch further than twice the tolerance the way transitive chaining would.
-    groups: dict[str, str] = {}
+    # Addresses have no such order, and agreement between them is not transitive --
+    # house-number ranges 1-2, 2-3 and 3-4 would chain one doorway into three. Each
+    # value joins the first value it actually agrees with instead.
+    groups = {}
     representatives: list[str] = []
     for value in distinct:
         for representative in representatives:

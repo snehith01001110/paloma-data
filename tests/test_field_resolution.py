@@ -589,3 +589,34 @@ def test_a_difference_of_exactly_the_tolerance_still_agrees():
     assert len(set(_agreement_groups("longitude", ["-122.4243", "-122.4242", "-122.4238"]).values())) == 1
     # One step beyond the tolerance is still two readings.
     assert not _coordinates_agree("-121.9600", "-121.9594")
+
+
+def test_coordinates_group_by_neighbour_not_by_anchor():
+    """Three Fat Guys: 38.2705/38.2710/38.2712 is one winery, not a decision.
+
+    Anchoring on the lowest reading put 38.2712 outside the group even though it sits
+    0.0002 from 38.2710, which turned a decided field into an owner decision.
+    """
+    groups = _agreement_groups("latitude", ["38.2705", "38.2710", "38.2712"])
+
+    assert len(set(groups.values())) == 1
+
+
+def test_chaining_is_bounded_by_a_real_gap_not_by_group_width():
+    """The cost of chaining: readings evenly spaced at the tolerance stay one group.
+
+    Four sources would have to land on that spacing exactly, and the alternative --
+    letting an arbitrary anchor decide -- was demonstrably worse on live data.
+    """
+    even = ["37.0000", "37.0005", "37.0010", "37.0015"]
+    assert len(set(_agreement_groups("latitude", even).values())) == 1
+
+    gapped = ["37.0000", "37.0005", "37.0016", "37.0021"]
+    assert len(set(_agreement_groups("latitude", gapped).values())) == 2
+
+
+def test_address_agreement_never_chains_across_number_ranges():
+    """Overlap is not transitive: 100-102, 102-104 and 104-106 are not one doorway."""
+    ranges = ["100 102 main st", "102 104 main st", "104 106 main st"]
+
+    assert len(set(_agreement_groups("address", ranges).values())) > 1
