@@ -1169,6 +1169,29 @@ class CatalogRepository:
         ).fetchone()
         if not candidate:
             return False
+
+        # Candidate evidence only covers the licence and the source listings, so a venue
+        # that has actually shut still evaluates as verified. Materializing it would
+        # rewrite the reviewed closure back to status 'open' and republish it, which is
+        # how two closed pubs stayed live for a week. Refusing hands the caller its
+        # existing suppression path.
+        closed = conn.execute(
+            """
+            select 1
+            from public.establishments establishment
+            join catalog.current_field_decisions decision
+              on decision.establishment_id = establishment.id
+            where establishment.catalog_candidate_id = %s::uuid
+              and decision.field_name = 'operating_status'
+              and decision.decision_status = 'selected'
+              and decision.value_text = 'closed'
+            limit 1
+            """,
+            (candidate_id,),
+        ).fetchone()
+        if closed:
+            return False
+
         resolved = dict(candidate["resolved_snapshot"] or {})
         field_sources = dict(resolved.get("field_sources") or {})
         field_confidences = dict(resolved.get("field_confidences") or {})

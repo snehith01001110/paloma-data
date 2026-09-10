@@ -353,3 +353,32 @@ def test_initial_catalog_materialization_still_uses_candidate_fields():
         {"field_resolution_version": "v7"},
     )
     assert resolved == {"name": "Example Bar", "phone_e164": "+14155550123"}
+
+
+class _ClosedEstablishmentConnection:
+    """Answers far enough into materialize() to reach the resolved-closure guard."""
+
+    def __init__(self):
+        self.queries: list[str] = []
+
+    def execute(self, query, params=None):
+        self.queries.append(query)
+        if "from ingest.catalog_candidates" in query and "select *" in query:
+            return _Cursor({"id": "candidate-id", "city": "San Francisco"})
+        if "decision.value_text = 'closed'" in query:
+            return _Cursor({"?column?": 1})
+        return _EmptyCursor()
+
+
+def test_materialize_refuses_an_establishment_whose_decision_says_closed():
+    """Candidate evidence describes the licence, not whether the doors still open.
+
+    Without this the upsert rewrites status to 'open' and republishes, which is how a
+    reviewed closure silently reverted on the next refresh.
+    """
+    connection = _ClosedEstablishmentConnection()
+    repository = CatalogRepository(db=None)
+
+    assert repository.materialize(connection, "candidate-id") is False
+    assert any("decision.value_text = 'closed'" in q for q in connection.queries)
+    assert not any("insert into public.establishments" in q for q in connection.queries)
