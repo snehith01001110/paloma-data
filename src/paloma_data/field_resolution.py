@@ -513,6 +513,21 @@ class FieldResolver:
             """,
             (RESOLUTION_VERSION,),
         )
+        # The publication gate reads establishments.status, so a resolved operating
+        # status has to reach that column. Without this a venue every source agrees has
+        # closed keeps passing the hard gates and stays in the app.
+        conn.execute(
+            """
+            update public.establishments e
+            set status = decision.value_text, updated_at = now()
+            from catalog.current_field_decisions decision
+            where decision.establishment_id = e.id
+              and decision.field_name = 'operating_status'
+              and decision.decision_status = 'selected'
+              and decision.value_text in ('open', 'closed')
+              and e.status is distinct from decision.value_text
+            """
+        )
         # A single-origin hold is a statement about how much evidence exists, so it has
         # to be released once a second independent origin arrives. Without this the
         # queue keeps blocking expansion on a reason that no longer holds.
