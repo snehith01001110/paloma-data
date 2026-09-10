@@ -6,13 +6,14 @@ from datetime import datetime, timezone
 from hashlib import sha256
 import json
 from typing import Any
+from urllib.parse import urlsplit
 
 from paloma_data.db import Database, execute_many
 from paloma_data.evidence_ledger import append_linked_source_observations
 from paloma_data.hours_provenance import hours_observation_provenance
 from paloma_data.normalizers import consumer_display_name, normalize_name
 
-RESOLUTION_VERSION = "v6-hours-freshness"
+RESOLUTION_VERSION = "v7-source-agreement"
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,7 +153,8 @@ class FieldResolver:
               and field_name in (
                 'display_name', 'primary_type_slug', 'phone_e164', 'website_url',
                 'address', 'latitude', 'longitude', 'operating_status',
-                'neighborhood', 'hours', 'price_level', 'setting_slug'
+                'neighborhood', 'hours', 'price_level', 'setting_slug',
+                'license_status', 'registration_status'
               )
             order by coalesce(establishment_id, candidate_id),
                      field_name, source, source_record_id,
@@ -218,6 +220,9 @@ class FieldResolver:
         for establishment in establishments:
             establishment_id = str(establishment["id"])
             by_field = evidence[establishment_id]
+            # Settle the website field before anything reads it, so a directory listing
+            # neither wins the selection nor counts as a party to a conflict.
+            by_field["website_url"] = _admissible_websites(by_field["website_url"])
             protected_fields = {
                 field_name
                 for field_name, rows in by_field.items()
@@ -276,8 +281,9 @@ class FieldResolver:
             address = self._select_attribute(by_field["address"], 0.68)
             latitude = self._select_attribute(by_field["latitude"], 0.68)
             longitude = self._select_attribute(by_field["longitude"], 0.68)
-            operating_status = self._select_attribute(
-                by_field["operating_status"], 0.68
+            operating_status = _corroborate_operating_status(
+                self._select_attribute(by_field["operating_status"], 0.68),
+                by_field["license_status"] + by_field["registration_status"],
             )
             neighborhood = self._select_neighborhood(by_field["neighborhood"])
             hours = self._select_attribute(by_field["hours"], 0.58)
@@ -507,17 +513,45 @@ class FieldResolver:
             """,
             (RESOLUTION_VERSION,),
         )
+        # A single-origin hold is a statement about how much evidence exists, so it has
+        # to be released once a second independent origin arrives. Without this the
+        # queue keeps blocking expansion on a reason that no longer holds.
+        conn.execute(
+            """
+            update review.field_conflicts conflict
+            set state = 'resolved', resolved_at = now(),
+                resolved_by = %s,
+                resolution_notes =
+                  'Independent corroborating evidence now backs the selected value.'
+            where conflict.state = 'pending'
+              and conflict.reason = 'single_origin_high_risk_field'
+              and exists (
+                select 1
+                from catalog.current_field_decisions decision
+                where decision.establishment_id = conflict.establishment_id
+                  and decision.field_name = conflict.field_name
+                  and decision.decision_status = 'selected'
+                  and decision.decided_at >= conflict.created_at
+                  and coalesce(cardinality(decision.independent_origin_keys), 0) >= 2
+              )
+            """,
+            (RESOLUTION_VERSION,),
+        )
         return metrics
 
     def _rank_evidence(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
-        for row in rows:
-            key = str(row.get("normalized_value") or row.get("value_text") or "")
-            if key:
-                grouped[key].append(row)
+        values = [
+            str(row.get("normalized_value") or row.get("value_text") or "")
+            for row in rows
+        ]
+        agreement = _agreement_groups(_field_name_of(rows), values)
+        for row, value in zip(rows, values):
+            if value:
+                grouped[agreement.get(value, value)].append(row)
 
         candidates: list[dict[str, Any]] = []
-        for normalized_value, matching in grouped.items():
+        for matching in grouped.values():
             scored = sorted(
                 ((self._evidence_score(row), row) for row in matching),
                 key=lambda item: item[0],
@@ -544,7 +578,13 @@ class FieldResolver:
             agreement_bonus = min(0.08, 0.04 * max(0, len(independent_origins) - 1))
             candidates.append(
                 {
-                    "normalized_value": normalized_value,
+                    # The decision records the winning source's own reading, never the
+                    # arbitrary member the agreement group happens to be keyed on.
+                    "normalized_value": str(
+                        value_row.get("normalized_value")
+                        or value_row.get("value_text")
+                        or ""
+                    ),
                     "value_text": value_row["value_text"],
                     "value_json": value_row.get("value_json"),
                     "evidence_id": value_row["evidence_id"],
@@ -926,11 +966,16 @@ def _review_reason(
     selected: dict[str, Any] | None,
     high_risk: bool,
 ) -> str | None:
-    distinct_values = {
-        str(row.get("normalized_value") or row.get("value_text"))
-        for row in rows
-        if row.get("normalized_value") or row.get("value_text")
-    }
+    # Count the values sources actually disagree about, not the spellings they use.
+    distinct_values = set(
+        _agreement_groups(
+            field_name,
+            [
+                str(row.get("normalized_value") or row.get("value_text") or "")
+                for row in rows
+            ],
+        ).values()
+    )
     if selected is None and len(distinct_values) > 1:
         return "conflicting_admissible_evidence"
     if field_name == "hours" and selected and len(distinct_values) > 1:
@@ -942,6 +987,12 @@ def _review_reason(
     if high_risk and selected and len(selected.get("independent_origin_keys") or ()) < 2:
         return "single_origin_high_risk_field"
     return None
+
+
+def _field_name_of(rows: list[dict[str, Any]]) -> str:
+    """The field a single-field evidence list describes, blank if the list is mixed."""
+    names = {str(row.get("field_name") or "") for row in rows}
+    return names.pop() if len(names) == 1 else ""
 
 
 def _conflict_evidence_ids(rows: list[dict[str, Any]]) -> list[str]:
@@ -1220,3 +1271,293 @@ def _source_family(source: str) -> str:
 
 def _direct_origin_for_source(source: str) -> str:
     return {"fsq": "foursquare"}.get(source, source)
+
+
+# Independent geocoders place the same storefront tens of metres apart: a rooftop
+# centroid, a parcel centroid and a street-entrance point are all defensible readings
+# of one address. Grouping evidence by exact string equality read those as competing
+# claims and queued an owner decision for every rounding difference.
+COORDINATE_AGREEMENT_DEGREES = 0.0005
+
+_ADDRESS_SECONDARY_UNIT = frozenset(
+    {
+        "unit", "apt", "fl", "floor", "rm", "room", "bldg", "building",
+        "basement", "downstairs", "upstairs", "rear", "front", "lobby", "ph",
+    }
+)
+_ADDRESS_DIRECTIONALS = frozenset({"n", "s", "e", "w", "ne", "nw", "se", "sw"})
+_ADDRESS_STREET_TYPES = frozenset(
+    {
+        "st", "ave", "blvd", "rd", "dr", "ln", "hwy", "way", "ct", "pl",
+        "ter", "pkwy", "cir", "sq", "aly", "plz", "row", "walk",
+    }
+)
+# ``Wy`` and ``Way`` are the same designator; the shared normalizer abbreviates the
+# other street types but has no rule for this pair.
+_ADDRESS_STREET_SYNONYMS = {"wy": "way"}
+_ORDINAL_WORDS = {
+    "first": "1st", "second": "2nd", "third": "3rd", "fourth": "4th",
+    "fifth": "5th", "sixth": "6th", "seventh": "7th", "eighth": "8th",
+    "ninth": "9th", "tenth": "10th", "eleventh": "11th", "twelfth": "12th",
+    "thirteenth": "13th", "fourteenth": "14th", "fifteenth": "15th",
+    "sixteenth": "16th", "seventeenth": "17th", "eighteenth": "18th",
+    "nineteenth": "19th", "twentieth": "20th",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class _AddressParts:
+    """One street doorway, with the parts sources disagree about cosmetically removed."""
+
+    numbers: frozenset[str]
+    prefix_directional: str | None
+    suffix_directional: str | None
+    street: str
+
+
+def _as_coordinate(value: str) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coordinates_agree(left: str, right: str) -> bool:
+    first = _as_coordinate(left)
+    second = _as_coordinate(right)
+    if first is None or second is None:
+        return False
+    return abs(first - second) <= COORDINATE_AGREEMENT_DEGREES
+
+
+def _strip_secondary_unit(tokens: list[str]) -> list[str]:
+    """Drop a suite or floor designator without eating a street named Front or Rear.
+
+    A real designator always trails the street, so only a unit word past the house
+    number and street name counts, and only when what follows is not a street type.
+    """
+    for index in range(2, len(tokens)):
+        if tokens[index] not in _ADDRESS_SECONDARY_UNIT:
+            continue
+        if index + 1 < len(tokens) and tokens[index + 1] in _ADDRESS_STREET_TYPES:
+            continue
+        return tokens[:index]
+    return tokens
+
+
+def _address_parts(value: str) -> _AddressParts | None:
+    tokens = _strip_secondary_unit(value.split())
+    numbers: list[str] = []
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if token.isdigit():
+            numbers.append(token)
+            index += 1
+            continue
+        # ``401 & 407 Second St`` reaches the ledger as ``401 and 407 second st``.
+        if token == "and" and index + 1 < len(tokens) and tokens[index + 1].isdigit():
+            index += 1
+            continue
+        break
+    if not numbers:
+        return None
+
+    street = [
+        _ADDRESS_STREET_SYNONYMS.get(token, _ORDINAL_WORDS.get(token, token))
+        for token in tokens[index:]
+    ]
+    prefix = None
+    if len(street) > 1 and street[0] in _ADDRESS_DIRECTIONALS:
+        prefix = street[0]
+        street = street[1:]
+    suffix = None
+    if len(street) > 1 and street[-1] in _ADDRESS_DIRECTIONALS:
+        suffix = street[-1]
+        street = street[:-1]
+    # Anything past the street type is a landmark or a second frontage, not the street.
+    for position, token in enumerate(street[1:], start=1):
+        if token in _ADDRESS_STREET_TYPES:
+            street = street[: position + 1]
+            break
+    if not street:
+        return None
+    # ``O'Farrell`` reaches the ledger as both ``ofarrell`` and ``o farrell``.
+    return _AddressParts(frozenset(numbers), prefix, suffix, "".join(street))
+
+
+def _directionals_agree(left: str | None, right: str | None) -> bool:
+    """An omitted directional is unknown, but two different ones are two streets."""
+    return left is None or right is None or left == right
+
+
+def _addresses_agree(left: str, right: str) -> bool:
+    first = _address_parts(left)
+    second = _address_parts(right)
+    if first is None or second is None:
+        return False
+    if first.street != second.street:
+        return False
+    if not _directionals_agree(first.prefix_directional, second.prefix_directional):
+        return False
+    if not _directionals_agree(first.suffix_directional, second.suffix_directional):
+        return False
+    # A licensed range such as ``501 503 505 Jones`` covers the ``501 Jones`` doorway.
+    return bool(first.numbers & second.numbers)
+
+
+_AGREEMENT_RULES = {
+    "latitude": _coordinates_agree,
+    "longitude": _coordinates_agree,
+    "address": _addresses_agree,
+}
+
+
+def _agreement_groups(field_name: str, values: list[str]) -> dict[str, str]:
+    """Map each distinct value onto the representative of the values it agrees with.
+
+    Only latitude, longitude and address carry a notion of "close enough"; every other
+    field keeps exact equality, so a different phone number stays a real conflict.
+    """
+    agrees = _AGREEMENT_RULES.get(field_name)
+    distinct = sorted({value for value in values if value})
+    if agrees is None:
+        return {value: value for value in distinct}
+    if field_name in {"latitude", "longitude"}:
+        distinct.sort(
+            key=lambda value: (_as_coordinate(value) is None, _as_coordinate(value) or 0.0)
+        )
+
+    # Each value joins the first representative it agrees with, so a group can never
+    # stretch further than twice the tolerance the way transitive chaining would.
+    groups: dict[str, str] = {}
+    representatives: list[str] = []
+    for value in distinct:
+        for representative in representatives:
+            if agrees(representative, value):
+                groups[value] = representative
+                break
+        else:
+            representatives.append(value)
+            groups[value] = value
+    return groups
+
+
+# A directory listing, a deals page or a bare platform root is somebody else's site.
+# Publishing one as the venue's own website is wrong even when two sources agree on it,
+# so this evidence is inadmissible for website_url rather than merely low scoring.
+_DIRECTORY_WEBSITE_HOSTS = frozenset(
+    {
+        # Listing and review directories
+        "yelp.com", "tripadvisor.com", "citysearch.com", "city-data.com",
+        "yellowpages.com", "mapquest.com", "foursquare.com", "swarmapp.com",
+        "hub.biz", "gastro-america.com", "zomato.com", "allmenus.com",
+        "menupages.com", "restaurantji.com", "chamberofcommerce.com",
+        "bizapedia.com", "manta.com", "nextdoor.com", "ratebeer.com",
+        "beeradvocate.com", "untappd.com", "local.yahoo.com", "ypguides.net",
+        "placestars.com", "yellowpages.ca", "superpages.com", "local.com",
+        # Deals, ticketing and listings resellers
+        "groupon.com", "eventbrite.com", "ticketmaster.com", "seatgeek.com",
+        "dice.fm", "songkick.com", "bandsintown.com",
+        # Reference works
+        "wikipedia.org", "wikidata.org",
+    }
+)
+# A venue's own profile on one of these is a legitimate primary presence; the platform
+# root is not. ``facebook.com/mybar`` is admissible, bare ``facebook.com`` is not.
+_PROFILE_PLATFORM_HOSTS = frozenset(
+    {
+        "facebook.com", "instagram.com", "twitter.com", "x.com", "tiktok.com",
+        "linkedin.com", "youtube.com", "pinterest.com", "linktr.ee",
+        "beacons.ai", "bio.link",
+    }
+)
+
+
+def _registrable_match(host: str, denied: frozenset[str]) -> bool:
+    return any(host == entry or host.endswith(f".{entry}") for entry in denied)
+
+
+def _website_host(row: dict[str, Any]) -> str:
+    """The registrable host an observation points at, however the row stored it."""
+    value = str(row.get("normalized_value") or "")
+    if not value or "/" in value or ":" in value:
+        raw = str(row.get("value_text") or "")
+        value = urlsplit(raw if "://" in raw else f"https://{raw}").hostname or ""
+    return value.casefold().removeprefix("www.")
+
+
+def _is_own_website(row: dict[str, Any]) -> bool:
+    host = _website_host(row)
+    if not host:
+        return False
+    # An owner or a first-party page may legitimately point at a listing the catalogue
+    # would never infer on its own. This rule governs third-party evidence, not people.
+    if str(row.get("source") or "") in {"manual", "official_web"}:
+        return True
+    if _registrable_match(host, _DIRECTORY_WEBSITE_HOSTS):
+        return False
+    if _registrable_match(host, _PROFILE_PLATFORM_HOSTS):
+        path = urlsplit(str(row.get("value_text") or "")).path.strip("/")
+        return bool(path)
+    return True
+
+
+def _admissible_websites(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Website evidence worth resolving, best class of evidence first.
+
+    A venue that publishes its own domain is not in two minds because an aggregator
+    also recorded its Twitter profile, so a social profile is kept only when nothing
+    better was observed. What a person entered by hand always survives both rules.
+    """
+    admissible = [row for row in rows if _is_own_website(row)]
+    own_domain = [
+        row
+        for row in admissible
+        if str(row.get("source") or "") in {"manual", "official_web"}
+        or not _registrable_match(_website_host(row), _PROFILE_PLATFORM_HOSTS)
+    ]
+    return own_domain or admissible
+
+
+def _corroborate_operating_status(
+    selected: dict[str, Any] | None,
+    regulator_rows: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Let a licence or registration corroborate an operating status, never assert one.
+
+    California ABC and DataSF both publish whether a venue is in good standing, and both
+    already normalise onto this field's vocabulary, but they are recorded under their own
+    field names and so nothing counted them. Reading them is what the high-risk gate was
+    asking for all along: it wants two independent origins, and these are independent of
+    every consumer aggregator. The corroboration only ever strengthens a status a
+    consumer source already asserted, because a licence outlives the business it covers --
+    an active licence alone must never be able to put a venue on the map as open.
+    """
+    if not selected:
+        return selected
+    value = str(selected.get("normalized_value") or "")
+    agreeing = [
+        row
+        for row in regulator_rows
+        if str(row.get("normalized_value") or "") == value
+    ]
+    if not agreeing:
+        return selected
+    origins = set(selected.get("independent_origin_keys") or ())
+    evidence_ids = set(selected.get("evidence_ids") or ())
+    for row in agreeing:
+        origins.update(
+            str(origin)
+            for origin in (
+                row.get("upstream_origin_keys")
+                or (_source_family(str(row["source"])),)
+            )
+        )
+        if row.get("evidence_id"):
+            evidence_ids.add(str(row["evidence_id"]))
+    return {
+        **selected,
+        "independent_origin_keys": sorted(origins),
+        "evidence_ids": sorted(evidence_ids),
+    }
