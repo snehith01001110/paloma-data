@@ -8,7 +8,7 @@ on:
         required: true
         default: status
         type: choice
-        options: [status, coverage, live-details-health, resolve-fields, audit, stage, neighborhoods, open-attributes, trial-verified, provider-links, provider-audit, queue-refresh, queue-refresh-all, queue-work, queue-status, deploy-worker]
+        options: [status, coverage, live-details-health, resolve-fields, review-field-conflict, audit, stage, neighborhoods, open-attributes, trial-verified, provider-links, provider-audit, queue-refresh, queue-refresh-all, queue-work, queue-status, deploy-worker]
       source:
         description: Source for stage
         required: false
@@ -24,6 +24,21 @@ on:
         description: Candidate/API call limit
         required: false
         default: '20'
+        type: string
+      conflict_id:
+        description: Pending field conflict to review
+        required: false
+        default: ''
+        type: string
+      evidence_id:
+        description: Observation to select; empty records an audited unknown
+        required: false
+        default: ''
+        type: string
+      notes:
+        description: Why this conflict was decided this way
+        required: false
+        default: ''
         type: string
   schedule:
     # High-risk regulatory status must remain inside the seven-day freshness contract.
@@ -143,6 +158,10 @@ jobs:
           SOURCE: ${{ inputs.source }}
           CITY: ${{ inputs.city }}
           LIMIT: ${{ inputs.limit }}
+          CONFLICT_ID: ${{ inputs.conflict_id }}
+          EVIDENCE_ID: ${{ inputs.evidence_id }}
+          NOTES: ${{ inputs.notes }}
+          REVIEWER: ${{ github.actor }}
         run: |
           set -euo pipefail
           case "$ACTION" in
@@ -157,6 +176,24 @@ jobs:
               ;;
             resolve-fields)
               paloma-data resolve-fields
+              ;;
+            review-field-conflict)
+              # The reviewer is always the dispatching account, never a free-text input,
+              # so the immutable decision trail records who actually made the call.
+              test -n "$CONFLICT_ID" || { echo "conflict_id is required"; exit 1; }
+              test -n "$NOTES" || { echo "notes are required"; exit 1; }
+              if [ -n "$EVIDENCE_ID" ]; then
+                paloma-data review-field-conflict \
+                  --conflict-id "$CONFLICT_ID" --city "$CITY" \
+                  --reviewer "github:$REVIEWER" --notes "$NOTES" \
+                  --selected-evidence-id "$EVIDENCE_ID" \
+                  --confirm REVIEW_FIELD_CONFLICT
+              else
+                paloma-data review-field-conflict \
+                  --conflict-id "$CONFLICT_ID" --city "$CITY" \
+                  --reviewer "github:$REVIEWER" --notes "$NOTES" \
+                  --confirm REVIEW_FIELD_CONFLICT
+              fi
               ;;
             audit)
               paloma-data catalog-audit --city "$CITY" --limit "$LIMIT"
