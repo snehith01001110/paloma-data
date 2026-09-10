@@ -25,18 +25,11 @@ on:
         required: false
         default: '20'
         type: string
-      conflict_id:
-        description: Pending field conflict to review
-        required: false
-        default: ''
-        type: string
-      evidence_id:
-        description: Observation to select; empty records an audited unknown
-        required: false
-        default: ''
-        type: string
-      notes:
-        description: Why this conflict was decided this way
+      reviews:
+        description: >-
+          JSON array of field conflict reviews, each
+          {conflict_id, city, notes, evidence_id?}. Omitting evidence_id
+          records an audited unknown for that conflict.
         required: false
         default: ''
         type: string
@@ -158,9 +151,7 @@ jobs:
           SOURCE: ${{ inputs.source }}
           CITY: ${{ inputs.city }}
           LIMIT: ${{ inputs.limit }}
-          CONFLICT_ID: ${{ inputs.conflict_id }}
-          EVIDENCE_ID: ${{ inputs.evidence_id }}
-          NOTES: ${{ inputs.notes }}
+          REVIEWS: ${{ inputs.reviews }}
           REVIEWER: ${{ github.actor }}
         run: |
           set -euo pipefail
@@ -178,22 +169,10 @@ jobs:
               paloma-data resolve-fields
               ;;
             review-field-conflict)
-              # The reviewer is always the dispatching account, never a free-text input,
-              # so the immutable decision trail records who actually made the call.
-              test -n "$CONFLICT_ID" || { echo "conflict_id is required"; exit 1; }
-              test -n "$NOTES" || { echo "notes are required"; exit 1; }
-              if [ -n "$EVIDENCE_ID" ]; then
-                paloma-data review-field-conflict \
-                  --conflict-id "$CONFLICT_ID" --city "$CITY" \
-                  --reviewer "github:$REVIEWER" --notes "$NOTES" \
-                  --selected-evidence-id "$EVIDENCE_ID" \
-                  --confirm REVIEW_FIELD_CONFLICT
-              else
-                paloma-data review-field-conflict \
-                  --conflict-id "$CONFLICT_ID" --city "$CITY" \
-                  --reviewer "github:$REVIEWER" --notes "$NOTES" \
-                  --confirm REVIEW_FIELD_CONFLICT
-              fi
+              test -n "$REVIEWS" || { echo "reviews is required"; exit 1; }
+              printf '%s' "$REVIEWS" > "$RUNNER_TEMP/reviews.json"
+              python scripts/review_field_conflicts.py \
+                "$RUNNER_TEMP/reviews.json" "$REVIEWER"
               ;;
             audit)
               paloma-data catalog-audit --city "$CITY" --limit "$LIMIT"
