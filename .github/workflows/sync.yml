@@ -8,7 +8,7 @@ on:
         required: true
         default: status
         type: choice
-        options: [status, coverage, live-details-health, resolve-fields, review-field-conflict, observe-establishment-field, reevaluate, audit, stage, neighborhoods, open-attributes, trial-verified, provider-links, provider-audit, queue-refresh, queue-refresh-all, queue-work, queue-status, deploy-worker]
+        options: [status, coverage, live-details-health, resolve-fields, review-field-conflict, observe-establishment-field, reevaluate, discover, verify, audit, stage, neighborhoods, open-attributes, trial-verified, provider-links, provider-audit, queue-refresh, queue-refresh-all, queue-work, queue-status, deploy-worker]
       source:
         description: Source for stage
         required: false
@@ -184,6 +184,12 @@ jobs:
               ;;
             reevaluate)
               paloma-data catalog-reevaluate
+              ;;
+            discover)
+              paloma-data catalog-discover --city "$CITY" --limit "$LIMIT"
+              ;;
+            verify)
+              paloma-data catalog-verify --city "$CITY" --limit "$LIMIT"
               ;;
             observe-establishment-field)
               test -n "$OBSERVATIONS" || { echo "observations is required"; exit 1; }
