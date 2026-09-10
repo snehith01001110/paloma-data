@@ -8,7 +8,7 @@ on:
         required: true
         default: status
         type: choice
-        options: [status, coverage, live-details-health, resolve-fields, review-field-conflict, audit, stage, neighborhoods, open-attributes, trial-verified, provider-links, provider-audit, queue-refresh, queue-refresh-all, queue-work, queue-status, deploy-worker]
+        options: [status, coverage, live-details-health, resolve-fields, review-field-conflict, observe-establishment-field, audit, stage, neighborhoods, open-attributes, trial-verified, provider-links, provider-audit, queue-refresh, queue-refresh-all, queue-work, queue-status, deploy-worker]
       source:
         description: Source for stage
         required: false
@@ -24,6 +24,13 @@ on:
         description: Candidate/API call limit
         required: false
         default: '20'
+        type: string
+      observations:
+        description: >-
+          JSON array of manual establishment observations, each
+          {establishment_id, city, field_name, value, notes, evidence_urls[]}.
+        required: false
+        default: ''
         type: string
       reviews:
         description: >-
@@ -152,6 +159,7 @@ jobs:
           CITY: ${{ inputs.city }}
           LIMIT: ${{ inputs.limit }}
           REVIEWS: ${{ inputs.reviews }}
+          OBSERVATIONS: ${{ inputs.observations }}
           REVIEWER: ${{ github.actor }}
         run: |
           set -euo pipefail
@@ -173,6 +181,12 @@ jobs:
               printf '%s' "$REVIEWS" > "$RUNNER_TEMP/reviews.json"
               python scripts/review_field_conflicts.py \
                 "$RUNNER_TEMP/reviews.json" "$REVIEWER"
+              ;;
+            observe-establishment-field)
+              test -n "$OBSERVATIONS" || { echo "observations is required"; exit 1; }
+              printf '%s' "$OBSERVATIONS" > "$RUNNER_TEMP/observations.json"
+              python scripts/observe_establishment_fields.py \
+                "$RUNNER_TEMP/observations.json" "$REVIEWER"
               ;;
             audit)
               paloma-data catalog-audit --city "$CITY" --limit "$LIMIT"
